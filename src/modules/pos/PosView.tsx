@@ -25,7 +25,9 @@ import {
   Edit3, 
   Tag, 
   Gift,
-  UserCheck
+  Bike,
+  MapPin,
+  Phone
 } from 'lucide-react';
 import { 
   restaurantDataService, 
@@ -37,6 +39,7 @@ import {
   PaymentMethodConfig 
 } from '../../services/restaurantDataService';
 import { dataService, Customer } from '../../services/dataService';
+import { notify } from '../../services/notificationService';
 
 const CANCEL_REASONS = [
   'Müşteri Siparişten Vazgeçti',
@@ -248,17 +251,17 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     if (!item) return;
     const reason = itemCancelModal.selectedReason === 'Diğer (Özel Açıklama)' ? itemCancelModal.customNote : itemCancelModal.selectedReason;
 
-    alert(`⚠️ [MUTFAK İPTAL FİŞİ]: ${selectedTable.name} -> ${itemCancelModal.cancelQty}x ${item.productName}\nSebep: ${reason}`);
-
     restaurantDataService.cancelItemQuantity(selectedTable.id, itemCancelModal.itemIndex, itemCancelModal.cancelQty, reason);
+    notify.warning('Mutfak İptal Fişi Kesildi', `${selectedTable.name} -> ${itemCancelModal.cancelQty}x ${item.productName} iptal edildi. Sebep: ${reason}`);
     setItemCancelModal({ open: false, itemIndex: -1, maxQty: 1, cancelQty: 1, selectedReason: CANCEL_REASONS[0], customNote: '' });
   };
 
+  // MUTFAĞA GÖNDERME (PAKET MÜŞTERİ BİLGİLERİYLE BİRLİKTE BASAR)
   const handleSendToKitchen = () => {
     if (!selectedTable) return;
     const pendingItems = orderItems.filter(i => i.status === 'PENDING');
     if (pendingItems.length === 0) {
-      return alert('Masada mutfağa gönderilecek yeni bir ürün bulunmuyor!');
+      return notify.warning('Yeni Ürün Yok', 'Masada mutfağa gönderilecek yeni bir ilave ürün bulunmuyor!');
     }
 
     const isFirstOrder = !selectedTable.order || selectedTable.status === 'EMPTY';
@@ -267,19 +270,18 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     const firinItems = pendingItems.filter(i => (i.targetPrinter || '').includes('firin') || (i.targetPrinter || '').includes('FIRIN'));
     const ocakItems = pendingItems.filter(i => (i.targetPrinter || '').includes('ocak') || (i.targetPrinter || '').includes('OCAK'));
 
-    let printMsg = `🖨️ [${ticketTitle}] Masa: ${selectedTable.name}\n\n`;
-    if (firinItems.length > 0) printMsg += `🔥 [FIRIN]: ${firinItems.map(i => `${i.quantity}x ${i.productName}${i.note ? ` (${i.note})` : ''}`).join(', ')}\n`;
-    if (ocakItems.length > 0) printMsg += `🍖 [OCAK]: ${ocakItems.map(i => `${i.quantity}x ${i.productName}${i.note ? ` (${i.note})` : ''}`).join(', ')}\n`;
-    if (generalOrderNote) printMsg += `📝 Not: ${generalOrderNote}\n`;
-
-    if (selectedTable.customerInfo) {
-      printMsg += `\n🛵 [KASA YAZICISI]: Kurye Adres Fişi Basıldı!\nMüşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}`;
-    }
-
-    alert(printMsg);
-
     const updatedItems: OrderItemState[] = orderItems.map(i => ({ ...i, status: 'SENT_TO_KITCHEN' }));
     restaurantDataService.updateTableOrder(selectedTable.id, updatedItems, 'Taha Usta', selectedTable.customerInfo, generalOrderNote);
+
+    if (selectedTable.customerInfo) {
+      notify.success(
+        '🛵 Paket Siparişi Mutfağa İletildi',
+        `Müşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}\nFırın ve Ocak yazıcılarına müşteri adresiyle birlikte fiş basıldı.`
+      );
+    } else {
+      notify.success('Mutfak Fişleri Basıldı', `${selectedTable.name} siparişi ilgili mutfak yazıcılarına iletildi.`);
+    }
+
     setSelectedTable(null);
   };
 
@@ -288,7 +290,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     const reason = tableCancelModal.selectedReason === 'Diğer (Özel Açıklama)' ? tableCancelModal.customNote : tableCancelModal.selectedReason;
 
     restaurantDataService.cancelTableOrder(selectedTable.id, reason);
-    alert(`🚨 ${selectedTable.name} masası iptal edildi. Sebep: ${reason}`);
+    notify.error('Masa İptal Edildi', `${selectedTable.name} adisyonu iptal edilerek kapatıldı.`);
 
     setTableCancelModal({ open: false, selectedReason: CANCEL_REASONS[0], customNote: '' });
     setSelectedTable(null);
@@ -298,14 +300,15 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     if (!selectedTable || !targetTransferTableId) return;
     const success = restaurantDataService.transferTable(selectedTable.id, targetTransferTableId);
     if (success) {
-      alert(`✅ ${selectedTable.name} masası başarıyla taşındı!`);
+      notify.success('Masa Taşındı', `${selectedTable.name} siparişi başarıyla taşındı.`);
       setTransferModalOpen(false);
       setSelectedTable(null);
     } else {
-      alert('Masa taşıma başarısız oldu!');
+      notify.error('Hata', 'Masa taşıma işlemi başarısız oldu.');
     }
   };
 
+  // PARÇALI HESAPLAMA
   const currentTotal = (orderItems || []).reduce((sum, i) => sum + (i.isGift ? 0 : (Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
   const paidTotal = (paymentEntries || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const remainingTotal = Math.max(0, currentTotal - paidTotal);
@@ -354,7 +357,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     if (amount <= 0.01) return;
 
     if (amount > remainingTotal + 0.01) {
-      alert(`Girilen tutar kalan borçtan (${remainingTotal.toFixed(2)} ₺) fazla olamaz!`);
+      notify.error('Hatalı Tutar', `Girilen tutar kalan borçtan (${remainingTotal.toFixed(2)} ₺) fazla olamaz!`);
       return;
     }
 
@@ -373,9 +376,6 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   };
 
   const handleDeletePaymentEntry = (id: string) => {
-    const target = paymentEntries.find(p => p.id === id);
-    if (!target) return;
-
     const nextEntries = paymentEntries.filter(p => p.id !== id);
     setPaymentEntries(nextEntries);
 
@@ -385,7 +385,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
   const handleOpenCariPicker = () => {
     const amount = parseFloat(calcInput) || remainingTotal;
-    if (amount <= 0.01) return alert('Aktarılacak tutar 0 olamaz!');
+    if (amount <= 0.01) return notify.warning('Tutar Yok', 'Aktarılacak tutar 0 olamaz!');
     setCariSearchQuery('');
     setCariModalOpen(true);
   };
@@ -394,40 +394,42 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     const amount = parseFloat(calcInput) || remainingTotal;
     if (amount <= 0.01) return;
 
-    const confirmed = confirm(
-      `⚠️ CARİ (VERESİYE) SEÇİMİ\n\nMüşteri: ${customer.name}\nMevcut Bakiye: ${customer.balance.toFixed(2)} ₺\n\nBu adisyonun ${amount.toFixed(2)} ₺ tutarı [${customer.name}] carisine BORÇ olarak işlenecektir.\n\nDevam etmek istiyor musunuz?`
-    );
+    notify.confirm({
+      title: 'Cari (Veresiye) Borç Aktarımı',
+      message: `Müşteri: ${customer.name}\nMevcut Bakiye: ${customer.balance.toFixed(2)} ₺\n\nHesap kapatıldığında ${amount.toFixed(2)} ₺ tutar [${customer.name}] carisine BORÇ olarak işlenecektir.`,
+      confirmText: 'Evet, Borç Yaz',
+      type: 'warning',
+      onConfirm: () => {
+        const newEntry: PaymentEntry = {
+          id: `pay-cari-${Date.now()}`,
+          type: `Cari (${customer.name})`,
+          amount: amount,
+          customerId: customer.id,
+          customerName: customer.name,
+        };
 
-    if (!confirmed) return;
+        const nextEntries = [...paymentEntries, newEntry];
+        setPaymentEntries(nextEntries);
+        setSelectedPayItemIndices([]);
 
-    const newEntry: PaymentEntry = {
-      id: `pay-cari-${Date.now()}`,
-      type: `Cari (${customer.name})`,
-      amount: amount,
-      customerId: customer.id,
-      customerName: customer.name,
-    };
-
-    const nextEntries = [...paymentEntries, newEntry];
-    setPaymentEntries(nextEntries);
-    setSelectedPayItemIndices([]);
-
-    const nextRemaining = Math.max(0, currentTotal - nextEntries.reduce((s, p) => s + p.amount, 0));
-    setCalcInput(nextRemaining.toFixed(2));
-    setCariModalOpen(false);
+        const nextRemaining = Math.max(0, currentTotal - nextEntries.reduce((s, p) => s + p.amount, 0));
+        setCalcInput(nextRemaining.toFixed(2));
+        setCariModalOpen(false);
+        notify.success('Cari Seçildi', `[${customer.name}] için ${amount.toFixed(2)} ₺ borç kaydı hazırlandı.`);
+      }
+    });
   };
 
   const handleFinalizeBill = (printReceipt: boolean) => {
     if (!selectedTable) return;
 
     if (remainingTotal > 0.01) {
-      alert(`🚨 HESAP KAPANAMAZ!\n\nKalan Tutar: ${remainingTotal.toFixed(2)} ₺\nLütfen kalan tutarın tamamını tahsil edin.`);
+      notify.error('Hesap Kapanamaz', `Kalan Tutar: ${remainingTotal.toFixed(2)} ₺\nLütfen kalan tutarın tamamını tahsil edin.`);
       return;
     }
 
+    // CARİ BORÇLANDIRMA
     const cariPayments = paymentEntries.filter(p => Boolean(p.customerId));
-    let cariNotice = '';
-
     cariPayments.forEach(cp => {
       if (cp.customerId) {
         dataService.addCustomerTransaction(cp.customerId, {
@@ -437,22 +439,16 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
           date: new Date().toISOString().split('T')[0],
           description: `${selectedTable.name} (#${selectedTable.order?.orderNumber || 101}) Adisyon Hesabı (Veresiye)`
         });
-        cariNotice += `\n• ${cp.customerName}: +${cp.amount.toFixed(2)} ₺ Borç Eklendi`;
       }
     });
 
     restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı', paymentEntries);
     setCustomers(dataService.getCustomers());
 
-    let successMsg = `✅ ${selectedTable.name} hesabı başarıyla kapatıldı.`;
-    if (cariNotice) {
-      successMsg += `\n\n📌 CARİ HAREKETİ İŞLENDİ:${cariNotice}`;
-    }
-
     if (printReceipt) {
-      alert(`🖨️ [KASA YAZICISI (USB)]: ${selectedTable.name} Hesap Fişi basıldı!\n\n${successMsg}`);
+      notify.success('Hesap Kapatıldı & Fiş Basıldı', `${selectedTable.name} hesabı kapatıldı ve adisyon fişi kesildi.`);
     } else {
-      alert(successMsg);
+      notify.success('Hesap Kapatıldı', `${selectedTable.name} masası başarıyla kapatıldı.`);
     }
 
     setCheckoutModalOpen(false);
@@ -604,14 +600,18 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                     <h2 className="text-lg font-black text-white">{selectedTable.name}</h2>
                     <p className="text-xs text-amber-400 font-medium">Garson: {selectedTable.order?.waiterName || 'Taha Usta'}</p>
                     
+                    {/* PAKET MÜŞTERİ BİLGİ KARTI (ADİSYONUN EN ÜSTÜNDE) */}
                     {selectedTable.customerInfo && (
-                      <div className="mt-1.5 p-2 bg-orange-950/60 border border-orange-700/60 rounded-xl text-[11px] text-orange-200">
-                        <div className="font-bold flex items-center gap-1">
-                          <span>🛵 Müşteri:</span>
-                          <span className="text-white">{selectedTable.customerInfo.name}</span>
+                      <div className="mt-2 p-2.5 bg-orange-950/70 border border-orange-700/80 rounded-2xl text-[11px] text-orange-200 shadow-md">
+                        <div className="font-black text-white flex items-center gap-1.5 text-xs">
+                          <Bike className="w-4 h-4 text-amber-400" />
+                          <span>{selectedTable.customerInfo.name}</span>
                           <span className="font-mono text-amber-300">({selectedTable.customerInfo.phone})</span>
                         </div>
-                        <div className="text-[10px] text-slate-300 truncate mt-0.5">📍 {selectedTable.customerInfo.address}</div>
+                        <div className="text-[11px] text-orange-100 font-medium mt-1 flex items-start gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <span>{selectedTable.customerInfo.address}</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -714,7 +714,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                 )}
               </div>
 
-              {/* Alt Tutar & Aksiyon Butonları */}
+              {/* Alt Tutar & Mutfak / Paket Yazıcısına Gönderme */}
               <div className="p-4 bg-slate-900 border-t border-slate-800 space-y-2.5">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-400 whitespace-nowrap">Masa Notu:</span>
@@ -738,7 +738,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                     className="py-3 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Flame className="w-4 h-4" />
-                    <span>Mutfağa Gönder (Yeni Kalemler)</span>
+                    <span>Mutfağa / Pakete Gönder</span>
                   </button>
 
                   <button

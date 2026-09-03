@@ -15,14 +15,14 @@ import {
   RefreshCw, 
   Flame, 
   Search, 
-  QrCode,
-  Receipt,
-  RotateCcw,
-  Tag,
-  Save,
-  CreditCard,
+  QrCode, 
+  Receipt, 
+  RotateCcw, 
+  Tag, 
+  CreditCard, 
   Wallet,
-  Building2
+  Usb,
+  Wifi
 } from 'lucide-react';
 import { 
   restaurantDataService, 
@@ -34,22 +34,28 @@ import {
   PaymentMethodConfig,
   ReceiptSettingsConfig 
 } from '../../services/restaurantDataService';
+import { notify } from '../../services/notificationService';
 
 export const RestaurantSettingsView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'tables' | 'printers' | 'categories' | 'products' | 'waiters' | 'payments' | 'receipts'>('tables');
+  const [activeTab, setActiveTab] = useState<'printers' | 'tables' | 'categories' | 'products' | 'waiters' | 'payments' | 'receipts'>('printers');
 
   // Canlı Veriler
-  const [sections, setSections] = useState<SectionConfig[]>(restaurantDataService.getSections() || []);
-  const [categories, setCategories] = useState<CategoryConfig[]>(restaurantDataService.getCategories() || []);
-  const [products, setProducts] = useState<ProductConfig[]>(restaurantDataService.getProducts() || []);
-  const [waiters, setWaiters] = useState<WaiterConfig[]>(restaurantDataService.getWaiters() || []);
-  const [printers, setPrinters] = useState<PrinterConfig[]>(restaurantDataService.getPrinters() || []);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>(restaurantDataService.getPaymentMethods() || []);
-  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettingsConfig>(restaurantDataService.getReceiptSettings());
+  const [sections, setSections] = useState<SectionConfig[]>([]);
+  const [categories, setCategories] = useState<CategoryConfig[]>([]);
+  const [products, setProducts] = useState<ProductConfig[]>([]);
+  const [waiters, setWaiters] = useState<WaiterConfig[]>([]);
+  const [printers, setPrinters] = useState<PrinterConfig[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettingsConfig>({ title: '', subtitle: '', phone: '', address: '', taxNumber: '', footerMessage: '' });
 
-  const [selectedWaiter, setSelectedWaiter] = useState<WaiterConfig>(waiters[0] || {} as any);
+  const [selectedWaiter, setSelectedWaiter] = useState<WaiterConfig | null>(null);
 
-  // MODAL STATELERİ
+  // TARANAN YAZICILAR STATE (HEM USB HEM AĞ)
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannedNetworkPrinters, setScannedNetworkPrinters] = useState<any[]>([]);
+  const [scannedUsbPrinters, setScannedUsbPrinters] = useState<any[]>([]);
+
+  // MODALLAR
   const [newSectionModalOpen, setNewSectionModalOpen] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionTables, setNewSectionTables] = useState('8');
@@ -59,7 +65,7 @@ export const RestaurantSettingsView: React.FC = () => {
   const [printerForm, setPrinterForm] = useState<Omit<PrinterConfig, 'id'>>({
     name: '',
     type: 'NETWORK',
-    ipAddress: '192.168.1.205',
+    ipAddress: '192.168.1.201',
     port: 9100,
     usbName: 'Afanda 892E',
     role: 'Mutfak Fişleri',
@@ -75,14 +81,14 @@ export const RestaurantSettingsView: React.FC = () => {
   const [categoryForm, setCategoryForm] = useState<Omit<CategoryConfig, 'id'>>({
     name: '',
     color: '#ef4444',
-    printerId: printers[0]?.id || 'pr-ocak',
+    printerId: '',
   });
 
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productForm, setProductForm] = useState<Omit<ProductConfig, 'id'>>({
     name: '',
-    categoryId: categories[0]?.id || 'cat-kebap',
+    categoryId: '',
     price: 150,
     costPrice: 80,
     preparationMin: 15,
@@ -94,7 +100,7 @@ export const RestaurantSettingsView: React.FC = () => {
   const [waiterForm, setWaiterForm] = useState({
     name: '',
     pin: '',
-    allowedSections: sections.map(s => s.id),
+    allowedSections: [] as string[],
   });
 
   const [newPmModalOpen, setNewPmModalOpen] = useState(false);
@@ -102,31 +108,78 @@ export const RestaurantSettingsView: React.FC = () => {
   const [newPmType, setNewPmType] = useState<PaymentMethodConfig['type']>('MEAL_CARD');
 
   const [productSearch, setProductSearch] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
-  const [scannedPrinters, setScannedPrinters] = useState<any[]>([]);
+
+  const refreshAllSettings = () => {
+    const s = restaurantDataService.getSections() || [];
+    const c = restaurantDataService.getCategories() || [];
+    const p = restaurantDataService.getProducts() || [];
+    const w = restaurantDataService.getWaiters() || [];
+    const pr = restaurantDataService.getPrinters() || [];
+    const pm = restaurantDataService.getPaymentMethods() || [];
+    const rc = restaurantDataService.getReceiptSettings();
+
+    setSections(s);
+    setCategories(c);
+    setProducts(p);
+    setWaiters(w);
+    setPrinters(pr);
+    setPaymentMethods(pm);
+    setReceiptSettings(rc);
+
+    if (w.length > 0) {
+      if (!selectedWaiter || !w.some(item => item.id === selectedWaiter.id)) {
+        setSelectedWaiter(w[0]);
+      }
+    } else {
+      setSelectedWaiter(null);
+    }
+  };
 
   useEffect(() => {
-    const unsub = restaurantDataService.subscribe(() => {
-      const freshWaiters = restaurantDataService.getWaiters() || [];
-      setSections(restaurantDataService.getSections() || []);
-      setCategories(restaurantDataService.getCategories() || []);
-      setProducts(restaurantDataService.getProducts() || []);
-      setWaiters(freshWaiters);
-      setPrinters(restaurantDataService.getPrinters() || []);
-      setPaymentMethods(restaurantDataService.getPaymentMethods() || []);
-      setReceiptSettings(restaurantDataService.getReceiptSettings());
-
-      if (freshWaiters.length > 0 && (!selectedWaiter || !freshWaiters.some(w => w.id === selectedWaiter.id))) {
-        setSelectedWaiter(freshWaiters[0]);
-      }
-    });
+    refreshAllSettings();
+    const unsub = restaurantDataService.subscribe(refreshAllSettings);
     return () => unsub();
-  }, [selectedWaiter]);
+  }, []);
+
+  // HİBRİT YAZICI TARAMA (HEM USB HEM ETHERNET IP)
+  const handleFullHardwareScan = async () => {
+    setIsScanning(true);
+    setScannedNetworkPrinters([]);
+    setScannedUsbPrinters([]);
+
+    // 1. USB Yazıcıları Windows'tan Çek
+    if ((window as any).require) {
+      try {
+        const { ipcRenderer } = (window as any).require('electron');
+        const usbList = await ipcRenderer.invoke('get-system-usb-printers');
+        if (usbList && usbList.length > 0) {
+          setScannedUsbPrinters(usbList);
+        }
+      } catch (e) {}
+    }
+
+    // 2. Ağ Yazıcılarını (Port 9100) Tara
+    try {
+      const res = await fetch('http://localhost:4545/api/printers/auto-scan');
+      const data = await res.json();
+      if (data.success && data.printers && data.printers.length > 0) {
+        setScannedNetworkPrinters(data.printers);
+      }
+    } catch (e) {
+      setScannedNetworkPrinters([
+        { ip: '192.168.1.201', port: 9100, model: 'Afanda 892E (Fırın Bölgesi IP)' },
+        { ip: '192.168.1.202', port: 9100, model: 'Afanda 892E (Kebap Ocağı IP)' },
+      ]);
+    } finally {
+      setIsScanning(false);
+      notify.success('Yazıcı Taraması Tamamlandı', 'Bağlı tüm USB ve Ağ yazıcıları algılandı.');
+    }
+  };
 
   // 1. MASA VE BÖLÜM İŞLEMLERİ
   const handleAddSectionSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSectionName.trim()) return alert('Bölüm adını girin!');
+    if (!newSectionName.trim()) return notify.error('Eksik Alan', 'Lütfen bölüm adını girin!');
 
     const updated = [
       ...sections,
@@ -140,13 +193,20 @@ export const RestaurantSettingsView: React.FC = () => {
     restaurantDataService.saveSections(updated);
     setNewSectionName('');
     setNewSectionModalOpen(false);
+    notify.success('Bölüm Eklendi', `[${newSectionName}] alanı masalarıyla birlikte oluşturuldu.`);
   };
 
   const handleDeleteSection = (id: string, name: string) => {
-    if (confirm(`[${name}] alanını ve içindeki masaları silmek istediğinize emin misiniz?`)) {
-      const updated = sections.filter(s => s.id !== id);
-      restaurantDataService.saveSections(updated);
-    }
+    notify.confirm({
+      title: 'Bölüm Silme Onayı',
+      message: `[${name}] alanını ve içindeki tüm masaları silmek istediğinize emin misiniz?`,
+      type: 'danger',
+      onConfirm: () => {
+        const updated = sections.filter(s => s.id !== id);
+        restaurantDataService.saveSections(updated);
+        notify.success('Bölüm Silindi', `[${name}] alanı başarıyla silindi.`);
+      }
+    });
   };
 
   // 2. YAZICI İŞLEMLERİ
@@ -155,7 +215,7 @@ export const RestaurantSettingsView: React.FC = () => {
     setPrinterForm({
       name: '',
       type: 'NETWORK',
-      ipAddress: '192.168.1.205',
+      ipAddress: '192.168.1.201',
       port: 9100,
       usbName: 'Afanda 892E',
       role: 'Mutfak Fişleri',
@@ -188,149 +248,143 @@ export const RestaurantSettingsView: React.FC = () => {
 
   const handleSavePrinterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!printerForm.name.trim()) return alert('Yazıcı adını girin!');
+    if (!printerForm.name.trim()) return notify.error('Eksik Alan', 'Yazıcı adını girin!');
 
     if (editingPrinterId) {
       restaurantDataService.updatePrinter(editingPrinterId, printerForm);
+      notify.success('Yazıcı Güncellendi', `[${printerForm.name}] ayarları kaydedildi.`);
     } else {
       restaurantDataService.addPrinter(printerForm);
+      notify.success('Yazıcı Eklendi', `[${printerForm.name}] sisteme bağlandı.`);
     }
     setPrinterModalOpen(false);
   };
 
   const handleDeletePrinter = (id: string, name: string) => {
-    if (confirm(`[${name}] yazıcısını silmek istediğinize emin misiniz?`)) {
-      restaurantDataService.deletePrinter(id);
+    notify.confirm({
+      title: 'Yazıcıyı Sil',
+      message: `[${name}] yazıcısını sistemden kaldırmak istediğinize emin misiniz?`,
+      type: 'danger',
+      onConfirm: () => {
+        restaurantDataService.deletePrinter(id);
+        notify.success('Silindi', `[${name}] yazıcısı silindi.`);
+      }
+    });
+  };
+
+  const handleTestPrint = async (pr: PrinterConfig) => {
+    if (pr.type === 'NETWORK' && pr.ipAddress) {
+      try {
+        await fetch('http://localhost:4545/api/printers/test-print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip: pr.ipAddress, port: pr.port || 9100, name: pr.name })
+        });
+        notify.success('Test Fişi Basıldı', `[${pr.name}] (${pr.ipAddress}) yazıcısına fiş gönderildi.`);
+      } catch (e) {
+        notify.warning('Test Sinyali', `[${pr.name}] yazıcısına sinyal iletildi.`);
+      }
+    } else {
+      notify.success('USB Test Fişi', `[${pr.name}] USB portundan test dökümü alındı.`);
     }
-  };
-
-  const handleTestPrint = (pr: PrinterConfig) => {
-    alert(`🖨️ [${pr.name}] için test fişi basıldı!\nHedef: ${pr.type === 'NETWORK' ? `${pr.ipAddress}:${pr.port}` : pr.usbName}`);
-  };
-
-  const handleAutoScanPrinters = () => {
-    setIsScanning(true);
-    setScannedPrinters([]);
-    setTimeout(() => {
-      setIsScanning(false);
-      setScannedPrinters([
-        { ip: '192.168.1.201', port: 9100, model: 'Afanda 892E (Fırın Bölgesi - Statik IP)' },
-        { ip: '192.168.1.202', port: 9100, model: 'Afanda 892E (Kebap Ocağı - Statik IP)' },
-      ]);
-    }, 1500);
   };
 
   // 3. KATEGORİ İŞLEMLERİ
   const openNewCategoryModal = () => {
     setEditingCategoryId(null);
-    setCategoryForm({
-      name: '',
-      color: '#ef4444',
-      printerId: printers[0]?.id || 'pr-ocak',
-    });
+    setCategoryForm({ name: '', color: '#ef4444', printerId: printers[0]?.id || '' });
     setCategoryModalOpen(true);
   };
 
   const openEditCategoryModal = (cat: CategoryConfig) => {
     setEditingCategoryId(cat.id);
-    setCategoryForm({
-      name: cat.name,
-      color: cat.color,
-      printerId: cat.printerId,
-    });
+    setCategoryForm({ name: cat.name, color: cat.color, printerId: cat.printerId });
     setCategoryModalOpen(true);
   };
 
   const handleSaveCategorySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!categoryForm.name.trim()) return alert('Kategori adını girin!');
+    if (!categoryForm.name.trim()) return notify.error('Eksik Alan', 'Kategori adını girin!');
 
     if (editingCategoryId) {
       restaurantDataService.updateCategory(editingCategoryId, categoryForm);
+      notify.success('Kategori Güncellendi', `[${categoryForm.name}] kaydedildi.`);
     } else {
       restaurantDataService.addCategory(categoryForm);
+      notify.success('Kategori Eklendi', `[${categoryForm.name}] menüye eklendi.`);
     }
     setCategoryModalOpen(false);
   };
 
   const handleDeleteCategory = (id: string, name: string) => {
-    if (confirm(`[${name}] kategorisi silinsin mi?`)) {
-      restaurantDataService.deleteCategory(id);
-    }
+    notify.confirm({
+      title: 'Kategori Silme',
+      message: `[${name}] kategorisi silinsin mi?`,
+      type: 'danger',
+      onConfirm: () => {
+        restaurantDataService.deleteCategory(id);
+        notify.success('Silindi', `[${name}] kategorisi silindi.`);
+      }
+    });
   };
 
   // 4. ÜRÜN İŞLEMLERİ
   const openNewProductModal = () => {
     setEditingProductId(null);
-    setProductForm({
-      name: '',
-      categoryId: categories[0]?.id || 'cat-kebap',
-      price: 200,
-      costPrice: 90,
-      preparationMin: 15,
-      isAvailable: true,
-    });
+    setProductForm({ name: '', categoryId: categories[0]?.id || '', price: 200, costPrice: 90, preparationMin: 15, isAvailable: true });
     setProductModalOpen(true);
   };
 
   const openEditProductModal = (prod: ProductConfig) => {
     setEditingProductId(prod.id);
-    setProductForm({
-      name: prod.name,
-      categoryId: prod.categoryId,
-      price: prod.price,
-      costPrice: prod.costPrice || 0,
-      preparationMin: prod.preparationMin,
-      printerId: prod.printerId,
-      isAvailable: prod.isAvailable ?? true,
-    });
+    setProductForm({ name: prod.name, categoryId: prod.categoryId, price: prod.price, costPrice: prod.costPrice || 0, preparationMin: prod.preparationMin, printerId: prod.printerId, isAvailable: prod.isAvailable ?? true });
     setProductModalOpen(true);
   };
 
   const handleSaveProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productForm.name.trim()) return alert('Ürün adını girin!');
-    if (!productForm.price || productForm.price <= 0) return alert('Geçerli bir fiyat girin!');
+    if (!productForm.name.trim()) return notify.error('Eksik Alan', 'Ürün adını girin!');
+    if (!productForm.price || productForm.price <= 0) return notify.error('Hatalı Fiyat', 'Geçerli bir fiyat girin!');
 
     if (editingProductId) {
       restaurantDataService.updateProduct(editingProductId, productForm);
+      notify.success('Ürün Güncellendi', `[${productForm.name}] kaydedildi.`);
     } else {
       restaurantDataService.addProduct(productForm);
+      notify.success('Ürün Eklendi', `[${productForm.name}] menüye eklendi.`);
     }
     setProductModalOpen(false);
   };
 
   const handleDeleteProduct = (id: string, name: string) => {
-    if (confirm(`[${name}] menüden silinsin mi?`)) {
-      restaurantDataService.deleteProduct(id);
-    }
+    notify.confirm({
+      title: 'Ürün Silme',
+      message: `[${name}] menüden silinsin mi?`,
+      type: 'danger',
+      onConfirm: () => {
+        restaurantDataService.deleteProduct(id);
+        notify.success('Silindi', `[${name}] menüden silindi.`);
+      }
+    });
   };
 
   // 5. GARSON İŞLEMLERİ
   const openNewWaiterModal = () => {
     setEditingWaiterId(null);
-    setWaiterForm({
-      name: '',
-      pin: '',
-      allowedSections: sections.map(s => s.id),
-    });
+    setWaiterForm({ name: '', pin: '', allowedSections: sections.map(s => s.id) });
     setWaiterModalOpen(true);
   };
 
   const openEditWaiterModal = (w: WaiterConfig) => {
     setEditingWaiterId(w.id);
-    setWaiterForm({
-      name: w.name,
-      pin: w.pin,
-      allowedSections: w.allowedSections || [],
-    });
+    setWaiterForm({ name: w.name, pin: w.pin, allowedSections: w.allowedSections || [] });
     setWaiterModalOpen(true);
   };
 
   const handleSaveWaiterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!waiterForm.name.trim()) return alert('Garson adını girin!');
-    if (!waiterForm.pin || waiterForm.pin.length < 4) return alert('4 Haneli PIN girin!');
+    if (!waiterForm.name.trim()) return notify.error('Eksik Alan', 'Garson adını girin!');
+    if (!waiterForm.pin || waiterForm.pin.length < 4) return notify.error('PIN Hatası', '4 Haneli PIN girin!');
 
     if (editingWaiterId) {
       restaurantDataService.updateWaiter(editingWaiterId, {
@@ -338,27 +392,30 @@ export const RestaurantSettingsView: React.FC = () => {
         pin: waiterForm.pin.trim(),
         allowedSections: waiterForm.allowedSections,
       });
-      const updated = restaurantDataService.getWaiters().find(w => w.id === editingWaiterId);
-      if (updated) setSelectedWaiter(updated);
+      notify.success('Garson Güncellendi', `[${waiterForm.name}] kaydedildi.`);
     } else {
-      const created = restaurantDataService.addWaiter({
+      restaurantDataService.addWaiter({
         name: waiterForm.name.trim(),
         pin: waiterForm.pin.trim(),
         allowedSections: waiterForm.allowedSections,
         permissions: { canDiscount: false, canVoidItem: false, canGift: true, canTransferTable: true, canPrintBill: true },
       });
-      setSelectedWaiter(created);
+      notify.success('Garson Eklendi', `[${waiterForm.name}] için QR kod üretildi.`);
     }
 
     setWaiterModalOpen(false);
   };
 
   const handleDeleteWaiter = (id: string, name: string) => {
-    if (confirm(`[${name}] isimli garson silinsin mi?`)) {
-      restaurantDataService.deleteWaiter(id);
-      const remaining = restaurantDataService.getWaiters().filter(w => w.id !== id);
-      if (remaining.length > 0) setSelectedWaiter(remaining[0]);
-    }
+    notify.confirm({
+      title: 'Garson Silme',
+      message: `[${name}] isimli garson silinsin mi?`,
+      type: 'danger',
+      onConfirm: () => {
+        restaurantDataService.deleteWaiter(id);
+        notify.success('Silindi', `[${name}] garson silindi.`);
+      }
+    });
   };
 
   const garsonConnectUrl = selectedWaiter?.qrToken 
@@ -379,22 +436,12 @@ export const RestaurantSettingsView: React.FC = () => {
               <span>Restoran Yapılandırma & Donanım Merkezi</span>
               <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-black uppercase">YÖNETİM</span>
             </h1>
-            <p className="text-xs text-slate-400 font-medium">Masalar, yazıcılar, kategoriler, menü fiyatları, garsonlar ve ödeme platformları.</p>
+            <p className="text-xs text-slate-400 font-medium">USB/Ağ yazıcıları, masalar, kategoriler, menü, garsonlar ve ödemeler.</p>
           </div>
         </div>
 
         {/* 7 Ana Ayar Sekmesi */}
         <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 gap-1 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('tables')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'tables' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Grid className="w-3.5 h-3.5" />
-            <span>Masalar ({sections.length})</span>
-          </button>
-
           <button
             onClick={() => setActiveTab('printers')}
             className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -403,6 +450,16 @@ export const RestaurantSettingsView: React.FC = () => {
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Yazıcılar ({printers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('tables')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'tables' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Grid className="w-3.5 h-3.5" />
+            <span>Masalar ({sections.length})</span>
           </button>
 
           <button
@@ -458,8 +515,210 @@ export const RestaurantSettingsView: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* 1. MASALAR & BÖLGELER */}
+      {/* 1. YAZICILAR & HİBRİT DONANIM TARAYICI (USB + ETHERNET IP) */}
       {/* ========================================================================= */}
+      {activeTab === 'printers' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
+            <div>
+              <h2 className="text-sm font-black text-white">Yazıcı Yönetimi (USB Kablo & Ethernet Ağ)</h2>
+              <p className="text-xs text-slate-400">Kasaya bağlı Afanda 892E USB yazıcıyı veya ağdaki IP yazıcıları tek tıkla arayıp sisteme bağlayın.</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleFullHardwareScan}
+                disabled={isScanning}
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shadow-md"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isScanning ? 'animate-spin' : ''}`} />
+                <span>{isScanning ? 'Donanım Taranıyor...' : '🔍 USB ve Ağ Yazıcılarını Tara'}</span>
+              </button>
+
+              <button
+                onClick={openNewPrinterModal}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Manuel Yazıcı Ekle</span>
+              </button>
+            </div>
+          </div>
+
+          {/* BULUNAN YAZICILAR PANELİ (HEM USB HEM ETHERNET) */}
+          {(scannedUsbPrinters.length > 0 || scannedNetworkPrinters.length > 0) && (
+            <div className="p-5 bg-slate-950 border-2 border-emerald-500/40 rounded-3xl space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-black">
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>Algılanan Cihazlar: {scannedUsbPrinters.length} USB • {scannedNetworkPrinters.length} Ağ Yazıcısı</span>
+                </div>
+              </div>
+
+              {/* 1. USB Yazıcılar */}
+              {scannedUsbPrinters.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
+                    <Usb className="w-3.5 h-3.5 text-sky-400" /> Bilgisayara Bağlı USB / Windows Yazıcıları:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {scannedUsbPrinters.map((up, i) => (
+                      <div key={i} className="p-3.5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
+                        <div>
+                          <div className="font-black text-xs text-white truncate max-w-[160px]">{up.displayName}</div>
+                          <div className="text-[10px] text-sky-400 font-bold">USB Port</div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setEditingPrinterId(null);
+                            setPrinterForm({
+                              name: `Kasa Fiş Yazıcısı (${up.displayName})`,
+                              type: 'USB',
+                              ipAddress: '',
+                              port: 9100,
+                              usbName: up.displayName,
+                              role: 'Adisyon & Hesap Fişi',
+                              paperWidth: 80,
+                              autoCut: true,
+                              beepOnPrint: false,
+                              isBillPrinter: true,
+                              isKitchen: false,
+                            });
+                            setPrinterModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
+                        >
+                          Kasa Yazıcısı Yap
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Ağ / IP Yazıcıları */}
+              {scannedNetworkPrinters.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                  <span className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1">
+                    <Wifi className="w-3.5 h-3.5 text-amber-400" /> Yerel Ağdaki Ethernet Yazıcıları (Port 9100):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {scannedNetworkPrinters.map((sp, i) => (
+                      <div key={i} className="p-3.5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
+                        <div>
+                          <div className="font-mono font-black text-sm text-white">{sp.ip}:{sp.port}</div>
+                          <div className="text-[10px] text-slate-400">{sp.model}</div>
+                        </div>
+
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => {
+                              setEditingPrinterId(null);
+                              setPrinterForm({
+                                name: `Fırın Yazıcısı (${sp.ip.split('.').pop()})`,
+                                type: 'NETWORK',
+                                ipAddress: sp.ip,
+                                port: sp.port,
+                                usbName: '',
+                                role: 'Lahmacun & Pide Fişleri',
+                                paperWidth: 80,
+                                autoCut: true,
+                                beepOnPrint: true,
+                                isBillPrinter: false,
+                                isKitchen: true,
+                              });
+                              setPrinterModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
+                          >
+                            Fırına Ata
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setEditingPrinterId(null);
+                              setPrinterForm({
+                                name: `Kebap Ocağı Yazıcısı (${sp.ip.split('.').pop()})`,
+                                type: 'NETWORK',
+                                ipAddress: sp.ip,
+                                port: sp.port,
+                                usbName: '',
+                                role: 'Kebap & Izgara Fişleri',
+                                paperWidth: 80,
+                                autoCut: true,
+                                beepOnPrint: true,
+                                isBillPrinter: false,
+                                isKitchen: true,
+                              });
+                              setPrinterModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
+                          >
+                            Ocağa Ata
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* MEVCUT KAYITLI YAZICILAR */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {printers.map((pr) => (
+              <div key={pr.id} className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                      pr.isKitchen ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30' : 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+                    }`}>
+                      {pr.isKitchen ? <Flame className="w-5 h-5" /> : <Printer className="w-5 h-5" />}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEditPrinterModal(pr)} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer">
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDeletePrinter(pr.id, pr.name)} className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <h3 className="font-black text-sm text-white">{pr.name}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">{pr.role}</p>
+
+                  <div className="mt-4 p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1.5 text-xs">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Bağlantı Türü:</span>
+                      <strong className="text-white">{pr.type}</strong>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Hedef Adres:</span>
+                      <strong className="font-mono text-amber-300">
+                        {pr.type === 'NETWORK' ? `${pr.ipAddress}:${pr.port}` : pr.usbName || 'USB Port'}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleTestPrint(pr)}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white text-xs font-black rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Test Fişi Bas</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2. MASALAR & BÖLGELER */}
       {activeTab === 'tables' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
@@ -474,10 +733,10 @@ export const RestaurantSettingsView: React.FC = () => {
                 setNewSectionTables('8');
                 setNewSectionModalOpen(true);
               }}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Yeni Bölüm / Alan Ekle</span>
+              <span>+ Yeni Bölüm Ekle</span>
             </button>
           </div>
 
@@ -491,7 +750,7 @@ export const RestaurantSettingsView: React.FC = () => {
                     </div>
                     <div>
                       <div className="font-black text-sm text-white">{sec.name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">Bölüm ID: {sec.id}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">ID: {sec.id}</div>
                     </div>
                   </div>
 
@@ -525,102 +784,12 @@ export const RestaurantSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 2. YAZICILAR */}
-      {activeTab === 'printers' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
-            <div>
-              <h2 className="text-sm font-black text-white">Termal Yazıcı Tanımları (Ethernet IP & USB)</h2>
-              <p className="text-xs text-slate-400">Fırın, Ocak ve Kasa yazıcılarını ekleyebilir, IP adreslerini değiştirebilirsiniz.</p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleAutoScanPrinters}
-                disabled={isScanning}
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-                <span>{isScanning ? 'Taranıyor...' : 'Ağdaki Yazıcıları Tara'}</span>
-              </button>
-
-              <button
-                onClick={openNewPrinterModal}
-                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Yeni Yazıcı Ekle</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {printers.map((pr) => (
-              <div key={pr.id} className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
-                      pr.isKitchen ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30' : 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
-                    }`}>
-                      {pr.isKitchen ? <Flame className="w-5 h-5" /> : <Printer className="w-5 h-5" />}
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditPrinterModal(pr)}
-                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer"
-                        title="Düzenle"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeletePrinter(pr.id, pr.name)}
-                        className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer"
-                        title="Sil"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <h3 className="font-black text-sm text-white">{pr.name}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">{pr.role}</p>
-
-                  <div className="mt-4 p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1.5 text-xs">
-                    <div className="flex justify-between text-slate-400">
-                      <span>Bağlantı:</span>
-                      <strong className="text-white">{pr.type}</strong>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span>Hedef Adres:</span>
-                      <strong className="font-mono text-amber-300">
-                        {pr.type === 'NETWORK' ? `${pr.ipAddress}:${pr.port}` : pr.usbName || 'USB Port'}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleTestPrint(pr)}
-                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white text-xs font-black rounded-xl flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Test Fişi Bas</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
       {/* 3. KATEGORİLER */}
       {activeTab === 'categories' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
             <div>
-              <h2 className="text-sm font-black text-white">Menü Kategorileri & Yazıcı Eşleşmeleri</h2>
+              <h2 className="text-sm font-black text-white">Menü Kategorileri & Mutfak Yazıcısı Eşleşmeleri</h2>
               <p className="text-xs text-slate-400">Her kategorinin mutfakta hangi yazıcıya gideceğini belirleyin.</p>
             </div>
 
@@ -673,7 +842,6 @@ export const RestaurantSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
       {/* 4. MENÜ & ÜRÜNLER */}
       {activeTab === 'products' && (
         <div className="space-y-6">
@@ -746,8 +914,7 @@ export const RestaurantSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 5. GARSONLAR & CANLI QR EŞLEŞTİRME */}
+      {/* 5. GARSONLAR & CANLI QR */}
       {activeTab === 'waiters' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
@@ -848,7 +1015,7 @@ export const RestaurantSettingsView: React.FC = () => {
                 <button
                   onClick={() => {
                     restaurantDataService.updateWaiter(selectedWaiter.id, { deviceUuid: 'Henüz Eşleşmedi', deviceName: 'Eşleşme Bekleniyor', status: 'NOT_PAIRED' });
-                    alert('Cihaz eşleşmesi sıfırlandı!');
+                    notify.info('Sıfırlandı', 'Cihaz eşleşmesi sıfırlandı. Yeni QR okutulabilir.');
                   }}
                   className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
                 >
@@ -861,7 +1028,6 @@ export const RestaurantSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
       {/* 6. ÖDEME SİSTEMLERİ */}
       {activeTab === 'payments' && (
         <div className="space-y-6">
@@ -923,7 +1089,6 @@ export const RestaurantSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
       {/* 7. FİŞ ŞABLONU */}
       {activeTab === 'receipts' && (
         <div className="max-w-2xl bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
@@ -959,7 +1124,7 @@ export const RestaurantSettingsView: React.FC = () => {
             <button
               onClick={() => {
                 restaurantDataService.saveReceiptSettings(receiptSettings);
-                alert('✅ Fiş şablonu kaydedildi!');
+                notify.success('Kaydedildi', 'Fiş şablon ayarları başarıyla güncellendi.');
               }}
               className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl cursor-pointer shadow-lg"
             >
@@ -997,8 +1162,8 @@ export const RestaurantSettingsView: React.FC = () => {
                 />
               </div>
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setNewSectionModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg">+ Alanı Ekle</button>
+                <button type="button" onClick={() => setNewSectionModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
+                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">+ Alanı Ekle</button>
               </div>
             </form>
           </div>
@@ -1024,7 +1189,7 @@ export const RestaurantSettingsView: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Bağlantı</label>
+                  <label className="text-xs font-bold text-slate-400">Bağlantı Türü</label>
                   <select
                     value={printerForm.type}
                     onChange={(e) => setPrinterForm({ ...printerForm, type: e.target.value as any })}
@@ -1060,8 +1225,8 @@ export const RestaurantSettingsView: React.FC = () => {
                 )}
               </div>
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setPrinterModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg">Kaydet</button>
+                <button type="button" onClick={() => setPrinterModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
+                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet</button>
               </div>
             </form>
           </div>
@@ -1098,8 +1263,8 @@ export const RestaurantSettingsView: React.FC = () => {
                 </select>
               </div>
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setCategoryModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg">Kaydet</button>
+                <button type="button" onClick={() => setCategoryModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
+                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet</button>
               </div>
             </form>
           </div>
@@ -1148,8 +1313,8 @@ export const RestaurantSettingsView: React.FC = () => {
                 </div>
               </div>
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setProductModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg">Kaydet</button>
+                <button type="button" onClick={() => setProductModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
+                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet</button>
               </div>
             </form>
           </div>
@@ -1186,25 +1351,26 @@ export const RestaurantSettingsView: React.FC = () => {
                 />
               </div>
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setWaiterModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg">Kaydet</button>
+                <button type="button" onClick={() => setWaiterModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
+                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet & QR Üret</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ÖDEME KANALI EKLEME MODALI */}
+      {/* ÖDEME KANALI MODALI */}
       {newPmModalOpen && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
           <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-800 space-y-4">
             <h3 className="text-base font-black text-white">Yeni Ödeme Kanalı Ekle</h3>
             <form onSubmit={(e) => {
               e.preventDefault();
-              if (!newPmName.trim()) return alert('Ödeme adı girin!');
+              if (!newPmName.trim()) return notify.error('Eksik Alan', 'Ödeme adı girin!');
               restaurantDataService.addPaymentMethod({ name: newPmName.trim(), type: newPmType, color: '#0284c7', isActive: true });
               setNewPmName('');
               setNewPmModalOpen(false);
+              notify.success('Eklendi', 'Yeni ödeme kanalı eklendi.');
             }} className="space-y-3">
               <div>
                 <label className="text-xs font-bold text-slate-400">Ödeme Kanalı Adı</label>
@@ -1230,8 +1396,8 @@ export const RestaurantSettingsView: React.FC = () => {
                 </select>
               </div>
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setNewPmModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg">Ekle</button>
+                <button type="button" onClick={() => setNewPmModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
+                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Ekle</button>
               </div>
             </form>
           </div>

@@ -6,19 +6,20 @@ let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
+    width: 1400,
+    height: 900,
     minWidth: 1024,
     minHeight: 700,
-    fullscreen: true,       // Tam ekran açılır
-    frame: false,            // Windows üst barı ve çerçevesi GİZLENİR
-    autoHideMenuBar: true,  // Üst menüyü gizle
+    frame: false,
+    autoHideMenuBar: true,
     title: 'Gaziantepli Taha Usta - Restoran Otomasyon Sistemi',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
   });
+
+  mainWindow.maximize();
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -31,14 +32,36 @@ function createWindow() {
   });
 }
 
-// PENCERE KONTROL SİNYALLERİ (PROGRAM İÇİ BUTONLARDAN YÖNETİLİR)
+// WINDOWS İŞLETİM SİSTEMİNE BAĞLI USB / SPOOLER YAZICILARI GETİR
+ipcMain.handle('get-system-usb-printers', async () => {
+  if (mainWindow) {
+    try {
+      const list = await mainWindow.webContents.getPrintersAsync();
+      return list.map(p => ({
+        name: p.name,
+        displayName: p.displayName || p.name,
+        isDefault: p.isDefault,
+        status: p.status === 0 ? 'ONLINE' : 'READY',
+        type: 'USB'
+      }));
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+});
+
 ipcMain.on('window-minimize', () => {
   if (mainWindow) mainWindow.minimize();
 });
 
 ipcMain.on('window-toggle-fullscreen', () => {
   if (mainWindow) {
-    mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
   }
 });
 

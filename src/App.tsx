@@ -11,6 +11,7 @@ import { ExpenseListView } from './modules/expenses/ExpenseListView';
 import { ReportsView } from './modules/reports/ReportsView';
 import { UserManagementView } from './modules/users/UserManagementView';
 import { CompanySettingsView } from './modules/settings/CompanySettingsView';
+import { GlobalModal } from './components/common/GlobalModal';
 import { dataService } from './services/dataService';
 
 export default function App() {
@@ -29,22 +30,13 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-slate-100 overflow-hidden font-sans text-slate-900 antialiased">
+    <div className="flex h-screen w-screen bg-slate-900 overflow-hidden font-sans text-slate-100 antialiased">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        <Header 
-          pendingAccrualCount={0}
-          onOpenPendingAccruals={() => {}}
-          onQuickDebt={() => {}}
-          onQuickCollection={() => {}}
-          onQuickExpense={() => {}}
-          onQuickEmployeePayment={() => {}}
-          onSwitchUser={() => {}}
-          onLockApp={() => setIsAuthenticated(false)}
-        />
+        <Header onLockApp={() => setIsAuthenticated(false)} />
 
-        <main className="flex-1 overflow-y-auto bg-slate-50/60 min-w-0">
+        <main className="flex-1 overflow-y-auto bg-slate-900 min-w-0">
           {activeTab === 'pos' && (
             <PosView autoOpenTableId={targetPosTableId} onClearAutoOpen={() => setTargetPosTableId(null)} />
           )}
@@ -64,6 +56,9 @@ export default function App() {
           {activeTab === 'company-settings' && <CompanySettingsView onSettingsSaved={refreshAll} />}
         </main>
       </div>
+
+      {/* TÜM SİSTEMDE ÇALIŞAN ÖZEL LÜKS BİLDİRİM & ONAY MODALI */}
+      <GlobalModal />
     </div>
   );
 }
