@@ -1,35 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Receipt, 
-  Building2, 
-  Plus, 
-  Trash2, 
-  Edit3, 
   Search, 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  FileText, 
-  Calendar, 
-  CreditCard, 
-  Banknote, 
-  XCircle, 
-  CheckCircle2, 
+  Plus, 
+  ArrowUpDown, 
+  ArrowUp, 
+  ArrowDown, 
+  Edit2, 
+  Trash2, 
+  Calendar,
+  Building2,
+  TrendingDown,
+  Tag,
+  X,
+  FileText,
+  Banknote,
+  CreditCard,
   ChevronRight,
-  Wallet
+  XCircle,
+  CheckCircle2,
+  AlertTriangle,
+  Sparkles,
+  Lock
 } from 'lucide-react';
 import { 
-  dataService, 
   Expense, 
   Supplier, 
-  SupplierTransaction 
+  SupplierTransaction, 
+  dataService 
 } from '../../services/dataService';
 import { notify } from '../../services/notificationService';
 
 export const EXPENSE_CATEGORIES = [
-  'Et & Tavuk Tedariği',
+  'Hammadde & Et Alımı',
   'Hal & Sebze Tedariği',
   'Un & Fırın Malzemeleri',
-  'Meşrubat & İçecek',
+  'Meşrubat & İçecek Alımı',
   'Kira Gideri',
   'Elektrik Faturası',
   'Doğalgaz Faturası',
@@ -58,6 +64,9 @@ interface ExpenseListViewProps {
   onOpenAddExpenseModal?: () => void;
 }
 
+type SortField = 'date' | 'title' | 'category' | 'amount';
+type SortOrder = 'asc' | 'desc';
+
 export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [activeTab, setActiveTab] = useState<'expenses' | 'suppliers' | 'statement'>('expenses');
 
@@ -66,67 +75,66 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierTransactions, setSupplierTransactions] = useState<SupplierTransaction[]>([]);
 
-  // Filtreler
-  const [expenseSearch, setExpenseSearch] = useState('');
-  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('ALL');
+  // Filtreler & Sıralama
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCat, setSelectedCat] = useState('ALL');
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [supplierSearch, setSupplierSearch] = useState('');
-  const [selectedSupplierForStatement, setSelectedSupplierForStatement] = useState<Supplier | null>(null);
+  
+  // REAKTİF TOPTANCI SEÇİMİ (ID BAZLI CANLI BAĞLANTI)
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
 
-  // MODAL STATELERİ
-  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
-  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
-  const [expenseForm, setExpenseForm] = useState({
-    title: '',
-    category: EXPENSE_CATEGORIES[0],
-    supplierId: '',
-    amount: '',
-    paymentMethod: 'CASH' as Expense['paymentMethod'],
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-  });
+  // GİDER MODALLARI
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [formTitle, setFormTitle] = useState('');
+  const [formCategory, setFormCategory] = useState(EXPENSE_CATEGORIES[0]);
+  const [formAmount, setFormAmount] = useState('');
+  const [formPaymentMethod, setFormPaymentMethod] = useState<'CASH' | 'CREDIT_CARD' | 'BANK'>('CASH');
+  const [formSupplierId, setFormSupplierId] = useState('');
+  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formDescription, setFormDescription] = useState('');
 
+  // TOPTANCI MODALLARI
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
-  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
-  const [supplierForm, setSupplierForm] = useState({
-    name: '',
-    contactPerson: '',
-    phone: '',
-    category: SUPPLIER_CATEGORIES[0],
-    address: '',
-    notes: '',
-  });
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [supName, setSupName] = useState('');
+  const [supContact, setSupContact] = useState('');
+  const [supPhone, setSupPhone] = useState('');
+  const [supCategory, setSupCategory] = useState(SUPPLIER_CATEGORIES[0]);
+  const [supAddress, setSupAddress] = useState('');
 
+  // FATURA MODALI
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
-  const [invoiceForm, setInvoiceForm] = useState({
-    supplierId: '',
-    amount: '',
-    invoiceNo: '',
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-  });
+  const [invSupplierId, setInvSupplierId] = useState('');
+  const [invAmount, setInvAmount] = useState('');
+  const [invNo, setInvNo] = useState('');
+  const [invDate, setInvDate] = useState(new Date().toISOString().split('T')[0]);
+  const [invDesc, setInvDesc] = useState('');
 
+  // ÖDEME MODALI
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({
-    supplierId: '',
-    amount: '',
-    paymentMethod: 'BANK' as SupplierTransaction['paymentMethod'],
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-  });
+  const [paySupplierId, setPaySupplierId] = useState('');
+  const [payAmount, setPayAmount] = useState('');
+  const [payMethod, setPayMethod] = useState<'BANK' | 'CASH' | 'CREDIT_CARD'>('BANK');
+  const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [payDesc, setPayDesc] = useState('');
+
+  // EKSTRE DÜZENLEME MODALI
+  const [editTxModalOpen, setEditTxModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState<SupplierTransaction | null>(null);
+  const [editTxAmount, setEditTxAmount] = useState('');
+  const [editTxDate, setEditTxDate] = useState('');
+  const [editTxInvoiceNo, setEditTxInvoiceNo] = useState('');
+  const [editTxDesc, setEditTxDesc] = useState('');
+  const [editTxMethod, setEditTxMethod] = useState<'CASH' | 'BANK' | 'CREDIT_CARD'>('BANK');
+  const [editTxType, setEditTxType] = useState<'INVOICE' | 'PAYMENT'>('INVOICE');
 
   const refreshAll = () => {
-    const exp = dataService.getExpenses() || [];
-    const sup = dataService.getSuppliers() || [];
-    const stx = dataService.getSupplierTransactions() || [];
-
-    setExpenses(exp);
-    setSuppliers(sup);
-    setSupplierTransactions(stx);
-
-    if (selectedSupplierForStatement) {
-      const freshSup = sup.find(s => s.id === selectedSupplierForStatement.id);
-      if (freshSup) setSelectedSupplierForStatement(freshSup);
-    }
+    setExpenses(dataService.getExpenses() || []);
+    setSuppliers(dataService.getSuppliers() || []);
+    setSupplierTransactions(dataService.getSupplierTransactions() || []);
   };
 
   useEffect(() => {
@@ -135,300 +143,411 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     return () => unsub();
   }, []);
 
+  // SEÇİLİ TOPTANCIYI VE EKSTRESİNİ CANLI OLARAK GÜNCEL DİZİDEN BUL (ANLIK SENKRON)
+  const activeSupplier = useMemo(() => {
+    if (!selectedSupplierId) return null;
+    return suppliers.find(s => s.id === selectedSupplierId) || null;
+  }, [suppliers, selectedSupplierId]);
+
+  const statementTransactions = useMemo(() => {
+    if (!selectedSupplierId) return [];
+    return (supplierTransactions || [])
+      .filter(t => t.supplierId === selectedSupplierId)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [supplierTransactions, selectedSupplierId]);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
+
+  const processedExpenses = useMemo(() => {
+    let list = expenses.filter(e => {
+      const matchSearch = (e.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (e.category && e.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                          (e.supplierName && e.supplierName.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (!matchSearch) return false;
+      if (selectedCat !== 'ALL' && e.category !== selectedCat) return false;
+      return true;
+    });
+
+    list.sort((a, b) => {
+      let valA: any = a[sortField] || '';
+      let valB: any = b[sortField] || '';
+
+      if (sortField === 'amount') {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = String(valA).toLowerCase();
+        valB = String(valB).toLowerCase();
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [expenses, searchQuery, selectedCat, sortField, sortOrder]);
+
+  const totalExpense = useMemo(() => expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0), [expenses]);
+  const totalSupplierDebt = useMemo(() => suppliers.reduce((s, sup) => s + Math.max(0, Number(sup.balance) || 0), 0), [suppliers]);
+
   const formatMoney = (val: number) => {
     return (Number(val) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
   };
 
   // 1. GİDER İŞLEMLERİ
-  const openNewExpenseModal = () => {
-    setEditingExpenseId(null);
-    setExpenseForm({
-      title: '',
-      category: EXPENSE_CATEGORIES[0],
-      supplierId: '',
-      amount: '',
-      paymentMethod: 'CASH',
-      date: new Date().toISOString().split('T')[0],
-      description: '',
-    });
-    setExpenseModalOpen(true);
+  const handleOpenAddModal = () => {
+    setEditingExpense(null);
+    setFormTitle('');
+    setFormCategory(EXPENSE_CATEGORIES[0]);
+    setFormAmount('');
+    setFormPaymentMethod('CASH');
+    setFormSupplierId('');
+    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormDescription('');
+    setIsModalOpen(true);
   };
 
-  const openEditExpenseModal = (exp: Expense) => {
-    setEditingExpenseId(exp.id);
-    setExpenseForm({
-      title: exp.title,
-      category: exp.category,
-      supplierId: exp.supplierId || '',
-      amount: String(exp.amount),
-      paymentMethod: exp.paymentMethod,
-      date: exp.date,
-      description: exp.description || '',
-    });
-    setExpenseModalOpen(true);
+  const handleOpenEditModal = (exp: Expense) => {
+    setEditingExpense(exp);
+    setFormTitle(exp.title);
+    setFormCategory(exp.category || EXPENSE_CATEGORIES[0]);
+    setFormAmount(String(exp.amount || ''));
+    setFormPaymentMethod(exp.paymentMethod || 'CASH');
+    setFormSupplierId(exp.supplierId || '');
+    setFormDate(exp.date || new Date().toISOString().split('T')[0]);
+    setFormDescription(exp.description || '');
+    setIsModalOpen(true);
   };
 
-  const handleSaveExpenseSubmit = (e: React.FormEvent) => {
+  const handleSaveExpense = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseForm.title.trim()) return notify.error('Eksik Alan', 'Gider başlığını girin!');
-    const amountNum = parseFloat(expenseForm.amount);
-    if (!amountNum || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir tutar girin!');
+    const amountNum = parseFloat(formAmount);
+    if (!formTitle.trim()) return notify.error('Eksik Bilgi', 'Gider başlığı giriniz.');
+    if (isNaN(amountNum) || amountNum <= 0) return notify.error('Geçersiz Tutar', 'Geçerli bir tutar giriniz.');
 
-    const selectedSup = suppliers.find(s => s.id === expenseForm.supplierId);
+    const selectedSup = suppliers.find(s => s.id === formSupplierId);
 
-    if (editingExpenseId) {
-      dataService.updateExpense(editingExpenseId, {
-        title: expenseForm.title.trim(),
-        category: expenseForm.category,
-        supplierId: expenseForm.supplierId || undefined,
-        supplierName: selectedSup?.name,
+    if (editingExpense) {
+      dataService.updateExpense(editingExpense.id, {
+        title: formTitle.trim(),
+        category: formCategory,
         amount: amountNum,
-        paymentMethod: expenseForm.paymentMethod,
-        date: expenseForm.date,
-        description: expenseForm.description.trim(),
+        paymentMethod: formPaymentMethod,
+        supplierId: formSupplierId || undefined,
+        supplierName: selectedSup?.name,
+        date: formDate,
+        description: formDescription.trim(),
       });
-      notify.success('Gider Güncellendi', `[${expenseForm.title}] güncellendi.`);
+      notify.success('Gider Güncellendi', `${formTitle} kaydı güncellendi.`);
     } else {
       dataService.saveExpense({
-        title: expenseForm.title.trim(),
-        category: expenseForm.category,
-        supplierId: expenseForm.supplierId || undefined,
-        supplierName: selectedSup?.name,
+        title: formTitle.trim(),
+        category: formCategory,
         amount: amountNum,
-        paymentMethod: expenseForm.paymentMethod,
-        date: expenseForm.date,
-        description: expenseForm.description.trim(),
+        paymentMethod: formPaymentMethod,
+        supplierId: formSupplierId || undefined,
+        supplierName: selectedSup?.name,
+        date: formDate,
+        description: formDescription.trim(),
       });
-      notify.success('Gider Kaydedildi', `${formatMoney(amountNum)} tutarında harcama işlendi.`);
+      notify.success('Gider Eklendi', `${formatMoney(amountNum)} harcama kaydedildi.`);
     }
 
-    setExpenseModalOpen(false);
+    setIsModalOpen(false);
+    refreshAll();
   };
 
-  const handleDeleteExpense = (id: string, title: string) => {
+  const handleDeleteExpense = (e: Expense) => {
     notify.confirm({
       title: 'Gider Kaydını Sil',
-      message: `[${title}] gider kaydını silmek istediğinize emin misiniz?`,
+      message: `"${e.title}" tutarlı harcama kaydını silmek istediğinize emin misiniz?`,
       type: 'danger',
+      confirmText: 'Evet, Sil',
       onConfirm: () => {
-        dataService.deleteExpense(id);
-        notify.success('Silindi', `[${title}] gideri silindi.`);
+        dataService.deleteExpense(e.id);
+        notify.success('Gider Silindi', 'Harcama kaydı kaldırıldı.');
+        refreshAll();
       }
     });
   };
 
   // 2. TOPTANCI İŞLEMLERİ
   const openNewSupplierModal = () => {
-    setEditingSupplierId(null);
-    setSupplierForm({
-      name: '',
-      contactPerson: '',
-      phone: '',
-      category: SUPPLIER_CATEGORIES[0],
-      address: '',
-      notes: '',
-    });
+    setEditingSupplier(null);
+    setSupName('');
+    setSupContact('');
+    setSupPhone('');
+    setSupCategory(SUPPLIER_CATEGORIES[0]);
+    setSupAddress('');
     setSupplierModalOpen(true);
   };
 
   const openEditSupplierModal = (s: Supplier) => {
-    setEditingSupplierId(s.id);
-    setSupplierForm({
-      name: s.name,
-      contactPerson: s.contactPerson || '',
-      phone: s.phone || '',
-      category: s.category || SUPPLIER_CATEGORIES[0],
-      address: s.address || '',
-      notes: s.notes || '',
-    });
+    setEditingSupplier(s);
+    setSupName(s.name);
+    setSupContact(s.contactPerson || '');
+    setSupPhone(s.phone || '');
+    setSupCategory(s.category || SUPPLIER_CATEGORIES[0]);
+    setSupAddress(s.address || '');
     setSupplierModalOpen(true);
   };
 
-  const handleSaveSupplierSubmit = (e: React.FormEvent) => {
+  const handleSaveSupplier = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supplierForm.name.trim()) return notify.error('Eksik Alan', 'Toptancı adını girin!');
+    if (!supName.trim()) return notify.error('Eksik Alan', 'Toptancı adını giriniz.');
 
-    if (editingSupplierId) {
-      dataService.updateSupplier(editingSupplierId, {
-        name: supplierForm.name.trim(),
-        contactPerson: supplierForm.contactPerson.trim(),
-        phone: supplierForm.phone.trim(),
-        category: supplierForm.category,
-        address: supplierForm.address.trim(),
-        notes: supplierForm.notes.trim(),
+    if (editingSupplier) {
+      dataService.updateSupplier(editingSupplier.id, {
+        name: supName.trim(),
+        contactPerson: supContact.trim(),
+        phone: supPhone.trim(),
+        category: supCategory,
+        address: supAddress.trim(),
       });
-      notify.success('Toptancı Güncellendi', `[${supplierForm.name}] bilgileri kaydedildi.`);
+      notify.success('Toptancı Güncellendi', `[${supName}] bilgileri kaydedildi.`);
     } else {
       dataService.addSupplier({
-        name: supplierForm.name.trim(),
-        contactPerson: supplierForm.contactPerson.trim(),
-        phone: supplierForm.phone.trim(),
-        category: supplierForm.category,
-        address: supplierForm.address.trim(),
-        notes: supplierForm.notes.trim(),
+        name: supName.trim(),
+        contactPerson: supContact.trim(),
+        phone: supPhone.trim(),
+        category: supCategory,
+        address: supAddress.trim(),
         balance: 0,
       });
-      notify.success('Toptancı Eklendi', `[${supplierForm.name}] tedarikçi listesine eklendi.`);
+      notify.success('Toptancı Eklendi', `[${supName}] tedarikçi listesine eklendi.`);
     }
 
     setSupplierModalOpen(false);
+    refreshAll();
   };
 
-  const handleDeleteSupplier = (id: string, name: string) => {
+  const handleDeleteSupplier = (s: Supplier) => {
+    if (Math.abs(Number(s.balance) || 0) > 0.01) {
+      return notify.error(
+        'Toptancı Silinemez!',
+        `Bu toptancıya ${formatMoney(s.balance)} borç bakiyesi bulunmaktadır.\nBorç kapatılmadan toptancı kaydı silinemez!`
+      );
+    }
+
     notify.confirm({
       title: 'Toptancıyı Sil',
-      message: `[${name}] toptancısını silmek istediğinize emin misiniz? Cari hareketleri de silinecektir.`,
+      message: `"${s.name}" toptancısını silmek istediğinize emin misiniz?`,
       type: 'danger',
+      confirmText: 'Evet, Sil',
       onConfirm: () => {
-        dataService.deleteSupplier(id);
-        notify.success('Silindi', `[${name}] silindi.`);
+        const result = dataService.deleteSupplier(s.id);
+        if (result.success) {
+          notify.success('Toptancı Silindi', `${s.name} kaydı silindi.`);
+          if (selectedSupplierId === s.id) {
+            setSelectedSupplierId(null);
+            setActiveTab('suppliers');
+          }
+          refreshAll();
+        } else {
+          notify.error('Hata', result.message || 'Silinemedi.');
+        }
       }
     });
   };
 
-  // 3. FATURA GİRİŞİ (BORÇLANDIRMA)
-  const handleSaveInvoiceSubmit = (e: React.FormEvent) => {
+  // 3. FATURA GİRİŞİ (CANLI ANINDA GÜNCELLEME)
+  const handleSaveInvoice = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invoiceForm.supplierId) return notify.error('Eksik Alan', 'Lütfen toptancı seçin!');
-    const amountNum = parseFloat(invoiceForm.amount);
-    if (!amountNum || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir fatura tutarı girin!');
+    if (!invSupplierId) return notify.error('Eksik Alan', 'Lütfen toptancı seçiniz.');
+    const amountNum = parseFloat(invAmount);
+    if (isNaN(amountNum) || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir fatura tutarı giriniz.');
 
-    const sup = suppliers.find(s => s.id === invoiceForm.supplierId);
+    const targetSup = suppliers.find(s => s.id === invSupplierId);
 
-    dataService.addSupplierTransaction(invoiceForm.supplierId, {
+    dataService.addSupplierTransaction(invSupplierId, {
       type: 'INVOICE',
       amount: amountNum,
       paymentMethod: 'CASH',
-      date: invoiceForm.date,
-      invoiceNo: invoiceForm.invoiceNo.trim() || undefined,
-      description: invoiceForm.description.trim() || 'Alış Faturası Girişi',
+      date: invDate,
+      invoiceNo: invNo.trim() || undefined,
+      description: invDesc.trim() || 'Alış Faturası Girişi',
     });
 
-    notify.success('Fatura İşlendi', `[${sup?.name}] hesabına ${formatMoney(amountNum)} tutarında alış faturası borç kaydedildi.`);
+    notify.success('Fatura İşlendi', `[${targetSup?.name}] hesabına ${formatMoney(amountNum)} tutarında alış faturası kaydedildi.`);
     setInvoiceModalOpen(false);
-    setInvoiceForm({ supplierId: '', amount: '', invoiceNo: '', date: new Date().toISOString().split('T')[0], description: '' });
+    refreshAll();
   };
 
-  // 4. TOPTANCIYA ÖDEME ÇIKIŞI
-  const handleSavePaymentSubmit = (e: React.FormEvent) => {
+  // 4. ÖDEME ÇIKIŞI (CANLI ANINDA GÜNCELLEME)
+  const handleSavePayment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paymentForm.supplierId) return notify.error('Eksik Alan', 'Lütfen toptancı seçin!');
-    const amountNum = parseFloat(paymentForm.amount);
-    if (!amountNum || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir ödeme tutarı girin!');
+    if (!paySupplierId) return notify.error('Eksik Alan', 'Lütfen toptancı seçiniz.');
+    const amountNum = parseFloat(payAmount);
+    if (isNaN(amountNum) || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir ödeme tutarı giriniz.');
 
-    const sup = suppliers.find(s => s.id === paymentForm.supplierId);
+    const targetSup = suppliers.find(s => s.id === paySupplierId);
 
-    dataService.addSupplierTransaction(paymentForm.supplierId, {
+    dataService.addSupplierTransaction(paySupplierId, {
       type: 'PAYMENT',
       amount: amountNum,
-      paymentMethod: paymentForm.paymentMethod,
-      date: paymentForm.date,
-      description: paymentForm.description.trim() || 'Toptancıya Ödeme Çıkışı',
+      paymentMethod: payMethod,
+      date: payDate,
+      description: payDesc.trim() || 'Toptancıya Ödeme Çıkışı',
     });
 
-    notify.success('Ödeme İşlendi', `[${sup?.name}] hesabına ${formatMoney(amountNum)} tutarında ödeme işlendi.`);
+    notify.success('Ödeme İşlendi', `[${targetSup?.name}] hesabından ${formatMoney(amountNum)} ödeme düşüldü.`);
     setPaymentModalOpen(false);
-    setPaymentForm({ supplierId: '', amount: '', paymentMethod: 'BANK', date: new Date().toISOString().split('T')[0], description: '' });
+    refreshAll();
   };
 
-  // Filtrelenmiş Veriler
-  const filteredExpenses = expenses.filter(e => {
-    const matchesSearch = e.title.toLowerCase().includes(expenseSearch.toLowerCase()) || (e.supplierName || '').toLowerCase().includes(expenseSearch.toLowerCase());
-    const matchesCategory = expenseCategoryFilter === 'ALL' || e.category === expenseCategoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  // 5. EKSTRE DÜZENLEME & SİLME (CANLI ANINDA GÜNCELLEME)
+  const openEditStatementTxModal = (tx: SupplierTransaction) => {
+    setEditingTx(tx);
+    setEditTxType(tx.type);
+    setEditTxAmount(String(tx.amount));
+    setEditTxDate(tx.date);
+    setEditTxInvoiceNo(tx.invoiceNo || '');
+    setEditTxDesc(tx.description || '');
+    setEditTxMethod(tx.paymentMethod);
+    setEditTxModalOpen(true);
+  };
 
-  const filteredSuppliers = suppliers.filter(s => 
-    s.name.toLowerCase().includes(supplierSearch.toLowerCase()) || 
-    (s.contactPerson || '').toLowerCase().includes(supplierSearch.toLowerCase()) ||
-    (s.phone || '').includes(supplierSearch)
-  );
+  const handleSaveStatementTxSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+    const amountNum = parseFloat(editTxAmount);
+    if (isNaN(amountNum) || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir tutar giriniz.');
 
-  const totalExpenseSum = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const totalSupplierDebtSum = suppliers.reduce((sum, s) => sum + Math.max(0, Number(s.balance) || 0), 0);
+    dataService.updateSupplierTransaction(editingTx.id, {
+      type: editTxType,
+      amount: amountNum,
+      date: editTxDate,
+      invoiceNo: editTxType === 'INVOICE' ? (editTxInvoiceNo.trim() || undefined) : undefined,
+      description: editTxDesc.trim() || undefined,
+      paymentMethod: editTxType === 'PAYMENT' ? editTxMethod : 'CASH',
+    });
 
-  const statementTransactions = selectedSupplierForStatement 
-    ? dataService.getSupplierStatement(selectedSupplierForStatement.id) 
-    : [];
+    notify.success('Ekstre Güncellendi', 'İşlem güncellendi ve toptancı borç bakiyesi otomatik eşitlendi.');
+    setEditTxModalOpen(false);
+    refreshAll();
+  };
+
+  const handleDeleteStatementTx = (tx: SupplierTransaction) => {
+    notify.confirm({
+      title: 'Ekstre Kaydını Sil',
+      message: `${tx.type === 'INVOICE' ? 'Fatura' : 'Ödeme'} kaydı silinecektir. Toptancının borç bakiyesi otomatik düzeltilecektir. Onaylıyor musunuz?`,
+      type: 'danger',
+      confirmText: 'Evet, Sil ve Bakiyeyi Düzelt',
+      onConfirm: () => {
+        dataService.deleteSupplierTransaction(tx.id);
+        notify.success('Kayıt Silindi', 'Ekstre kaydı silindi ve cari bakiye güncellendi.');
+        refreshAll();
+      }
+    });
+  };
+
+  const filteredExpenses = processedExpenses;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans text-slate-100 bg-slate-900 min-h-screen">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans text-[#FAF7F2] bg-[#141416] min-h-screen">
       
-      {/* ÜST BAŞLIK VE SEKME BARI */}
-      <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center font-black text-2xl shadow-lg">
-            <Receipt className="w-7 h-7" />
-          </div>
+      {/* ÜST BAŞLIK & İSTATİSTİK KARTLARI */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-              <span>Giderler & Toptancılar ERP Merkezi</span>
-              <span className="px-2.5 py-0.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full text-[10px] font-black uppercase">FİNANS</span>
-            </h1>
-            <p className="text-xs text-slate-400 font-medium">İşletme harcamaları, toptancı alış faturaları, tedarikçi ödemeleri ve cari ekstreler.</p>
+            <div className="text-xs font-black uppercase text-[#8E8E98]">Toplam Giderler & Harcamalar</div>
+            <div className="text-3xl font-black text-rose-400 font-mono mt-1">{formatMoney(totalExpense)}</div>
+            <div className="text-[11px] text-[#8E8E98] mt-0.5">Et, un, sebze ve işletme faturaları</div>
+          </div>
+          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 flex items-center justify-center font-black">
+            <TrendingDown className="w-7 h-7" />
           </div>
         </div>
 
-        {/* Sekme Butonları */}
-        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 gap-1 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('expenses')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'expenses' ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Receipt className="w-4 h-4" />
-            <span>İşletme Giderleri ({expenses.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('suppliers')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'suppliers' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Toptancılar & Cariler ({suppliers.length})</span>
-          </button>
-
-          {selectedSupplierForStatement && (
-            <button
-              onClick={() => setActiveTab('statement')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'statement' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Ekstre: {selectedSupplierForStatement.name}</span>
-            </button>
-          )}
+        <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex items-center justify-between">
+          <div>
+            <div className="text-xs font-black uppercase text-[#8E8E98]">Toptancılara Toplam Borcumuz</div>
+            <div className="text-3xl font-black text-[#F5C877] font-mono mt-1">{formatMoney(totalSupplierDebt)}</div>
+            <div className="text-[11px] text-[#F5C877] mt-0.5">{suppliers.length} Kayıtlı Toptancı & Tedarikçi</div>
+          </div>
+          <div className="w-14 h-14 rounded-2xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center font-black">
+            <Building2 className="w-7 h-7" />
+          </div>
         </div>
       </div>
 
+      {/* BÜYÜTÜLMÜŞ SEKME SEÇİCİ BARI */}
+      <div className="bg-[#1C1C20] p-2 rounded-3xl border-2 border-[#2C2C34] shadow-2xl flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setActiveTab('expenses')}
+          className={`flex-1 min-w-[220px] py-3.5 px-6 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-3 cursor-pointer ${
+            activeTab === 'expenses'
+              ? 'bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] shadow-xl shadow-[#F5C877]/25 ring-2 ring-[#F5C877]/40 scale-[1.01]'
+              : 'text-[#8E8E98] hover:text-[#FAF7F2] hover:bg-[#282830]'
+          }`}
+        >
+          <Receipt className="w-5 h-5" />
+          <span>İşletme Giderleri</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${activeTab === 'expenses' ? 'bg-[#141416]/20 text-[#141416]' : 'bg-[#121214] text-[#8E8E98]'}`}>
+            {expenses.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('suppliers')}
+          className={`flex-1 min-w-[220px] py-3.5 px-6 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-3 cursor-pointer ${
+            activeTab === 'suppliers'
+              ? 'bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] shadow-xl shadow-[#F5C877]/25 ring-2 ring-[#F5C877]/40 scale-[1.01]'
+              : 'text-[#8E8E98] hover:text-[#FAF7F2] hover:bg-[#282830]'
+          }`}
+        >
+          <Building2 className="w-5 h-5" />
+          <span>Toptancılar & Cariler</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${activeTab === 'suppliers' ? 'bg-[#141416]/20 text-[#141416]' : 'bg-[#121214] text-[#8E8E98]'}`}>
+            {suppliers.length}
+          </span>
+        </button>
+
+        {activeSupplier && (
+          <button
+            onClick={() => setActiveTab('statement')}
+            className={`flex-1 min-w-[220px] py-3.5 px-6 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-3 cursor-pointer ${
+              activeTab === 'statement'
+                ? 'bg-sky-500 text-white shadow-xl shadow-sky-500/25 ring-2 ring-sky-400/40 scale-[1.01]'
+                : 'text-[#8E8E98] hover:text-[#FAF7F2] hover:bg-[#282830]'
+            }`}
+          >
+            <FileText className="w-5 h-5" />
+            <span className="truncate">Ekstre: {activeSupplier.name}</span>
+          </button>
+        )}
+      </div>
+
       {/* ========================================================================= */}
-      {/* 1. İŞLETME GİDERLERİ & HARCAMALAR SEKMESİ */}
+      {/* 1. İŞLETME GİDERLERİ SEKMESİ */}
       {/* ========================================================================= */}
       {activeTab === 'expenses' && (
         <div className="space-y-6">
-          
-          {/* Arama, Kategori Filtresi & Yeni Gider Butonu */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
+          <div className="bg-[#1C1C20] p-4 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2 flex-1">
-              <div className="relative min-w-[200px]">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-[#8E8E98] absolute left-3.5 top-3.5" />
                 <input
                   type="text"
-                  value={expenseSearch}
-                  onChange={(e) => setExpenseSearch(e.target.value)}
-                  placeholder="Gider adı veya tedarikçi ara..."
-                  className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-rose-500"
+                  placeholder="Gider adı veya toptancı ara..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2] placeholder-[#7A7A88] focus:border-[#F5C877] focus:outline-none"
                 />
               </div>
 
               <select
-                value={expenseCategoryFilter}
-                onChange={(e) => setExpenseCategoryFilter(e.target.value)}
-                className="p-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-rose-500"
+                value={selectedCat}
+                onChange={(e) => setSelectedCat(e.target.value)}
+                className="py-2.5 px-3.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2] focus:border-[#F5C877] focus:outline-none"
               >
                 <option value="ALL">Tüm Kategoriler</option>
                 {EXPENSE_CATEGORIES.map(c => (
@@ -437,335 +556,424 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
               </select>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <div className="text-[10px] uppercase font-bold text-slate-400">Toplam Harcama</div>
-                <div className="text-lg font-black text-rose-400 font-mono">{formatMoney(totalExpenseSum)}</div>
-              </div>
-
-              <button
-                onClick={openNewExpenseModal}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg shadow-rose-600/20 cursor-pointer transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Yeni Gider Ekle</span>
-              </button>
-            </div>
+            <button
+              onClick={handleOpenAddModal}
+              className="px-5 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-2xl shadow-lg shadow-[#F5C877]/15 flex items-center gap-2 cursor-pointer transition-transform active:scale-95"
+            >
+              <Plus className="w-4 h-4 text-[#141416]" />
+              <span>Yeni Gider Ekle</span>
+            </button>
           </div>
 
-          {/* Gider Tablosu */}
-          <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-extrabold uppercase">
-                  <th className="pb-3">Gider Başlığı</th>
-                  <th className="pb-3">Kategori</th>
-                  <th className="pb-3">Tedarikçi</th>
-                  <th className="pb-3">Ödeme Türü</th>
-                  <th className="pb-3">Tarih</th>
-                  <th className="pb-3">Tutar</th>
-                  <th className="pb-3 text-right">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-medium">
-                {filteredExpenses.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-500">
-                      Kayıtlı gider bulunamadı.
-                    </td>
+          <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] shadow-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#18181C] border-b border-[#2C2C34] text-[#8E8E98] font-black uppercase text-[10px] tracking-wider">
+                    <th onClick={() => toggleSort('date')} className="py-4 px-6 cursor-pointer hover:text-white select-none">
+                      <div className="flex items-center gap-2">
+                        <span>TARİH</span>
+                        {sortField === 'date' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#F5C877]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#F5C877]" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 text-[#5A5A66]" />
+                        )}
+                      </div>
+                    </th>
+
+                    <th onClick={() => toggleSort('title')} className="py-4 px-6 cursor-pointer hover:text-white select-none">
+                      <div className="flex items-center gap-2">
+                        <span>GİDER AÇIKLAMASI / TOPTANCI</span>
+                        {sortField === 'title' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#F5C877]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#F5C877]" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 text-[#5A5A66]" />
+                        )}
+                      </div>
+                    </th>
+
+                    <th onClick={() => toggleSort('category')} className="py-4 px-6 cursor-pointer hover:text-white select-none">
+                      <div className="flex items-center gap-2">
+                        <span>KATEGORİ</span>
+                        {sortField === 'category' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#F5C877]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#F5C877]" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 text-[#5A5A66]" />
+                        )}
+                      </div>
+                    </th>
+
+                    <th className="py-4 px-6">ÖDEME KANALI</th>
+
+                    <th onClick={() => toggleSort('amount')} className="py-4 px-6 text-right cursor-pointer hover:text-white select-none">
+                      <div className="flex items-center justify-end gap-2">
+                        <span>TUTAR (TL)</span>
+                        {sortField === 'amount' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#F5C877]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#F5C877]" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 text-[#5A5A66]" />
+                        )}
+                      </div>
+                    </th>
+
+                    <th className="py-4 px-6 text-center">İŞLEMLER</th>
                   </tr>
-                ) : (
-                  filteredExpenses.map((exp) => (
-                    <tr key={exp.id} className="hover:bg-slate-900/60 transition-colors">
-                      <td className="py-3.5 font-black text-white">{exp.title}</td>
-                      <td className="py-3.5">
-                        <span className="px-2.5 py-0.5 bg-slate-900 border border-slate-700 rounded-md text-[10px] font-bold text-slate-300">
-                          {exp.category}
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-slate-400">{exp.supplierName || '—'}</td>
-                      <td className="py-3.5">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                          exp.paymentMethod === 'CASH' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-sky-500/10 text-sky-400'
-                        }`}>
-                          {exp.paymentMethod === 'CASH' ? 'Nakit' : exp.paymentMethod === 'BANK' ? 'Banka / Havale' : 'Kredi Kartı'}
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-slate-400 font-mono">{exp.date}</td>
-                      <td className="py-3.5 font-black font-mono text-rose-400 text-sm">
-                        {formatMoney(exp.amount)}
-                      </td>
-                      <td className="py-3.5 text-right space-x-1">
-                        <button
-                          onClick={() => openEditExpenseModal(exp)}
-                          className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
-                          title="Düzenle"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteExpense(exp.id, exp.title)}
-                          className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer"
-                          title="Sil"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                </thead>
+                <tbody className="divide-y divide-[#2C2C34]/60">
+                  {filteredExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-xs text-[#8E8E98]">
+                        Kayıtlı gider bulunamadı.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredExpenses.map((exp) => (
+                      <tr key={exp.id} className="hover:bg-[#222228]/60 transition-colors">
+                        <td className="py-4 px-6 text-[#8E8E98] font-mono">
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-[#F5C877]" />
+                            <span>{exp.date ? new Date(exp.date).toLocaleDateString('tr-TR') : 'Bugün'}</span>
+                          </div>
+                        </td>
+
+                        <td className="py-4 px-6 font-bold text-white">
+                          <div>{exp.title}</div>
+                          {exp.supplierName && <div className="text-[10px] text-[#8E8E98]">🏢 {exp.supplierName}</div>}
+                        </td>
+
+                        <td className="py-4 px-6">
+                          <span className="px-2.5 py-1 bg-[#282830] border border-[#383844] text-[#F5C877] rounded-lg font-bold text-[11px]">
+                            {exp.category || 'Genel Gider'}
+                          </span>
+                        </td>
+
+                        <td className="py-4 px-6">
+                          <span className="px-2.5 py-1 bg-[#18181C] border border-[#2C2C34] text-slate-300 rounded-lg text-[11px] font-bold">
+                            {exp.paymentMethod === 'CASH' || exp.paymentMethod === 'Nakit' ? '💵 Nakit' : exp.paymentMethod === 'BANK' ? '🏦 Banka / Havale' : '💳 Kredi Kartı'}
+                          </span>
+                        </td>
+
+                        <td className="py-4 px-6 text-right font-black font-mono text-rose-400 text-sm">
+                          {formatMoney(exp.amount)}
+                        </td>
+
+                        <td className="py-4 px-6 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleOpenEditModal(exp)}
+                              className="p-1.5 text-[#8E8E98] hover:text-[#F5C877] hover:bg-[#282830] rounded-lg transition-colors cursor-pointer"
+                              title="Düzenle"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteExpense(exp)}
+                              className="p-1.5 text-rose-400/80 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="Sil"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 2. TOPTANCILAR & TEDARİKÇİLER SEKMESİ */}
+      {/* 2. TOPTANCILAR & CARİLER SEKMESİ */}
       {/* ========================================================================= */}
       {activeTab === 'suppliers' && (
         <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
-            <div className="relative min-w-[240px]">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <div className="bg-[#1C1C20] p-4 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-[#8E8E98] absolute left-3.5 top-3.5" />
               <input
                 type="text"
+                placeholder="Toptancı adı, yetkili veya telefon ara..."
                 value={supplierSearch}
                 onChange={(e) => setSupplierSearch(e.target.value)}
-                placeholder="Toptancı adı, yetkili veya telefon ara..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500"
+                className="w-full pl-10 pr-4 py-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2] placeholder-[#7A7A88] focus:border-[#F5C877] focus:outline-none"
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="text-right mr-3">
-                <div className="text-[10px] uppercase font-bold text-slate-400">Toptancılara Toplam Borç</div>
-                <div className="text-lg font-black text-rose-400 font-mono">{formatMoney(totalSupplierDebtSum)}</div>
-              </div>
-
-              {/* FATURA GİRİŞ BUTONU */}
               <button
                 onClick={() => {
-                  setInvoiceForm({ supplierId: suppliers[0]?.id || '', amount: '', invoiceNo: '', date: new Date().toISOString().split('T')[0], description: '' });
+                  setInvSupplierId(suppliers[0]?.id || '');
+                  setInvAmount('');
+                  setInvNo('');
+                  setInvDesc('');
                   setInvoiceModalOpen(true);
                 }}
-                className="px-3.5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer"
+                className="px-4 py-2.5 bg-rose-600/90 hover:bg-rose-500 text-white font-black text-xs rounded-2xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-rose-600/20"
               >
                 <FileText className="w-4 h-4" />
                 <span>+ Fatura Girişi (Borçlan)</span>
               </button>
 
-              {/* ÖDEME ÇIKIŞ BUTONU */}
               <button
                 onClick={() => {
-                  setPaymentForm({ supplierId: suppliers[0]?.id || '', amount: '', paymentMethod: 'BANK', date: new Date().toISOString().split('T')[0], description: '' });
+                  setPaySupplierId(suppliers[0]?.id || '');
+                  setPayAmount('');
+                  setPayDesc('');
                   setPaymentModalOpen(true);
                 }}
-                className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer"
+                className="px-4 py-2.5 bg-emerald-600/90 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/20"
               >
                 <Banknote className="w-4 h-4" />
                 <span>+ Ödeme Yap (Borç Düş)</span>
               </button>
 
-              {/* YENİ TOPTANCI BUTONU */}
               <button
                 onClick={openNewSupplierModal}
-                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
+                className="px-5 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-2xl shadow-lg shadow-[#F5C877]/15 flex items-center gap-1.5 cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
-                <span>+ Yeni Toptancı</span>
+                <Plus className="w-4 h-4 text-[#141416]" />
+                <span>Yeni Toptancı Ekle</span>
               </button>
             </div>
           </div>
 
-          {/* Toptancı Kartları Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredSuppliers.map((s) => (
-              <div key={s.id} className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="px-2.5 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-[10px] font-black uppercase">
-                      {s.category}
-                    </span>
+            {filteredSuppliers.map((s) => {
+              const hasDebt = Math.abs(Number(s.balance) || 0) > 0.01;
 
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEditSupplierModal(s)} className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer">
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDeleteSupplier(s.id, s.name)} className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+              return (
+                <div key={s.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-xl flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="px-2.5 py-1 bg-[#282830] border border-[#383844] text-[#F5C877] rounded-lg text-[10px] font-black uppercase">
+                        {s.category}
+                      </span>
 
-                  <h3 className="font-black text-base text-white">{s.name}</h3>
-                  <div className="text-xs text-slate-400 font-medium mt-0.5">Yetkili: {s.contactPerson || 'Girilmedi'}</div>
-                  <div className="text-xs text-amber-300 font-mono mt-0.5">{s.phone || 'Telefon yok'}</div>
-
-                  <div className="mt-4 p-3.5 bg-slate-900 rounded-2xl border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-500">Mevcut Borcumuz</span>
-                      <div className={`font-mono font-black text-base ${s.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                        {formatMoney(s.balance)}
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openEditSupplierModal(s)} className="p-1.5 text-[#8E8E98] hover:text-white rounded-lg cursor-pointer">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        
+                        <button
+                          onClick={() => handleDeleteSupplier(s)}
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            hasDebt ? 'text-[#8E8E98] hover:text-amber-400 hover:bg-amber-500/10' : 'text-rose-400 hover:bg-rose-500/10'
+                          }`}
+                          title={hasDebt ? 'Bakiye olduğu için silinemez' : 'Sil'}
+                        >
+                          {hasDebt ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                        </button>
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setSelectedSupplierForStatement(s);
-                        setActiveTab('statement');
-                      }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <span>Ekstre</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
+                    <h3 className="font-black text-base text-white">{s.name}</h3>
+                    <div className="text-xs text-[#8E8E98] font-medium mt-1">Yetkili: {s.contactPerson || 'Girilmedi'}</div>
+                    <div className="text-xs text-[#F5C877] font-mono mt-0.5">{s.phone || 'Telefon yok'}</div>
+
+                    <div className="mt-4 p-3.5 bg-[#121214] rounded-2xl border border-[#2C2C34] flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-[#8E8E98]">Mevcut Borcumuz</span>
+                        <div className={`font-mono font-black text-base ${s.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {formatMoney(s.balance)}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setSelectedSupplierId(s.id);
+                          setActiveTab('statement');
+                        }}
+                        className="px-3.5 py-2 bg-[#282830] hover:bg-[#343440] text-sky-400 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <span>Ekstre</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 3. TOPTANCI CARİ EKSTRE DÖKÜMÜ */}
+      {/* 3. TOPTANCI CARİ EKSTRESİ (CANLI ANINDA GÜNCELLENEN BAKİYE) */}
       {/* ========================================================================= */}
-      {activeTab === 'statement' && selectedSupplierForStatement && (
+      {activeTab === 'statement' && activeSupplier && (
         <div className="space-y-6">
-          <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="bg-[#1C1C20] p-6 rounded-3xl border border-[#2C2C34] shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-white">{selectedSupplierForStatement.name}</h2>
-                <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full text-[10px] font-black uppercase">CARİ EKSTRE</span>
+                <h2 className="text-lg font-black text-white">{activeSupplier.name}</h2>
+                <span className="px-2.5 py-0.5 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-full text-[10px] font-black uppercase">CARİ EKSTRE</span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">Yetkili: {selectedSupplierForStatement.contactPerson} • {selectedSupplierForStatement.phone}</p>
+              <p className="text-xs text-[#8E8E98] mt-0.5">Yetkili: {activeSupplier.contactPerson || '—'} • {activeSupplier.phone}</p>
             </div>
 
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <span className="text-[10px] uppercase font-bold text-slate-500">Kalan Net Borcumuz</span>
-                <div className="text-2xl font-black text-rose-400 font-mono">{formatMoney(selectedSupplierForStatement.balance)}</div>
+                <span className="text-[10px] uppercase font-bold text-[#8E8E98]">Kalan Net Borcumuz</span>
+                <div className={`text-2xl font-black font-mono ${activeSupplier.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {formatMoney(activeSupplier.balance)}
+                </div>
               </div>
 
               <button
                 onClick={() => {
-                  setInvoiceForm({ supplierId: selectedSupplierForStatement.id, amount: '', invoiceNo: '', date: new Date().toISOString().split('T')[0], description: '' });
+                  setInvSupplierId(activeSupplier.id);
+                  setInvAmount('');
+                  setInvNo('');
+                  setInvDesc('');
                   setInvoiceModalOpen(true);
                 }}
-                className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black rounded-xl cursor-pointer"
+                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black rounded-xl cursor-pointer shadow-md"
               >
                 + Fatura Ekle
               </button>
 
               <button
                 onClick={() => {
-                  setPaymentForm({ supplierId: selectedSupplierForStatement.id, amount: '', paymentMethod: 'BANK', date: new Date().toISOString().split('T')[0], description: '' });
+                  setPaySupplierId(activeSupplier.id);
+                  setPayAmount('');
+                  setPayDesc('');
                   setPaymentModalOpen(true);
                 }}
-                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl cursor-pointer"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl cursor-pointer shadow-md"
               >
                 + Ödeme Yap
               </button>
             </div>
           </div>
 
-          <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-extrabold uppercase">
-                  <th className="pb-3">Tarih</th>
-                  <th className="pb-3">İşlem Türü</th>
-                  <th className="pb-3">Fatura No</th>
-                  <th className="pb-3">Açıklama</th>
-                  <th className="pb-3">Ödeme Türü</th>
-                  <th className="pb-3 text-right">Borç / Fatura (+)</th>
-                  <th className="pb-3 text-right">Ödeme (-)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-medium">
-                {statementTransactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-500">
-                      Bu toptancıya ait henüz fatura veya ödeme hareketi bulunmuyor.
-                    </td>
+          <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] shadow-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#18181C] border-b border-[#2C2C34] text-[#8E8E98] font-black uppercase text-[10px] tracking-wider">
+                    <th className="py-4 px-6">TARİH</th>
+                    <th className="py-4 px-6">İŞLEM TÜRÜ</th>
+                    <th className="py-4 px-6">FATURA NO</th>
+                    <th className="py-4 px-6">AÇIKLAMA</th>
+                    <th className="py-4 px-6">ÖDEME KANALI</th>
+                    <th className="py-4 px-6 text-right">FATURA BORCU (+)</th>
+                    <th className="py-4 px-6 text-right">ÖDEME (-)</th>
+                    <th className="py-4 px-6 text-center">İŞLEMLER</th>
                   </tr>
-                ) : (
-                  statementTransactions.map((tx) => {
-                    const isInvoice = tx.type === 'INVOICE';
-                    return (
-                      <tr key={tx.id} className="hover:bg-slate-900/60">
-                        <td className="py-3.5 text-slate-400 font-mono">{tx.date}</td>
-                        <td className="py-3.5">
-                          <span className={`px-2.5 py-0.5 rounded text-[10px] font-black ${
-                            isInvoice ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                          }`}>
-                            {isInvoice ? '📄 Alış Faturası' : '💳 Ödeme Yapıldı'}
-                          </span>
-                        </td>
-                        <td className="py-3.5 font-mono text-slate-300">{tx.invoiceNo || '—'}</td>
-                        <td className="py-3.5 text-slate-300">{tx.description || '—'}</td>
-                        <td className="py-3.5 text-slate-400">{tx.paymentMethod}</td>
-                        <td className="py-3.5 text-right font-black font-mono text-rose-400">
-                          {isInvoice ? `+${formatMoney(tx.amount)}` : '—'}
-                        </td>
-                        <td className="py-3.5 text-right font-black font-mono text-emerald-400">
-                          {!isInvoice ? `-${formatMoney(tx.amount)}` : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#2C2C34]/60">
+                  {statementTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-xs text-[#8E8E98]">
+                        Bu toptancıya ait henüz fatura veya ödeme hareketi bulunmuyor.
+                      </td>
+                    </tr>
+                  ) : (
+                    statementTransactions.map((tx) => {
+                      const isInvoice = tx.type === 'INVOICE';
+                      return (
+                        <tr key={tx.id} className="hover:bg-[#222228]/60 transition-colors">
+                          <td className="py-4 px-6 text-[#8E8E98] font-mono">{tx.date}</td>
+                          <td className="py-4 px-6">
+                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${
+                              isInvoice ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                            }`}>
+                              {isInvoice ? '📄 Alış Faturası' : '💳 Ödeme Yapıldı'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 font-mono text-[#FAF7F2]">{tx.invoiceNo || '—'}</td>
+                          <td className="py-4 px-6 text-[#FAF7F2]">{tx.description || '—'}</td>
+                          
+                          <td className="py-4 px-6">
+                            {isInvoice ? (
+                              <span className="text-[#8E8E98] font-bold">—</span>
+                            ) : (
+                              <span className="text-slate-300 font-bold">
+                                {tx.paymentMethod === 'CASH' ? '💵 Nakit' : tx.paymentMethod === 'BANK' ? '🏦 Banka / Havale' : '💳 Kredi Kartı'}
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-4 px-6 text-right font-black font-mono text-rose-400">
+                            {isInvoice ? `+${formatMoney(tx.amount)}` : '—'}
+                          </td>
+                          <td className="py-4 px-6 text-right font-black font-mono text-emerald-400">
+                            {!isInvoice ? `-${formatMoney(tx.amount)}` : '—'}
+                          </td>
+                          <td className="py-4 px-6 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => openEditStatementTxModal(tx)}
+                                className="p-1.5 text-[#8E8E98] hover:text-[#F5C877] hover:bg-[#282830] rounded-lg transition-colors cursor-pointer"
+                                title="Bu Hareketi Düzenle"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteStatementTx(tx)}
+                                className="p-1.5 text-rose-400/80 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Bu Hareketi Sil (Bakiyeyi Düzelt)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 1. GİDER EKLE / DÜZENLE MODALI */}
-      {/* ========================================================================= */}
-      {expenseModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-black text-white">{editingExpenseId ? 'Gideri Düzenle' : 'Yeni İşletme Gideri Ekle'}</h3>
-              <button onClick={() => setExpenseModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer"><XCircle className="w-5 h-5" /></button>
+      {/* GİDER MODALI */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+              <h3 className="text-base font-black text-white">{editingExpense ? 'Gideri Düzenle' : 'Yeni İşletme Gideri Ekle'}</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSaveExpenseSubmit} className="space-y-3">
+            <form onSubmit={handleSaveExpense} className="space-y-3.5">
               <div>
-                <label className="text-xs font-bold text-slate-400">Gider Başlığı / Açıklama</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Gider Başlığı / Açıklama</label>
                 <input
                   type="text"
                   required
-                  value={expenseForm.title}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
-                  placeholder="Örn: Mutfak Sıvı Yağ Alımı"
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-rose-500"
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  placeholder="Örn: Mutfak Ayçiçek Yağı Alımı"
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:border-[#F5C877] focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Harcama Tutarı (₺)</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Harcama Tutarı (₺)</label>
                   <input
                     type="number"
                     step="0.01"
                     required
-                    value={expenseForm.amount}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                    value={formAmount}
+                    onChange={(e) => setFormAmount(e.target.value)}
                     placeholder="1250.00"
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono font-bold text-rose-400"
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-rose-400 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Kategori</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Kategori</label>
                   <select
-                    value={expenseForm.category}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:outline-none"
                   >
                     {EXPENSE_CATEGORIES.map(c => (
                       <option key={c} value={c}>{c}</option>
@@ -776,11 +984,11 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Ödeme Şekli</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Ödeme Şekli</label>
                   <select
-                    value={expenseForm.paymentMethod}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, paymentMethod: e.target.value as any })}
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                    value={formPaymentMethod}
+                    onChange={(e) => setFormPaymentMethod(e.target.value as any)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:outline-none"
                   >
                     <option value="CASH">Nakit Kasa</option>
                     <option value="BANK">Banka / Havale</option>
@@ -789,22 +997,22 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Tarih</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Tarih</label>
                   <input
                     type="date"
-                    value={expenseForm.date}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white font-mono"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400">İlgili Toptancı (İsteğe Bağlı)</label>
+                <label className="text-xs font-bold text-[#8E8E98]">İlgili Toptancı (İsteğe Bağlı)</label>
                 <select
-                  value={expenseForm.supplierId}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, supplierId: e.target.value })}
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                  value={formSupplierId}
+                  onChange={(e) => setFormSupplierId(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:outline-none"
                 >
                   <option value="">Toptancı Seçilmedi</option>
                   {suppliers.map(s => (
@@ -813,69 +1021,67 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                 </select>
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setExpenseModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black shadow-lg">Kaydet</button>
+              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold">Vazgeç</button>
+                <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-xl text-xs font-black shadow-lg">Kaydet</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 2. TOPTANCI EKLE / DÜZENLE MODALI */}
-      {/* ========================================================================= */}
+      {/* TOPTANCI MODALI */}
       {supplierModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-black text-white">{editingSupplierId ? 'Toptancıyı Düzenle' : 'Yeni Toptancı / Tedarikçi Tanımla'}</h3>
-              <button onClick={() => setSupplierModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer"><XCircle className="w-5 h-5" /></button>
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+              <h3 className="text-base font-black text-white">{editingSupplier ? 'Toptancıyı Düzenle' : 'Yeni Toptancı / Tedarikçi Ekle'}</h3>
+              <button onClick={() => setSupplierModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSaveSupplierSubmit} className="space-y-3">
+            <form onSubmit={handleSaveSupplier} className="space-y-3.5">
               <div>
-                <label className="text-xs font-bold text-slate-400">Toptancı / Firma Adı</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Toptancı / Firma Adı</label>
                 <input
                   type="text"
                   required
-                  value={supplierForm.name}
-                  onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
-                  placeholder="Örn: Antep Et ve Kasap Hali"
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500"
+                  value={supName}
+                  onChange={(e) => setSupName(e.target.value)}
+                  placeholder="Örn: Antep Kasaplar Dünyası"
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:border-[#F5C877] focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Yetkili Kişi</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Yetkili Kişi</label>
                   <input
                     type="text"
-                    value={supplierForm.contactPerson}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, contactPerson: e.target.value })}
-                    placeholder="Örn: Mustafa Bey"
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                    value={supContact}
+                    onChange={(e) => setSupContact(e.target.value)}
+                    placeholder="Örn: Mustafa Usta"
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Telefon Numarası</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Telefon Numarası</label>
                   <input
                     type="text"
-                    value={supplierForm.phone}
-                    onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })}
+                    value={supPhone}
+                    onChange={(e) => setSupPhone(e.target.value)}
                     placeholder="0532..."
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono font-bold text-amber-300"
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-[#F5C877]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400">Faaliyet Kategorisi</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Faaliyet Alanı</label>
                 <select
-                  value={supplierForm.category}
-                  onChange={(e) => setSupplierForm({ ...supplierForm, category: e.target.value })}
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                  value={supCategory}
+                  onChange={(e) => setSupCategory(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                 >
                   {SUPPLIER_CATEGORIES.map(c => (
                     <option key={c} value={c}>{c}</option>
@@ -884,127 +1090,123 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400">Adres Bilgisi</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Adres Bilgisi</label>
                 <input
                   type="text"
-                  value={supplierForm.address}
-                  onChange={(e) => setSupplierForm({ ...supplierForm, address: e.target.value })}
+                  value={supAddress}
+                  onChange={(e) => setSupAddress(e.target.value)}
                   placeholder="Gaziantep Toptancılar Hali..."
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2]"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setSupplierModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-lg">Kaydet</button>
+              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
+                <button type="button" onClick={() => setSupplierModalOpen(false)} className="px-4 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold">Vazgeç</button>
+                <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-xl text-xs font-black shadow-lg">Kaydet</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 3. ALIŞ FATURASI GİRİŞİ MODALI (BORÇLANDIRMA) */}
-      {/* ========================================================================= */}
+      {/* ALIŞ FATURASI GİRİŞİ MODALI */}
       {invoiceModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
               <h3 className="text-base font-black text-white">Alış Faturası Girişi (Borçlanma)</h3>
-              <button onClick={() => setInvoiceModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer"><XCircle className="w-5 h-5" /></button>
+              <button onClick={() => setInvoiceModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSaveInvoiceSubmit} className="space-y-3">
+            <form onSubmit={handleSaveInvoice} className="space-y-3.5">
               <div>
-                <label className="text-xs font-bold text-slate-400">Toptancı / Tedarikçi Seçin</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Toptancı / Tedarikçi Seçiniz</label>
                 <select
                   required
-                  value={invoiceForm.supplierId}
-                  onChange={(e) => setInvoiceForm({ ...invoiceForm, supplierId: e.target.value })}
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                  value={invSupplierId}
+                  onChange={(e) => setInvSupplierId(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                 >
                   <option value="">Seçiniz...</option>
                   {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} (Bakiye: {formatMoney(s.balance)})</option>
+                    <option key={s.id} value={s.id}>{s.name} (Mevcut Borç: {formatMoney(s.balance)})</option>
                   ))}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Fatura Tutarı (₺)</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Fatura Tutarı (₺)</label>
                   <input
                     type="number"
                     step="0.01"
                     required
-                    value={invoiceForm.amount}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, amount: e.target.value })}
+                    value={invAmount}
+                    onChange={(e) => setInvAmount(e.target.value)}
                     placeholder="4500.00"
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono font-bold text-rose-400"
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-rose-400 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Fatura / İrsaliye No</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Fatura / İrsaliye No</label>
                   <input
                     type="text"
-                    value={invoiceForm.invoiceNo}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceNo: e.target.value })}
-                    placeholder="GZT-2026-081"
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-300"
+                    value={invNo}
+                    onChange={(e) => setInvNo(e.target.value)}
+                    placeholder="GZT-2026-001"
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-slate-300"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400">Fatura Tarihi</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Fatura Tarihi</label>
                 <input
                   type="date"
-                  value={invoiceForm.date}
-                  onChange={(e) => setInvoiceForm({ ...invoiceForm, date: e.target.value })}
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono text-white"
+                  value={invDate}
+                  onChange={(e) => setInvDate(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono text-[#FAF7F2]"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400">Açıklama</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Açıklama (Alınan Ürünler)</label>
                 <input
                   type="text"
-                  value={invoiceForm.description}
-                  onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })}
+                  value={invDesc}
+                  onChange={(e) => setInvDesc(e.target.value)}
                   placeholder="50 kg Kuzu Boşluk, 30 kg Kuşbaşı..."
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2]"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setInvoiceModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black shadow-lg">Faturayı İşle (+Borç)</button>
+              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
+                <button type="button" onClick={() => setInvoiceModalOpen(false)} className="px-4 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold">Vazgeç</button>
+                <button type="submit" className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black shadow-lg">Faturayı İşle (+Borç)</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 4. TOPTANCIYA ÖDEME YAPMA MODALI (BORÇTAN DÜŞME) */}
-      {/* ========================================================================= */}
+      {/* ÖDEME YAPMA MODALI */}
       {paymentModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
               <h3 className="text-base font-black text-white">Toptancıya Ödeme Çıkışı</h3>
-              <button onClick={() => setPaymentModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer"><XCircle className="w-5 h-5" /></button>
+              <button onClick={() => setPaymentModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSavePaymentSubmit} className="space-y-3">
+            <form onSubmit={handleSavePayment} className="space-y-3.5">
               <div>
-                <label className="text-xs font-bold text-slate-400">Toptancı Seçin</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Toptancı Seçiniz</label>
                 <select
                   required
-                  value={paymentForm.supplierId}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, supplierId: e.target.value })}
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                  value={paySupplierId}
+                  onChange={(e) => setPaySupplierId(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                 >
                   <option value="">Seçiniz...</option>
                   {suppliers.map(s => (
@@ -1015,24 +1217,24 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Ödenen Tutar (₺)</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Ödenen Tutar (₺)</label>
                   <input
                     type="number"
                     step="0.01"
                     required
-                    value={paymentForm.amount}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
                     placeholder="3000.00"
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono font-bold text-emerald-400"
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-emerald-400 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-400">Ödeme Şekli</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Ödeme Kanalı</label>
                   <select
-                    value={paymentForm.paymentMethod}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value as any })}
-                    className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white"
+                    value={payMethod}
+                    onChange={(e) => setPayMethod(e.target.value as any)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                   >
                     <option value="BANK">Banka / Havale</option>
                     <option value="CASH">Nakit Kasa</option>
@@ -1042,29 +1244,127 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400">Ödeme Tarihi</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Ödeme Tarihi</label>
                 <input
                   type="date"
-                  value={paymentForm.date}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono text-white"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono text-[#FAF7F2]"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-400">Açıklama / Dekont Notu</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Açıklama / Dekont Notu</label>
                 <input
                   type="text"
-                  value={paymentForm.description}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
+                  value={payDesc}
+                  onChange={(e) => setPayDesc(e.target.value)}
                   placeholder="Kısmi ödeme, havale dekontu..."
-                  className="w-full mt-1 p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2]"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button type="button" onClick={() => setPaymentModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg">Ödemeyi Düş (-Borç)</button>
+              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
+                <button type="button" onClick={() => setPaymentModalOpen(false)} className="px-4 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold">Vazgeç</button>
+                <button type="submit" className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg">Ödemeyi Düş (-Borç)</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EKSTRE HAREKETİ DÜZENLEME MODALI */}
+      {editTxModalOpen && editingTx && (
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4 text-[#FAF7F2]">
+            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+              <div>
+                <h3 className="text-base font-black text-white">Ekstre Hareketini Düzenle</h3>
+                <p className="text-[10px] text-[#F5C877] font-bold">Toptancı: {activeSupplier?.name}</p>
+              </div>
+              <button onClick={() => setEditTxModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+
+            <form onSubmit={handleSaveStatementTxSubmit} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E98]">İşlem Türü</label>
+                  <select
+                    value={editTxType}
+                    onChange={(e) => setEditTxType(e.target.value as any)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
+                  >
+                    <option value="INVOICE">📄 Alış Faturası (+Borç)</option>
+                    <option value="PAYMENT">💳 Ödeme Çıkışı (-Borç)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E98]">Tutar (₺)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editTxAmount}
+                    onChange={(e) => setEditTxAmount(e.target.value)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-[#F5C877] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E98]">Tarih</label>
+                  <input
+                    type="date"
+                    required
+                    value={editTxDate}
+                    onChange={(e) => setEditTxDate(e.target.value)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono text-[#FAF7F2]"
+                  />
+                </div>
+
+                {editTxType === 'INVOICE' ? (
+                  <div>
+                    <label className="text-xs font-bold text-[#8E8E98]">Fatura / İrsaliye No</label>
+                    <input
+                      type="text"
+                      value={editTxInvoiceNo}
+                      onChange={(e) => setEditTxInvoiceNo(e.target.value)}
+                      placeholder="GZT-2026-..."
+                      className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-slate-300"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-bold text-[#8E8E98]">Ödeme Kanalı</label>
+                    <select
+                      value={editTxMethod}
+                      onChange={(e) => setEditTxMethod(e.target.value as any)}
+                      className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
+                    >
+                      <option value="BANK">Banka / Havale</option>
+                      <option value="CASH">Nakit Kasa</option>
+                      <option value="CREDIT_CARD">Kredi Kartı</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[#8E8E98]">Açıklama</label>
+                <input
+                  type="text"
+                  value={editTxDesc}
+                  onChange={(e) => setEditTxDesc(e.target.value)}
+                  placeholder="İşlem açıklaması..."
+                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2]"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
+                <button type="button" onClick={() => setEditTxModalOpen(false)} className="px-4 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold">Vazgeç</button>
+                <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-xl text-xs font-black shadow-lg">Değişiklikleri Kaydet</button>
               </div>
             </form>
           </div>

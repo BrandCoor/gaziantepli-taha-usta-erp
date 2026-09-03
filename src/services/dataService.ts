@@ -1,4 +1,4 @@
-// Gaziantepli Taha Usta - ERP, Cari, Personel, Toptancı & Gider Servisi
+// Gaziantepli Taha Usta - ERP, Cari, Personel & Toptancı Servisi (Bakiye Güvenlik Kilitli)
 
 export interface CustomerTransaction {
   id: string;
@@ -23,11 +23,10 @@ export interface Customer {
   updatedAt: string;
 }
 
-// TOPTANCI & TEDARİKÇİ MODELLERİ
 export interface SupplierTransaction {
   id: string;
   supplierId: string;
-  type: 'INVOICE' | 'PAYMENT'; // INVOICE = Alış Faturası, PAYMENT = Ödeme Çıkışı
+  type: 'INVOICE' | 'PAYMENT';
   amount: number;
   paymentMethod: 'CASH' | 'BANK' | 'CREDIT_CARD';
   date: string;
@@ -42,9 +41,9 @@ export interface Supplier {
   contactPerson?: string;
   phone?: string;
   email?: string;
-  category: string; // Et & Tavuk, Hal / Sebze, Un / Fırın, Meşrubat / İçecek, Ambalaj / Sarf, Diğer
+  category: string;
   address?: string;
-  balance: number; // Pozitif = Toptancıya Borcumuz Var
+  balance: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -143,7 +142,7 @@ class DataService {
     this.listeners.forEach((l) => l());
   }
 
-  // 1. MÜŞTERİLER VE CARİ İŞLEMLER
+  // 1. MÜŞTERİLER
   public getCustomers(): Customer[] {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
     return data ? JSON.parse(data) : DEFAULT_CUSTOMERS;
@@ -172,9 +171,22 @@ class DataService {
     this.saveCustomers(customers);
   }
 
-  public deleteCustomer(id: string) {
-    const customers = this.getCustomers().filter(c => c.id !== id);
-    this.saveCustomers(customers);
+  // MÜŞTERİ SİLME KİLİDİ (BAKİYE != 0 İSE SİLİNEMEZ)
+  public deleteCustomer(id: string): { success: boolean; message?: string } {
+    const customers = this.getCustomers();
+    const target = customers.find(c => c.id === id);
+    if (!target) return { success: false, message: 'Müşteri bulunamadı.' };
+
+    if (Math.abs(Number(target.balance) || 0) > 0.01) {
+      return {
+        success: false,
+        message: `Bu müşterinin ${target.balance.toFixed(2)} ₺ cari bakiyesi bulunmaktadır. Bakiye sıfırlanmadan müşteri silinemez!`
+      };
+    }
+
+    const updated = customers.filter(c => c.id !== id);
+    this.saveCustomers(updated);
+    return { success: true };
   }
 
   public getCustomerTransactions(): CustomerTransaction[] {
@@ -213,7 +225,7 @@ class DataService {
     return newTx;
   }
 
-  // 2. TOPTANCILAR & TEDARİKÇİLER
+  // 2. TOPTANCILAR
   public getSuppliers(): Supplier[] {
     const data = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
     return data ? JSON.parse(data) : DEFAULT_SUPPLIERS;
@@ -243,9 +255,22 @@ class DataService {
     this.saveSuppliers(suppliers);
   }
 
-  public deleteSupplier(id: string) {
-    const suppliers = this.getSuppliers().filter(s => s.id !== id);
-    this.saveSuppliers(suppliers);
+  // TOPTANCI SİLME KİLİDİ (BAKİYE != 0 İSE SİLİNEMEZ)
+  public deleteSupplier(id: string): { success: boolean; message?: string } {
+    const suppliers = this.getSuppliers();
+    const target = suppliers.find(s => s.id === id);
+    if (!target) return { success: false, message: 'Toptancı bulunamadı.' };
+
+    if (Math.abs(Number(target.balance) || 0) > 0.01) {
+      return {
+        success: false,
+        message: `Bu toptancıya ${target.balance.toFixed(2)} ₺ borç bakiyesi bulunmaktadır. Hesap kapatılmadan toptancı kaydı silinemez!`
+      };
+    }
+
+    const updated = suppliers.filter(s => s.id !== id);
+    this.saveSuppliers(updated);
+    return { success: true };
   }
 
   public getSupplierTransactions(): SupplierTransaction[] {
@@ -282,6 +307,63 @@ class DataService {
 
     this.saveSuppliers(suppliers);
     return newTx;
+  }
+
+  public updateSupplierTransaction(txId: string, partial: Partial<SupplierTransaction>) {
+    const transactions = this.getSupplierTransactions();
+    const txIndex = transactions.findIndex(t => t.id === txId);
+    if (txIndex === -1) return;
+
+    const oldTx = transactions[txIndex];
+    const suppliers = this.getSuppliers();
+    const supplier = suppliers.find(s => s.id === oldTx.supplierId);
+
+    if (supplier) {
+      if (oldTx.type === 'INVOICE') {
+        supplier.balance = (Number(supplier.balance) || 0) - Number(oldTx.amount);
+      } else if (oldTx.type === 'PAYMENT') {
+        supplier.balance = (Number(supplier.balance) || 0) + Number(oldTx.amount);
+      }
+
+      const newAmount = partial.amount !== undefined ? Number(partial.amount) : oldTx.amount;
+      const newType = partial.type || oldTx.type;
+
+      if (newType === 'INVOICE') {
+        supplier.balance = (Number(supplier.balance) || 0) + Number(newAmount);
+      } else if (newType === 'PAYMENT') {
+        supplier.balance = (Number(supplier.balance) || 0) - Number(newAmount);
+      }
+
+      supplier.updatedAt = new Date().toISOString();
+      this.saveSuppliers(suppliers);
+    }
+
+    transactions[txIndex] = { ...oldTx, ...partial };
+    this.saveSupplierTransactions(transactions);
+    this.notify();
+  }
+
+  public deleteSupplierTransaction(txId: string) {
+    const transactions = this.getSupplierTransactions();
+    const tx = transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    const suppliers = this.getSuppliers();
+    const supplier = suppliers.find(s => s.id === tx.supplierId);
+
+    if (supplier) {
+      if (tx.type === 'INVOICE') {
+        supplier.balance = (Number(supplier.balance) || 0) - Number(tx.amount);
+      } else if (tx.type === 'PAYMENT') {
+        supplier.balance = (Number(supplier.balance) || 0) + Number(tx.amount);
+      }
+      supplier.updatedAt = new Date().toISOString();
+      this.saveSuppliers(suppliers);
+    }
+
+    const updatedTxs = transactions.filter(t => t.id !== txId);
+    this.saveSupplierTransactions(updatedTxs);
+    this.notify();
   }
 
   public getSupplierStatement(supplierId: string): SupplierTransaction[] {
@@ -352,9 +434,22 @@ class DataService {
     this.saveEmployees(employees);
   }
 
-  public deleteEmployee(id: string) {
-    const employees = this.getEmployees().filter(e => e.id !== id);
-    this.saveEmployees(employees);
+  // PERSONEL SİLME KİLİDİ (BAKİYE != 0 İSE SİLİNEMEZ)
+  public deleteEmployee(id: string): { success: boolean; message?: string } {
+    const employees = this.getEmployees();
+    const target = employees.find(e => e.id === id);
+    if (!target) return { success: false, message: 'Personel bulunamadı.' };
+
+    if (Math.abs(Number(target.balance) || 0) > 0.01) {
+      return {
+        success: false,
+        message: `Bu personelin ${target.balance.toFixed(2)} ₺ hesap bakiyesi bulunmaktadır. Bakiye sıfırlanmadan personel silinemez!`
+      };
+    }
+
+    const updated = employees.filter(e => e.id !== id);
+    this.saveEmployees(updated);
+    return { success: true };
   }
 
   public getEmployeePayments(): EmployeePayment[] {
