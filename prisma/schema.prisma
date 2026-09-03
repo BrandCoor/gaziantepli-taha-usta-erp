@@ -1,0 +1,59 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Customer {
+  id           String                @id @default(uuid())
+  name         String
+  phone        String?
+  email        String?
+  address      String?
+  notes        String?
+  balance      Float                 @default(0)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  transactions CustomerTransaction[]
+}
+
+model CustomerTransaction {
+  id            String   @id @default(uuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type          String   // DEBT (Borç), COLLECTION (Tahsilat)
+  amount        Float
+  paymentMethod String   @default("CASH") // CASH, BANK, CREDIT_CARD
+  date          DateTime @default(now())
+  description   String?
+  createdAt     DateTime @default(now())
+}
+
+model Employee {
+  id         String            @id @default(uuid())
+  fullName   String
+  phone      String?
+  position   String?
+  salary     Float             @default(0)
+  iban       String?
+  balance    Float             @default(0)
+  isActive   Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  payments   EmployeePayment[]
+}
+
+model EmployeePayment {
+  id            String   @id @default(uuid())
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type          String   // SALARY_ACCRUAL (Maaş Hak Edişi), ADVANCE (Avans), SALARY_PAYMENT (Maaş Ödemesi), BONUS (Prim), DEDUCTION (Kesinti)
+  amount        Float
+  paymentMethod String   @default("BANK")
+  date          DateTime @default(now())
+  description   String?
+  createdAt     DateTime @default(now())
+}
