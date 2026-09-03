@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart2, 
   Printer, 
@@ -19,12 +19,14 @@ import {
   UserCheck,
   MapPin,
   TrendingUp,
+  TrendingDown,
   Percent,
   Download,
   Search,
   RefreshCw,
   AlertTriangle,
-  ChevronRight
+  ChevronRight,
+  Wallet
 } from 'lucide-react';
 import { 
   restaurantDataService, 
@@ -33,6 +35,7 @@ import {
   DetailedReportResult 
 } from '../../services/restaurantDataService';
 import ExcelJS from 'exceljs';
+import { notify } from '../../services/notificationService';
 
 export const ReportsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'current_x' | 'filtered_analysis' | 'close_z' | 'history'>('current_x');
@@ -56,7 +59,6 @@ export const ReportsView: React.FC = () => {
     restaurantDataService.getFilteredReport({ startDate: todayStr, endDate: todayStr })
   );
 
-  // Verileri yenileme
   const refreshReports = () => {
     setXReport(restaurantDataService.getCurrentXReport());
     setZHistory(restaurantDataService.getZReportsHistory());
@@ -69,7 +71,6 @@ export const ReportsView: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Filtre ön ayarları değişince tarihleri güncelle
   useEffect(() => {
     const now = new Date();
     if (datePreset === 'today') {
@@ -93,7 +94,6 @@ export const ReportsView: React.FC = () => {
     }
   }, [datePreset]);
 
-  // Filtreleri uygula
   const applyFilters = () => {
     const filters: ReportFilterOptions = {
       startDate: startDate || undefined,
@@ -118,20 +118,18 @@ export const ReportsView: React.FC = () => {
   const handleExecuteZReportClose = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const confirmed = confirm(
-      `⚠️ GÜN SONU Z RAPORU KAPANIS ONAYI\n\n` +
-      `Bugünkü Toplam Ciro: ${formatMoney(xReport.grossTotal)}\n` +
-      `Kapatılan Adisyon Sayısı: ${xReport.totalOrders} Adet\n\n` +
-      `Günü kapatmak ve Z Raporunu Kasa Yazıcısından (Afanda 892E) basmak istiyor musunuz?`
-    );
-
-    if (!confirmed) return;
-
-    const zReport = restaurantDataService.closeDailyZReport(zNoteInput, 'Taha Usta');
-    notify.success('İşlem Tamamlandı', `✅ Z Raporu (#${zReport.zNo}) oluşturuldu ve Kasa Yazıcısından Z fişi basıldı!`);
-
-    setZNoteInput('');
-    setActiveTab('history');
+    notify.confirm({
+      title: 'Gün Sonu Z Raporu Kapanış Onayı',
+      message: `Bugünkü Net Satış: ${formatMoney(xReport.netTotal)}\nİşletme Giderleri: ${formatMoney(xReport.totalExpenses)}\nKasada Kalan Net Nakit: ${formatMoney(xReport.netCashInRegister)}\n\nGünü kapatmak ve Z Raporunu Kasa Yazıcısından basmak istiyor musunuz?`,
+      confirmText: 'Evet, Günü Kapat & Fiş Bas',
+      type: 'warning',
+      onConfirm: () => {
+        const zReport = restaurantDataService.closeDailyZReport(zNoteInput, 'Taha Usta');
+        notify.success('Z Raporu Alındı', `Z No #${zReport.zNo} oluşturuldu ve Kasa Yazıcısına gönderildi.`);
+        setZNoteInput('');
+        setActiveTab('history');
+      }
+    });
   };
 
   // Termal Z Fişi Yazdırma
@@ -147,6 +145,9 @@ export const ReportsView: React.FC = () => {
       `BRUT SATIS : ${formatMoney(z.grossTotal)}\n` +
       `INDIRIMLER : -${formatMoney(z.discountTotal)}\n` +
       `NET CIRO   : ${formatMoney(z.netTotal)}\n` +
+      `GIDERLER   : -${formatMoney(z.totalExpenses || 0)}\n` +
+      `TOPTANCI   : -${formatMoney(z.supplierPaymentsTotal || 0)}\n` +
+      `NET NAKIT  : ${formatMoney(z.netCashInRegister || 0)}\n` +
       `========================================\n` +
       `Termal fiş kasa yazıcısına başarıyla gönderildi!`
     );
@@ -163,17 +164,19 @@ export const ReportsView: React.FC = () => {
       `ODEME TIPI  : ${selectedPaymentType === 'ALL' ? 'TÜMÜ' : selectedPaymentType}\n` +
       `----------------------------------------\n` +
       `TOPLAM ADISYON : ${filteredReportData.totalOrders} Adet\n` +
-      `ORTALAMA ADIS. : ${formatMoney(filteredReportData.avgOrderAmount)}\n` +
-      `NET CIRO       : ${formatMoney(filteredReportData.netTotal)}\n` +
+      `NET SATIS CIRO : ${formatMoney(filteredReportData.netTotal)}\n` +
+      `TOPLAM GIDER   : -${formatMoney(filteredReportData.totalExpenses)}\n` +
+      `TOPTANCI ODEME : -${formatMoney(filteredReportData.supplierPaymentsTotal)}\n` +
+      `NET NAKIT AKISI: ${formatMoney(filteredReportData.netCashFlow)}\n` +
       `========================================\n` +
       `Fiş başarıyla yazdırıldı!`
     );
   };
 
-  // Excel Dışa Aktarma
+  // Excel Dışa Aktarma (GİDERLER VE TOPTANCILAR DAHİL)
   const exportToExcel = async () => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Z Raporu ve Satis Detayi');
+    const worksheet = workbook.addWorksheet('Mali Rapor & Satis Detayi');
 
     worksheet.columns = [
       { header: 'Kategori / Tip', key: 'category', width: 25 },
@@ -182,11 +185,18 @@ export const ReportsView: React.FC = () => {
       { header: 'Tutar (TL)', key: 'amount', width: 20 },
     ];
 
-    worksheet.addRow(['GENEL OZET', 'Net Satis Cirosu', `${filteredReportData.totalOrders} Adisyon`, filteredReportData.netTotal]);
-    worksheet.addRow(['GENEL OZET', 'Brut Satis Tutari', '-', filteredReportData.grossTotal]);
-    worksheet.addRow(['GENEL OZET', 'Indirim / Iskonto', '-', filteredReportData.discountTotal]);
-    worksheet.addRow(['GENEL OZET', 'Ikram Tutari', '-', filteredReportData.giftTotal]);
-    worksheet.addRow(['GENEL OZET', 'Iptal Edilenler', '-', filteredReportData.cancelTotal]);
+    worksheet.addRow(['GENEL SATIS OZETI', 'Net Satis Cirosu', `${filteredReportData.totalOrders} Adisyon`, filteredReportData.netTotal]);
+    worksheet.addRow(['GENEL SATIS OZETI', 'Brut Satis Tutari', '-', filteredReportData.grossTotal]);
+    worksheet.addRow(['GENEL SATIS OZETI', 'Indirim / Iskonto', '-', filteredReportData.discountTotal]);
+    worksheet.addRow(['GENEL SATIS OZETI', 'Ikram Tutari', '-', filteredReportData.giftTotal]);
+    worksheet.addRow(['GENEL SATIS OZETI', 'Iptal Edilenler', '-', filteredReportData.cancelTotal]);
+    worksheet.addRow([]);
+
+    worksheet.addRow(['--- GIDERLER VE TOPTANCI AKISI ---', '', '', '']);
+    worksheet.addRow(['Mali Cikis', 'Isletme Giderleri Toplami', '-', filteredReportData.totalExpenses]);
+    worksheet.addRow(['Mali Cikis', 'Toptancilara Odenen Tutar', '-', filteredReportData.supplierPaymentsTotal]);
+    worksheet.addRow(['Mali Giris', 'Toptanci Alis Faturalari (Giren Mal)', '-', filteredReportData.supplierInvoicesTotal]);
+    worksheet.addRow(['Net Bakiye', 'Donem Net Nakit Akisi', '-', filteredReportData.netCashFlow]);
     worksheet.addRow([]);
 
     worksheet.addRow(['--- ODEME DAGILIMI ---', '', '', '']);
@@ -205,12 +215,11 @@ export const ReportsView: React.FC = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Z_Raporu_Detayli_${startDate}_${endDate}.xlsx`;
+    a.download = `Mali_Rapor_${startDate}_${endDate}.xlsx`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
-  // Filtrelenmiş Ürün Listesi
   const filteredProductsList = useMemo(() => {
     return Object.entries(filteredReportData.productSales).filter(([name]) => 
       name.toLowerCase().includes(productSearchQuery.toLowerCase())
@@ -231,7 +240,7 @@ export const ReportsView: React.FC = () => {
               <span>Gaziantepli Taha Usta - Mali Denetim & Z Raporu</span>
               <span className="px-2.5 py-0.5 bg-[#F5C877]/20 text-[#F5C877] border border-[#F5C877]/30 rounded-full text-[10px] font-black uppercase">ERP v2.0</span>
             </h1>
-            <p className="text-xs text-[#C4C4CC] font-medium">Nakit, POS, Sodexo/Multinet/Ticket, Cari Müşteri Borçları, Fırın & Ocak Ürün Satış Analizleri.</p>
+            <p className="text-xs text-[#C4C4CC] font-medium">Nakit, POS, Toptancı Alışları, Gider Çıkışları, Cari Borçlar ve Ürün Satış Analizleri.</p>
           </div>
         </div>
 
@@ -279,11 +288,11 @@ export const ReportsView: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* 1. ANLIK GÜN İÇİ X RAPORU */}
+      {/* 1. ANLIK GÜN İÇİ X RAPORU (GİDER & TOPTANCI DAHİL) */}
       {/* ========================================================================= */}
       {activeTab === 'current_x' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
               <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Gün İçi Brüt Satış</div>
               <div className="text-2xl font-black text-[#F5C877] font-mono mt-1">{formatMoney(xReport.grossTotal)}</div>
@@ -291,23 +300,31 @@ export const ReportsView: React.FC = () => {
             </div>
 
             <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
-              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Nakit Kasa</div>
+              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Nakit Satış Geliri</div>
               <div className="text-2xl font-black text-emerald-400 font-mono mt-1">{formatMoney(xReport.paymentBreakdown['Nakit'] || 0)}</div>
-              <div className="text-[11px] text-[#A0A0AA] mt-1">Kasada bekleyen nakit</div>
+              <div className="text-[11px] text-[#A0A0AA] mt-1">Masalardan alınan nakit</div>
             </div>
 
             <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
-              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Kredi Kartı / POS</div>
-              <div className="text-2xl font-black text-sky-400 font-mono mt-1">{formatMoney(xReport.paymentBreakdown['Kredi Kartı'] || 0)}</div>
-              <div className="text-[11px] text-[#A0A0AA] mt-1">Banka POS toplamı</div>
+              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">İşletme Giderleri (-)</div>
+              <div className="text-2xl font-black text-rose-400 font-mono mt-1">-{formatMoney(xReport.totalExpenses)}</div>
+              <div className="text-[11px] text-rose-300 mt-1">Nakit Çıkan: {formatMoney(xReport.cashExpenses)}</div>
             </div>
 
             <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
-              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Cari (Veresiye) Toplamı</div>
-              <div className="text-2xl font-black text-orange-400 font-mono mt-1">
-                {formatMoney(xReport.paymentBreakdown['Cari (Veresiye)'] || 0)}
+              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Toptancı Ödemeleri (-)</div>
+              <div className="text-2xl font-black text-rose-400 font-mono mt-1">-{formatMoney(xReport.supplierPaymentsTotal)}</div>
+              <div className="text-[11px] text-rose-300 mt-1">Nakit Ödenen: {formatMoney(xReport.supplierCashPayments)}</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-[#1C1C20] to-[#24242A] p-5 rounded-3xl border-2 border-emerald-500/50 shadow-xl">
+              <div className="text-[10px] font-black uppercase text-emerald-400 flex items-center gap-1">
+                <Wallet className="w-3.5 h-3.5" /> Kasada Kalan Net Nakit
               </div>
-              <div className="text-[11px] text-[#A0A0AA] mt-1">{Object.keys(xReport.cariDetails || {}).length} Müşteriye Borç Yazıldı</div>
+              <div className={`text-2xl font-black font-mono mt-1 ${xReport.netCashInRegister >= 0 ? 'text-emerald-400' : 'text-rose-400 animate-pulse'}`}>
+                {formatMoney(xReport.netCashInRegister)}
+              </div>
+              <div className="text-[10px] text-[#A0A0AA] mt-1">Nakit Satış - Gider - Toptancı</div>
             </div>
           </div>
 
@@ -315,7 +332,7 @@ export const ReportsView: React.FC = () => {
             <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-4">
               <h3 className="text-sm font-black text-white flex items-center gap-2 border-b border-[#2C2C34] pb-3">
                 <Coins className="w-4 h-4 text-[#F5C877]" />
-                <span>Ödeme Kanalları Dağılımı</span>
+                <span>Masa Tahsilat Dağılımı</span>
               </h3>
 
               <div className="space-y-2">
@@ -351,26 +368,34 @@ export const ReportsView: React.FC = () => {
 
             <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-4">
               <h3 className="text-sm font-black text-white flex items-center gap-2 border-b border-[#2C2C34] pb-3">
-                <Building2 className="w-4 h-4 text-orange-400" />
-                <span>Cari (Veresiye) Müşteri Dökümü</span>
+                <TrendingDown className="w-4 h-4 text-rose-400" />
+                <span>Gider & Toptancı Mali Akışı</span>
               </h3>
 
-              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-                {Object.keys(xReport.cariDetails || {}).length === 0 ? (
-                  <div className="p-6 text-center text-xs text-[#A0A0AA] bg-[#141416] rounded-2xl">
-                    Bugün cariye borç yazılmadı.
+              <div className="space-y-2.5 text-xs">
+                <div className="p-3.5 bg-[#141416] rounded-2xl border border-[#2C2C34] flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-white">İşletme Giderleri Toplamı</div>
+                    <div className="text-[10px] text-[#A0A0AA]">Kira, faturalar ve sarf</div>
                   </div>
-                ) : (
-                  Object.entries(xReport.cariDetails || {}).map(([custName, amount]) => (
-                    <div key={custName} className="p-3 bg-[#141416] border border-[#2C2C34] rounded-2xl flex items-center justify-between text-xs">
-                      <div>
-                        <div className="font-black text-white">{custName}</div>
-                        <div className="text-[10px] text-orange-400 font-medium">Veresiye Borç</div>
-                      </div>
-                      <span className="font-mono font-black text-rose-400">+{formatMoney(amount)}</span>
-                    </div>
-                  ))
-                )}
+                  <span className="font-mono font-black text-rose-400">-{formatMoney(xReport.totalExpenses)}</span>
+                </div>
+
+                <div className="p-3.5 bg-[#141416] rounded-2xl border border-[#2C2C34] flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-white">Toptancı Alış Faturaları</div>
+                    <div className="text-[10px] text-[#A0A0AA]">Giren hammadde (Borçlanma)</div>
+                  </div>
+                  <span className="font-mono font-black text-[#F5C877]">+{formatMoney(xReport.supplierInvoicesTotal)}</span>
+                </div>
+
+                <div className="p-3.5 bg-[#141416] rounded-2xl border border-[#2C2C34] flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-white">Toptancı Ödemeleri</div>
+                    <div className="text-[10px] text-[#A0A0AA]">Tedarikçiye ödenen tutar</div>
+                  </div>
+                  <span className="font-mono font-black text-rose-400">-{formatMoney(xReport.supplierPaymentsTotal)}</span>
+                </div>
               </div>
             </div>
 
@@ -498,7 +523,6 @@ export const ReportsView: React.FC = () => {
                   <option value="Salon">Salon</option>
                   <option value="Bahçe">Bahçe</option>
                   <option value="Paket Servis">Paket Servis</option>
-                  <option value="Online Siparişler">Online Platformlar</option>
                 </select>
               </div>
 
@@ -513,7 +537,6 @@ export const ReportsView: React.FC = () => {
                   <option value="Taha Usta">Taha Usta (Kasa)</option>
                   <option value="Ahmet Garson">Ahmet Garson</option>
                   <option value="Mehmet Garson">Mehmet Garson</option>
-                  <option value="Ali Paket">Ali Paket</option>
                 </select>
               </div>
 
@@ -531,9 +554,6 @@ export const ReportsView: React.FC = () => {
                   <option value="Sodexo">Sodexo</option>
                   <option value="Multinet">Multinet</option>
                   <option value="Ticket">Ticket</option>
-                  <option value="Trendyol">Trendyol Yemek</option>
-                  <option value="Getir">Getir Yemek</option>
-                  <option value="Yemeksepeti">Yemeksepeti</option>
                 </select>
               </div>
             </div>
@@ -564,36 +584,38 @@ export const ReportsView: React.FC = () => {
             </div>
           </div>
 
-          {/* METRİK ÖZET KARTLARI */}
+          {/* METRİK ÖZET KARTLARI (GİDER & TOPTANCI AKIŞI DAHİL) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
-              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Brüt Satış Cirosu</div>
-              <div className="text-2xl font-black text-white font-mono mt-1">{formatMoney(filteredReportData.grossTotal)}</div>
-              <div className="text-[10px] text-[#A0A0AA] mt-1">İndirimler öncesi</div>
-            </div>
-
-            <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
-              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">İndirim & İskonto</div>
-              <div className="text-2xl font-black text-rose-400 font-mono mt-1">-{formatMoney(filteredReportData.discountTotal)}</div>
-              <div className="text-[10px] text-[#A0A0AA] mt-1">Uygulanan iskonto</div>
-            </div>
-
-            <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#F5C877]/30 bg-gradient-to-br from-[#F5C877]/5 to-slate-950 shadow-xl">
-              <div className="text-[10px] font-black uppercase text-[#F5C877]">Net Ciro (Kasa Toplamı)</div>
+              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Net Satış Cirosu</div>
               <div className="text-2xl font-black text-[#F5C877] font-mono mt-1">{formatMoney(filteredReportData.netTotal)}</div>
-              <div className="text-[10px] text-[#C4C4CC] mt-1">Tahsil edilen net tutar</div>
+              <div className="text-[10px] text-[#A0A0AA] mt-1">{filteredReportData.totalOrders} Adisyon Kapatıldı</div>
             </div>
 
             <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
-              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Adisyon Sayısı</div>
-              <div className="text-2xl font-black text-sky-400 font-mono mt-1">{filteredReportData.totalOrders} Adet</div>
-              <div className="text-[10px] text-[#A0A0AA] mt-1">Kapatılan masa & paket</div>
+              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Dönem Giderleri (-)</div>
+              <div className="text-2xl font-black text-rose-400 font-mono mt-1">-{formatMoney(filteredReportData.totalExpenses)}</div>
+              <div className="text-[10px] text-rose-300 mt-1">İşletme harcamaları</div>
             </div>
 
             <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
-              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Ortalama Adisyon</div>
-              <div className="text-2xl font-black text-emerald-400 font-mono mt-1">{formatMoney(filteredReportData.avgOrderAmount)}</div>
-              <div className="text-[10px] text-[#A0A0AA] mt-1">Masa başına sepet ort.</div>
+              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Toptancı Ödemeleri (-)</div>
+              <div className="text-2xl font-black text-rose-400 font-mono mt-1">-{formatMoney(filteredReportData.supplierPaymentsTotal)}</div>
+              <div className="text-[10px] text-rose-300 mt-1">Tedarikçiye ödenen</div>
+            </div>
+
+            <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg">
+              <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Toptancı Alışları (+)</div>
+              <div className="text-2xl font-black text-amber-300 font-mono mt-1">+{formatMoney(filteredReportData.supplierInvoicesTotal)}</div>
+              <div className="text-[10px] text-[#A0A0AA] mt-1">Giren alış faturaları</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-[#1C1C20] to-[#24242A] p-5 rounded-3xl border-2 border-emerald-500/50 shadow-xl">
+              <div className="text-[10px] font-black uppercase text-emerald-400">Net Nakit Akışı</div>
+              <div className={`text-2xl font-black font-mono mt-1 ${filteredReportData.netCashFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {formatMoney(filteredReportData.netCashFlow)}
+              </div>
+              <div className="text-[10px] text-[#A0A0AA] mt-1">Satış - Gider - Toptancı</div>
             </div>
           </div>
 
@@ -773,20 +795,17 @@ export const ReportsView: React.FC = () => {
                 <strong className="text-[#F5C877] font-mono text-base">{formatMoney(xReport.netTotal)}</strong>
               </div>
               <div className="flex justify-between items-center text-[#C4C4CC]">
-                <span>Nakit Kasa Tutarı:</span>
-                <strong className="text-emerald-400 font-mono text-base">{formatMoney(xReport.paymentBreakdown['Nakit'] || 0)}</strong>
+                <span>İşletme Giderleri Toplamı:</span>
+                <strong className="text-rose-400 font-mono text-base">-{formatMoney(xReport.totalExpenses)}</strong>
               </div>
               <div className="flex justify-between items-center text-[#C4C4CC]">
-                <span>Kredi Kartı / POS Toplamı:</span>
-                <strong className="text-sky-400 font-mono text-base">{formatMoney(xReport.paymentBreakdown['Kredi Kartı'] || 0)}</strong>
+                <span>Toptancı Ödemeleri Toplamı:</span>
+                <strong className="text-rose-400 font-mono text-base">-{formatMoney(xReport.supplierPaymentsTotal)}</strong>
               </div>
-              <div className="flex justify-between items-center text-[#C4C4CC]">
-                <span>Cari (Veresiye) Toplamı:</span>
-                <strong className="text-orange-400 font-mono text-base">{formatMoney(xReport.paymentBreakdown['Cari (Veresiye)'] || 0)}</strong>
-              </div>
-              <div className="flex justify-between items-center text-[#C4C4CC]">
-                <span>Kapatılan Adisyon Sayısı:</span>
-                <strong className="text-white font-mono">{xReport.totalOrders} Adet Masa</strong>
+              <div className="h-px bg-[#2C2C34]"></div>
+              <div className="flex justify-between items-center text-emerald-400">
+                <span className="font-bold">Kasada Kalan Net Nakit:</span>
+                <strong className="font-mono text-lg font-black">{formatMoney(xReport.netCashInRegister)}</strong>
               </div>
             </div>
 
@@ -814,7 +833,6 @@ export const ReportsView: React.FC = () => {
 
       {/* ========================================================================= */}
       {/* 4. GEÇMİŞ Z RAPORLARI ARŞİVİ */}
-      {/* ========================================================================= */}
       {activeTab === 'history' && (
         <div className="space-y-6">
           <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm flex items-center justify-between">
@@ -847,16 +865,20 @@ export const ReportsView: React.FC = () => {
 
                     <div className="mt-3 p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-1 text-xs">
                       <div className="flex justify-between text-[#C4C4CC]">
-                        <span>Nakit:</span>
+                        <span>Nakit Satış:</span>
                         <strong className="text-emerald-400 font-mono">{formatMoney(z.paymentBreakdown['Nakit'] || 0)}</strong>
                       </div>
                       <div className="flex justify-between text-[#C4C4CC]">
-                        <span>Kredi Kartı:</span>
-                        <strong className="text-sky-400 font-mono">{formatMoney(z.paymentBreakdown['Kredi Kartı'] || 0)}</strong>
+                        <span>Giderler:</span>
+                        <strong className="text-rose-400 font-mono">-{formatMoney(z.totalExpenses || 0)}</strong>
                       </div>
                       <div className="flex justify-between text-[#C4C4CC]">
-                        <span>Cari:</span>
-                        <strong className="text-orange-400 font-mono">{formatMoney(z.paymentBreakdown['Cari (Veresiye)'] || 0)}</strong>
+                        <span>Toptancı:</span>
+                        <strong className="text-rose-400 font-mono">-{formatMoney(z.supplierPaymentsTotal || 0)}</strong>
+                      </div>
+                      <div className="flex justify-between text-emerald-400 font-bold pt-1 border-t border-[#2C2C34]">
+                        <span>Kalan Net Nakit:</span>
+                        <strong className="font-mono">{formatMoney(z.netCashInRegister || 0)}</strong>
                       </div>
                     </div>
                   </div>
@@ -899,23 +921,14 @@ export const ReportsView: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto space-y-3 text-xs pr-1">
               <div className="p-3 bg-[#1C1C20] rounded-2xl border border-[#2C2C34] space-y-1.5">
-                <div className="flex justify-between"><span className="text-[#C4C4CC]">Net Ciro:</span><strong className="text-[#F5C877] font-mono text-sm">{formatMoney(selectedZHistoryDetail.netTotal)}</strong></div>
-                <div className="flex justify-between"><span className="text-[#C4C4CC]">Nakit:</span><strong className="text-emerald-400 font-mono">{formatMoney(selectedZHistoryDetail.paymentBreakdown['Nakit'] || 0)}</strong></div>
-                <div className="flex justify-between"><span className="text-[#C4C4CC]">Kredi Kartı:</span><strong className="text-sky-400 font-mono">{formatMoney(selectedZHistoryDetail.paymentBreakdown['Kredi Kartı'] || 0)}</strong></div>
-                <div className="flex justify-between"><span className="text-[#C4C4CC]">Cari:</span><strong className="text-orange-400 font-mono">{formatMoney(selectedZHistoryDetail.paymentBreakdown['Cari (Veresiye)'] || 0)}</strong></div>
-              </div>
-
-              {Object.keys(selectedZHistoryDetail.cariDetails || {}).length > 0 && (
-                <div className="p-3 bg-[#1C1C20] rounded-2xl border border-[#2C2C34] space-y-1">
-                  <div className="font-bold text-orange-400 mb-1">Cariye Yazılan Müşteriler:</div>
-                  {Object.entries(selectedZHistoryDetail.cariDetails || {}).map(([cName, cAmt]) => (
-                    <div key={cName} className="flex justify-between py-0.5">
-                      <span>• {cName}</span>
-                      <strong className="font-mono text-rose-400">+{formatMoney(cAmt)}</strong>
-                    </div>
-                  ))}
+                <div className="flex justify-between"><span className="text-[#C4C4CC]">Net Masa Satışı:</span><strong className="text-[#F5C877] font-mono text-sm">{formatMoney(selectedZHistoryDetail.netTotal)}</strong></div>
+                <div className="flex justify-between"><span className="text-[#C4C4CC]">İşletme Giderleri:</span><strong className="text-rose-400 font-mono">-{formatMoney(selectedZHistoryDetail.totalExpenses || 0)}</strong></div>
+                <div className="flex justify-between"><span className="text-[#C4C4CC]">Toptancı Ödemeleri:</span><strong className="text-rose-400 font-mono">-{formatMoney(selectedZHistoryDetail.supplierPaymentsTotal || 0)}</strong></div>
+                <div className="flex justify-between text-emerald-400 font-bold pt-1 border-t border-[#2C2C34]">
+                  <span>Kasada Kalan Net Nakit:</span>
+                  <strong className="font-mono text-sm">{formatMoney(selectedZHistoryDetail.netCashInRegister || 0)}</strong>
                 </div>
-              )}
+              </div>
 
               <div>
                 <div className="font-bold text-[#E4E4E8] mb-1">Satılan Ürünler:</div>

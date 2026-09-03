@@ -32,10 +32,6 @@ import {
 import { notify } from '../../services/notificationService';
 
 export const EXPENSE_CATEGORIES = [
-  'Hammadde & Et Alımı',
-  'Hal & Sebze Tedariği',
-  'Un & Fırın Malzemeleri',
-  'Meşrubat & İçecek Alımı',
   'Kira Gideri',
   'Elektrik Faturası',
   'Doğalgaz Faturası',
@@ -44,6 +40,9 @@ export const EXPENSE_CATEGORIES = [
   'Personel Yemek & İhtiyaç',
   'Vergi & SGK Ödemeleri',
   'Bakım, Onarım & Tadilat',
+  'İnternet & Telefon Faturası',
+  'Muhasebe & Danışmanlık',
+  'Reklam & Tanıtım',
   'Diğer İşletme Giderleri'
 ];
 
@@ -82,7 +81,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [supplierSearch, setSupplierSearch] = useState('');
   
-  // REAKTİF TOPTANCI SEÇİMİ (ID BAZLI CANLI BAĞLANTI)
+  // REAKTİF TOPTANCI SEÇİMİ (ID BAZLI CANLI SENKRON)
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
 
   // GİDER MODALLARI
@@ -92,7 +91,6 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [formCategory, setFormCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [formAmount, setFormAmount] = useState('');
   const [formPaymentMethod, setFormPaymentMethod] = useState<'CASH' | 'CREDIT_CARD' | 'BANK'>('CASH');
-  const [formSupplierId, setFormSupplierId] = useState('');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   const [formDescription, setFormDescription] = useState('');
 
@@ -132,9 +130,13 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [editTxType, setEditTxType] = useState<'INVOICE' | 'PAYMENT'>('INVOICE');
 
   const refreshAll = () => {
-    setExpenses(dataService.getExpenses() || []);
-    setSuppliers(dataService.getSuppliers() || []);
-    setSupplierTransactions(dataService.getSupplierTransactions() || []);
+    try {
+      setExpenses(dataService.getExpenses() || []);
+      setSuppliers(dataService.getSuppliers() || []);
+      setSupplierTransactions(dataService.getSupplierTransactions() || []);
+    } catch (e) {
+      console.error('Veri çekme hatası:', e);
+    }
   };
 
   useEffect(() => {
@@ -143,17 +145,16 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     return () => unsub();
   }, []);
 
-  // SEÇİLİ TOPTANCIYI VE EKSTRESİNİ CANLI OLARAK GÜNCEL DİZİDEN BUL (ANLIK SENKRON)
   const activeSupplier = useMemo(() => {
     if (!selectedSupplierId) return null;
-    return suppliers.find(s => s.id === selectedSupplierId) || null;
+    return (suppliers || []).find(s => s && s.id === selectedSupplierId) || null;
   }, [suppliers, selectedSupplierId]);
 
   const statementTransactions = useMemo(() => {
     if (!selectedSupplierId) return [];
     return (supplierTransactions || [])
-      .filter(t => t.supplierId === selectedSupplierId)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .filter(t => t && t.supplierId === selectedSupplierId)
+      .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
   }, [supplierTransactions, selectedSupplierId]);
 
   const toggleSort = (field: SortField) => {
@@ -166,11 +167,11 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   };
 
   const processedExpenses = useMemo(() => {
-    let list = expenses.filter(e => {
-      const matchSearch = (e.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (e.category && e.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                          (e.supplierName && e.supplierName.toLowerCase().includes(searchQuery.toLowerCase()));
-      if (!matchSearch) return false;
+    let list = (expenses || []).filter(e => {
+      if (!e) return false;
+      const titleMatch = (e.title || '').toLowerCase().includes((searchQuery || '').toLowerCase());
+      const catMatch = (e.category || '').toLowerCase().includes((searchQuery || '').toLowerCase());
+      if (!titleMatch && !catMatch) return false;
       if (selectedCat !== 'ALL' && e.category !== selectedCat) return false;
       return true;
     });
@@ -195,10 +196,21 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     return list;
   }, [expenses, searchQuery, selectedCat, sortField, sortOrder]);
 
-  const totalExpense = useMemo(() => expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0), [expenses]);
-  const totalSupplierDebt = useMemo(() => suppliers.reduce((s, sup) => s + Math.max(0, Number(sup.balance) || 0), 0), [suppliers]);
+  const filteredSuppliers = useMemo(() => {
+    const q = (supplierSearch || '').toLowerCase();
+    return (suppliers || []).filter(s => {
+      if (!s) return false;
+      const nameMatch = (s.name || '').toLowerCase().includes(q);
+      const contactMatch = (s.contactPerson || '').toLowerCase().includes(q);
+      const phoneMatch = (s.phone || '').includes(q);
+      return nameMatch || contactMatch || phoneMatch;
+    });
+  }, [suppliers, supplierSearch]);
 
-  const formatMoney = (val: number) => {
+  const totalExpense = useMemo(() => (expenses || []).reduce((s, e) => s + (Number(e?.amount) || 0), 0), [expenses]);
+  const totalSupplierDebt = useMemo(() => (suppliers || []).reduce((s, sup) => s + Math.max(0, Number(sup?.balance) || 0), 0), [suppliers]);
+
+  const formatMoney = (val: any) => {
     return (Number(val) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
   };
 
@@ -209,7 +221,6 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     setFormCategory(EXPENSE_CATEGORIES[0]);
     setFormAmount('');
     setFormPaymentMethod('CASH');
-    setFormSupplierId('');
     setFormDate(new Date().toISOString().split('T')[0]);
     setFormDescription('');
     setIsModalOpen(true);
@@ -217,11 +228,10 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
 
   const handleOpenEditModal = (exp: Expense) => {
     setEditingExpense(exp);
-    setFormTitle(exp.title);
+    setFormTitle(exp.title || '');
     setFormCategory(exp.category || EXPENSE_CATEGORIES[0]);
     setFormAmount(String(exp.amount || ''));
     setFormPaymentMethod(exp.paymentMethod || 'CASH');
-    setFormSupplierId(exp.supplierId || '');
     setFormDate(exp.date || new Date().toISOString().split('T')[0]);
     setFormDescription(exp.description || '');
     setIsModalOpen(true);
@@ -233,16 +243,12 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     if (!formTitle.trim()) return notify.error('Eksik Bilgi', 'Gider başlığı giriniz.');
     if (isNaN(amountNum) || amountNum <= 0) return notify.error('Geçersiz Tutar', 'Geçerli bir tutar giriniz.');
 
-    const selectedSup = suppliers.find(s => s.id === formSupplierId);
-
     if (editingExpense) {
       dataService.updateExpense(editingExpense.id, {
         title: formTitle.trim(),
         category: formCategory,
         amount: amountNum,
         paymentMethod: formPaymentMethod,
-        supplierId: formSupplierId || undefined,
-        supplierName: selectedSup?.name,
         date: formDate,
         description: formDescription.trim(),
       });
@@ -253,8 +259,6 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
         category: formCategory,
         amount: amountNum,
         paymentMethod: formPaymentMethod,
-        supplierId: formSupplierId || undefined,
-        supplierName: selectedSup?.name,
         date: formDate,
         description: formDescription.trim(),
       });
@@ -292,7 +296,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
 
   const openEditSupplierModal = (s: Supplier) => {
     setEditingSupplier(s);
-    setSupName(s.name);
+    setSupName(s.name || '');
     setSupContact(s.contactPerson || '');
     setSupPhone(s.phone || '');
     setSupCategory(s.category || SUPPLIER_CATEGORIES[0]);
@@ -330,10 +334,11 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   };
 
   const handleDeleteSupplier = (s: Supplier) => {
-    if (Math.abs(Number(s.balance) || 0) > 0.01) {
+    const bal = Number(s?.balance) || 0;
+    if (Math.abs(bal) > 0.01) {
       return notify.error(
         'Toptancı Silinemez!',
-        `Bu toptancıya ${formatMoney(s.balance)} borç bakiyesi bulunmaktadır.\nBorç kapatılmadan toptancı kaydı silinemez!`
+        `Bu toptancıya ${formatMoney(bal)} borç bakiyesi bulunmaktadır.\nBorç kapatılmadan toptancı kaydı silinemez!`
       );
     }
 
@@ -358,14 +363,14 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     });
   };
 
-  // 3. FATURA GİRİŞİ (CANLI ANINDA GÜNCELLEME)
+  // 3. FATURA GİRİŞİ
   const handleSaveInvoice = (e: React.FormEvent) => {
     e.preventDefault();
     if (!invSupplierId) return notify.error('Eksik Alan', 'Lütfen toptancı seçiniz.');
     const amountNum = parseFloat(invAmount);
     if (isNaN(amountNum) || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir fatura tutarı giriniz.');
 
-    const targetSup = suppliers.find(s => s.id === invSupplierId);
+    const targetSup = (suppliers || []).find(s => s && s.id === invSupplierId);
 
     dataService.addSupplierTransaction(invSupplierId, {
       type: 'INVOICE',
@@ -376,19 +381,19 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
       description: invDesc.trim() || 'Alış Faturası Girişi',
     });
 
-    notify.success('Fatura İşlendi', `[${targetSup?.name}] hesabına ${formatMoney(amountNum)} tutarında alış faturası kaydedildi.`);
+    notify.success('Fatura İşlendi', `[${targetSup?.name || 'Toptancı'}] hesabına ${formatMoney(amountNum)} tutarında alış faturası kaydedildi.`);
     setInvoiceModalOpen(false);
     refreshAll();
   };
 
-  // 4. ÖDEME ÇIKIŞI (CANLI ANINDA GÜNCELLEME)
+  // 4. ÖDEME ÇIKIŞI
   const handleSavePayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!paySupplierId) return notify.error('Eksik Alan', 'Lütfen toptancı seçiniz.');
     const amountNum = parseFloat(payAmount);
     if (isNaN(amountNum) || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir ödeme tutarı giriniz.');
 
-    const targetSup = suppliers.find(s => s.id === paySupplierId);
+    const targetSup = (suppliers || []).find(s => s && s.id === paySupplierId);
 
     dataService.addSupplierTransaction(paySupplierId, {
       type: 'PAYMENT',
@@ -398,20 +403,20 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
       description: payDesc.trim() || 'Toptancıya Ödeme Çıkışı',
     });
 
-    notify.success('Ödeme İşlendi', `[${targetSup?.name}] hesabından ${formatMoney(amountNum)} ödeme düşüldü.`);
+    notify.success('Ödeme İşlendi', `[${targetSup?.name || 'Toptancı'}] hesabından ${formatMoney(amountNum)} ödeme düşüldü.`);
     setPaymentModalOpen(false);
     refreshAll();
   };
 
-  // 5. EKSTRE DÜZENLEME & SİLME (CANLI ANINDA GÜNCELLEME)
+  // 5. EKSTRE DÜZENLEME & SİLME
   const openEditStatementTxModal = (tx: SupplierTransaction) => {
     setEditingTx(tx);
     setEditTxType(tx.type);
-    setEditTxAmount(String(tx.amount));
-    setEditTxDate(tx.date);
+    setEditTxAmount(String(tx.amount || 0));
+    setEditTxDate(tx.date || new Date().toISOString().split('T')[0]);
     setEditTxInvoiceNo(tx.invoiceNo || '');
     setEditTxDesc(tx.description || '');
-    setEditTxMethod(tx.paymentMethod);
+    setEditTxMethod(tx.paymentMethod || 'BANK');
     setEditTxModalOpen(true);
   };
 
@@ -449,8 +454,6 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     });
   };
 
-  const filteredExpenses = processedExpenses;
-
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans text-[#FAF7F2] bg-[#141416] min-h-screen">
       
@@ -458,9 +461,9 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex items-center justify-between">
           <div>
-            <div className="text-xs font-black uppercase text-[#8E8E98]">Toplam Giderler & Harcamalar</div>
+            <div className="text-xs font-black uppercase text-[#8E8E98]">Toplam İşletme Giderleri</div>
             <div className="text-3xl font-black text-rose-400 font-mono mt-1">{formatMoney(totalExpense)}</div>
-            <div className="text-[11px] text-[#8E8E98] mt-0.5">Et, un, sebze ve işletme faturaları</div>
+            <div className="text-[11px] text-[#8E8E98] mt-0.5">Kira, faturalar, personel yemek ve sarf giderleri</div>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 flex items-center justify-center font-black">
             <TrendingDown className="w-7 h-7" />
@@ -471,7 +474,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
           <div>
             <div className="text-xs font-black uppercase text-[#8E8E98]">Toptancılara Toplam Borcumuz</div>
             <div className="text-3xl font-black text-[#F5C877] font-mono mt-1">{formatMoney(totalSupplierDebt)}</div>
-            <div className="text-[11px] text-[#F5C877] mt-0.5">{suppliers.length} Kayıtlı Toptancı & Tedarikçi</div>
+            <div className="text-[11px] text-[#F5C877] mt-0.5">{(suppliers || []).length} Kayıtlı Toptancı & Tedarikçi</div>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center font-black">
             <Building2 className="w-7 h-7" />
@@ -492,7 +495,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
           <Receipt className="w-5 h-5" />
           <span>İşletme Giderleri</span>
           <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${activeTab === 'expenses' ? 'bg-[#141416]/20 text-[#141416]' : 'bg-[#121214] text-[#8E8E98]'}`}>
-            {expenses.length}
+            {(expenses || []).length}
           </span>
         </button>
 
@@ -507,7 +510,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
           <Building2 className="w-5 h-5" />
           <span>Toptancılar & Cariler</span>
           <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${activeTab === 'suppliers' ? 'bg-[#141416]/20 text-[#141416]' : 'bg-[#121214] text-[#8E8E98]'}`}>
-            {suppliers.length}
+            {(suppliers || []).length}
           </span>
         </button>
 
@@ -537,7 +540,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                 <Search className="w-4 h-4 text-[#8E8E98] absolute left-3.5 top-3.5" />
                 <input
                   type="text"
-                  placeholder="Gider adı veya toptancı ara..."
+                  placeholder="Gider açıklaması veya kategori ile ara..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2] placeholder-[#7A7A88] focus:border-[#F5C877] focus:outline-none"
@@ -583,7 +586,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
 
                     <th onClick={() => toggleSort('title')} className="py-4 px-6 cursor-pointer hover:text-white select-none">
                       <div className="flex items-center gap-2">
-                        <span>GİDER AÇIKLAMASI / TOPTANCI</span>
+                        <span>GİDER AÇIKLAMASI</span>
                         {sortField === 'title' ? (
                           sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#F5C877]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#F5C877]" />
                         ) : (
@@ -620,14 +623,14 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#2C2C34]/60">
-                  {filteredExpenses.length === 0 ? (
+                  {processedExpenses.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-12 text-center text-xs text-[#8E8E98]">
                         Kayıtlı gider bulunamadı.
                       </td>
                     </tr>
                   ) : (
-                    filteredExpenses.map((exp) => (
+                    processedExpenses.map((exp) => (
                       <tr key={exp.id} className="hover:bg-[#222228]/60 transition-colors">
                         <td className="py-4 px-6 text-[#8E8E98] font-mono">
                           <div className="flex items-center gap-1.5">
@@ -637,8 +640,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                         </td>
 
                         <td className="py-4 px-6 font-bold text-white">
-                          <div>{exp.title}</div>
-                          {exp.supplierName && <div className="text-[10px] text-[#8E8E98]">🏢 {exp.supplierName}</div>}
+                          {exp.title}
                         </td>
 
                         <td className="py-4 px-6">
@@ -741,67 +743,74 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredSuppliers.map((s) => {
-              const hasDebt = Math.abs(Number(s.balance) || 0) > 0.01;
+            {filteredSuppliers.length === 0 ? (
+              <div className="col-span-3 p-12 text-center text-xs text-[#8E8E98] bg-[#1C1C20] rounded-3xl border border-[#2C2C34]">
+                Kayıtlı toptancı bulunamadı.
+              </div>
+            ) : (
+              filteredSuppliers.map((s) => {
+                const bal = Number(s?.balance) || 0;
+                const hasDebt = Math.abs(bal) > 0.01;
 
-              return (
-                <div key={s.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-xl flex flex-col justify-between space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="px-2.5 py-1 bg-[#282830] border border-[#383844] text-[#F5C877] rounded-lg text-[10px] font-black uppercase">
-                        {s.category}
-                      </span>
+                return (
+                  <div key={s.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-xl flex flex-col justify-between space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="px-2.5 py-1 bg-[#282830] border border-[#383844] text-[#F5C877] rounded-lg text-[10px] font-black uppercase">
+                          {s.category || 'Genel'}
+                        </span>
 
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => openEditSupplierModal(s)} className="p-1.5 text-[#8E8E98] hover:text-white rounded-lg cursor-pointer">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        
-                        <button
-                          onClick={() => handleDeleteSupplier(s)}
-                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                            hasDebt ? 'text-[#8E8E98] hover:text-amber-400 hover:bg-amber-500/10' : 'text-rose-400 hover:bg-rose-500/10'
-                          }`}
-                          title={hasDebt ? 'Bakiye olduğu için silinemez' : 'Sil'}
-                        >
-                          {hasDebt ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <h3 className="font-black text-base text-white">{s.name}</h3>
-                    <div className="text-xs text-[#8E8E98] font-medium mt-1">Yetkili: {s.contactPerson || 'Girilmedi'}</div>
-                    <div className="text-xs text-[#F5C877] font-mono mt-0.5">{s.phone || 'Telefon yok'}</div>
-
-                    <div className="mt-4 p-3.5 bg-[#121214] rounded-2xl border border-[#2C2C34] flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-[#8E8E98]">Mevcut Borcumuz</span>
-                        <div className={`font-mono font-black text-base ${s.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                          {formatMoney(s.balance)}
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEditSupplierModal(s)} className="p-1.5 text-[#8E8E98] hover:text-white rounded-lg cursor-pointer">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          
+                          <button
+                            onClick={() => handleDeleteSupplier(s)}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              hasDebt ? 'text-[#8E8E98] hover:text-amber-400 hover:bg-amber-500/10' : 'text-rose-400 hover:bg-rose-500/10'
+                            }`}
+                            title={hasDebt ? 'Bakiye olduğu için silinemez' : 'Sil'}
+                          >
+                            {hasDebt ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => {
-                          setSelectedSupplierId(s.id);
-                          setActiveTab('statement');
-                        }}
-                        className="px-3.5 py-2 bg-[#282830] hover:bg-[#343440] text-sky-400 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        <span>Ekstre</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
+                      <h3 className="font-black text-base text-white">{s.name || 'Toptancı'}</h3>
+                      <div className="text-xs text-[#8E8E98] font-medium mt-1">Yetkili: {s.contactPerson || 'Girilmedi'}</div>
+                      <div className="text-xs text-[#F5C877] font-mono mt-0.5">{s.phone || 'Telefon yok'}</div>
+
+                      <div className="mt-4 p-3.5 bg-[#121214] rounded-2xl border border-[#2C2C34] flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-[#8E8E98]">Mevcut Borcumuz</span>
+                          <div className={`font-mono font-black text-base ${bal > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {formatMoney(bal)}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setSelectedSupplierId(s.id);
+                            setActiveTab('statement');
+                          }}
+                          className="px-3.5 py-2 bg-[#282830] hover:bg-[#343440] text-sky-400 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <span>Ekstre</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 3. TOPTANCI CARİ EKSTRESİ (CANLI ANINDA GÜNCELLENEN BAKİYE) */}
+      {/* 3. TOPTANCI CARİ EKSTRESİ */}
       {/* ========================================================================= */}
       {activeTab === 'statement' && activeSupplier && (
         <div className="space-y-6">
@@ -811,13 +820,13 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                 <h2 className="text-lg font-black text-white">{activeSupplier.name}</h2>
                 <span className="px-2.5 py-0.5 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-full text-[10px] font-black uppercase">CARİ EKSTRE</span>
               </div>
-              <p className="text-xs text-[#8E8E98] mt-0.5">Yetkili: {activeSupplier.contactPerson || '—'} • {activeSupplier.phone}</p>
+              <p className="text-xs text-[#8E8E98] mt-0.5">Yetkili: {activeSupplier.contactPerson || '—'} • {activeSupplier.phone || 'Telefon yok'}</p>
             </div>
 
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <span className="text-[10px] uppercase font-bold text-[#8E8E98]">Kalan Net Borcumuz</span>
-                <div className={`text-2xl font-black font-mono ${activeSupplier.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                <div className={`text-2xl font-black font-mono ${(Number(activeSupplier.balance) || 0) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                   {formatMoney(activeSupplier.balance)}
                 </div>
               </div>
@@ -932,7 +941,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
         </div>
       )}
 
-      {/* GİDER MODALI */}
+      {/* GİDER EKLEME / DÜZENLEME MODALI */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
           <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
@@ -949,7 +958,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                   required
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="Örn: Mutfak Ayçiçek Yağı Alımı"
+                  placeholder="Örn: Elektrik Faturası Ödemesi"
                   className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:border-[#F5C877] focus:outline-none"
                 />
               </div>
@@ -1005,20 +1014,6 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                     className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] font-mono"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-[#8E8E98]">İlgili Toptancı (İsteğe Bağlı)</label>
-                <select
-                  value={formSupplierId}
-                  onChange={(e) => setFormSupplierId(e.target.value)}
-                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:outline-none"
-                >
-                  <option value="">Toptancı Seçilmedi</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
-                  ))}
-                </select>
               </div>
 
               <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
@@ -1128,7 +1123,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                   className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                 >
                   <option value="">Seçiniz...</option>
-                  {suppliers.map(s => (
+                  {(suppliers || []).map(s => (
                     <option key={s.id} value={s.id}>{s.name} (Mevcut Borç: {formatMoney(s.balance)})</option>
                   ))}
                 </select>
@@ -1209,7 +1204,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                   className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                 >
                   <option value="">Seçiniz...</option>
-                  {suppliers.map(s => (
+                  {(suppliers || []).map(s => (
                     <option key={s.id} value={s.id}>{s.name} (Borç: {formatMoney(s.balance)})</option>
                   ))}
                 </select>
