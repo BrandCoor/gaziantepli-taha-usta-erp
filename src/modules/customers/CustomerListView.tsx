@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Users, 
   Search, 
@@ -15,32 +15,28 @@ import {
   Lock,
   ArrowUpRight,
   ArrowDownRight,
+  CreditCard,
   Banknote,
-  Building2,
-  Calendar,
   DollarSign
 } from 'lucide-react';
-import { Customer, CustomerTransaction, dataService } from '../../services/dataService';
+import { Customer, dataService } from '../../services/dataService';
 import { notify } from '../../services/notificationService';
 
 interface CustomerListViewProps {
-  customers?: Customer[];
-  onRefresh?: () => void;
+  customers: Customer[];
+  onRefresh: () => void;
   onOpenTxModal?: (customerId?: string, type?: 'DEBT' | 'COLLECTION') => void;
 }
 
 type SortField = 'name' | 'phone' | 'balance' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
-export const CustomerListView: React.FC<CustomerListViewProps> = () => {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
-
+export const CustomerListView: React.FC<CustomerListViewProps> = ({ customers, onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('balance');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
-  // MÜŞTERİ EKLEME / DÜZENLEME MODALI
+  // Müşteri Ekle / Düzenle Modalı
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [formName, setFormName] = useState('');
@@ -48,25 +44,14 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
   const [formAddress, setFormAddress] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
-  // HARİCİ BORÇLANDIRMA / TAHSİLAT MODALI
+  // HARİCİ CARİ HAREKET MODALI (BORÇLANDIR / TAHSİLAT AL)
   const [txModalOpen, setTxModalOpen] = useState(false);
-  const [txCustomerId, setTxCustomerId] = useState('');
+  const [selectedCustomerIdForTx, setSelectedCustomerIdForTx] = useState<string>('');
   const [txType, setTxType] = useState<'DEBT' | 'COLLECTION'>('DEBT');
-  const [txAmount, setTxAmount] = useState('');
-  const [txMethod, setTxMethod] = useState<'CASH' | 'BANK' | 'CREDIT_CARD'>('CASH');
-  const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
-  const [txDesc, setTxDesc] = useState('');
-
-  const refreshAll = () => {
-    setCustomers(dataService.getCustomers() || []);
-    setTransactions(dataService.getCustomerTransactions() || []);
-  };
-
-  useEffect(() => {
-    refreshAll();
-    const unsub = dataService.subscribe(refreshAll);
-    return () => unsub();
-  }, []);
+  const [txAmount, setTxAmount] = useState<string>('');
+  const [txPaymentMethod, setTxPaymentMethod] = useState<'CASH' | 'BANK' | 'CREDIT_CARD'>('CASH');
+  const [txDate, setTxDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [txDescription, setTxDescription] = useState<string>('');
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -80,11 +65,10 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
   const processedCustomers = useMemo(() => {
     let list = (customers || []).filter(c => {
       if (!c) return false;
-      const q = searchQuery.toLowerCase();
-      const matchName = (c.name || '').toLowerCase().includes(q);
-      const matchPhone = (c.phone || '').includes(q);
-      const matchAddress = (c.address || '').toLowerCase().includes(q);
-      return matchName || matchPhone || matchAddress;
+      const matchSearch = (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (c.phone && c.phone.includes(searchQuery)) ||
+                          (c.address && c.address.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchSearch;
     });
 
     list.sort((a, b) => {
@@ -109,11 +93,10 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
 
   const totalReceivables = useMemo(() => (customers || []).reduce((s, c) => s + Math.max(0, Number(c?.balance) || 0), 0), [customers]);
 
-  const formatMoney = (val: number) => {
+  const formatMoney = (val: any) => {
     return (Number(val) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
   };
 
-  // 1. MÜŞTERİ EKLE / DÜZENLE
   const handleOpenAddModal = () => {
     setEditingCustomer(null);
     setFormName('');
@@ -125,7 +108,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
 
   const handleOpenEditModal = (c: Customer) => {
     setEditingCustomer(c);
-    setFormName(c.name || '');
+    setFormName(c.name);
     setFormPhone(c.phone || '');
     setFormAddress(c.address || '');
     setFormNotes(c.notes || '');
@@ -156,15 +139,51 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
     }
 
     setIsModalOpen(false);
-    refreshAll();
+    onRefresh();
+  };
+
+  // HARİCİ BORÇ VEYA TAHSİLAT MODALINI AÇ
+  const openTransactionModal = (customerId?: string, defaultType: 'DEBT' | 'COLLECTION' = 'DEBT') => {
+    setSelectedCustomerIdForTx(customerId || customers[0]?.id || '');
+    setTxType(defaultType);
+    setTxAmount('');
+    setTxPaymentMethod('CASH');
+    setTxDate(new Date().toISOString().split('T')[0]);
+    setTxDescription(defaultType === 'DEBT' ? 'Harici Borçlandırma' : 'Elden Tahsilat Alındı');
+    setTxModalOpen(true);
+  };
+
+  // CARİ HAREKETİ KAYDET (BORÇLANDIR / TAHSİLAT AL)
+  const handleSaveTransactionSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomerIdForTx) return notify.error('Eksik Alan', 'Lütfen müşteri seçin!');
+    const amountNum = parseFloat(txAmount);
+    if (isNaN(amountNum) || amountNum <= 0) return notify.error('Geçersiz Tutar', 'Geçerli bir tutar girin!');
+
+    const targetCust = customers.find(c => c.id === selectedCustomerIdForTx);
+
+    dataService.addCustomerTransaction(selectedCustomerIdForTx, {
+      type: txType,
+      amount: amountNum,
+      paymentMethod: txPaymentMethod,
+      date: txDate,
+      description: txDescription.trim() || (txType === 'DEBT' ? 'Harici Borç Kaydı' : 'Tahsilat'),
+    });
+
+    notify.success(
+      txType === 'DEBT' ? 'Borç İşlendi' : 'Tahsilat Alındı',
+      `[${targetCust?.name}] hesabına ${formatMoney(amountNum)} ${txType === 'DEBT' ? 'borç eklendi' : 'tahsilat işlendi'}.`
+    );
+
+    setTxModalOpen(false);
+    onRefresh();
   };
 
   const handleDeleteCustomer = (c: Customer) => {
-    const bal = Number(c?.balance) || 0;
-    if (Math.abs(bal) > 0.01) {
+    if (Math.abs(Number(c.balance) || 0) > 0.01) {
       return notify.error(
         'Müşteri Silinemez!',
-        `Bu müşterinin ${formatMoney(bal)} cari borcu bulunmaktadır.\nBorç tahsil edilmeden müşteri silinemez!`
+        `Bu müşterinin ${formatMoney(c.balance)} cari borcu bulunmaktadır.\nBorç tahsil edilmeden müşteri silinemez!`
       );
     }
 
@@ -177,49 +196,12 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
         const res = dataService.deleteCustomer(c.id);
         if (res.success) {
           notify.success('Müşteri Silindi', `${c.name} rehberden silindi.`);
-          refreshAll();
+          onRefresh();
         } else {
           notify.error('Hata', res.message || 'Silinemedi.');
         }
       }
     });
-  };
-
-  // 2. HARİCİ BORÇLANDIRMA VE TAHSİLAT AÇMA
-  const openExternalTxModal = (customer?: Customer, type: 'DEBT' | 'COLLECTION' = 'DEBT') => {
-    setTxCustomerId(customer ? customer.id : (customers[0]?.id || ''));
-    setTxType(type);
-    setTxAmount('');
-    setTxMethod('CASH');
-    setTxDate(new Date().toISOString().split('T')[0]);
-    setTxDesc(type === 'DEBT' ? 'Harici Borçlandırma (Veresiye)' : 'Cari Borç Tahsilatı');
-    setTxModalOpen(true);
-  };
-
-  const handleSaveExternalTx = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!txCustomerId) return notify.error('Eksik Alan', 'Lütfen müşteri seçiniz.');
-    const amountNum = parseFloat(txAmount);
-    if (isNaN(amountNum) || amountNum <= 0) return notify.error('Hatalı Tutar', 'Geçerli bir tutar giriniz.');
-
-    const targetCustomer = customers.find(c => c.id === txCustomerId);
-
-    dataService.addCustomerTransaction(txCustomerId, {
-      type: txType,
-      amount: amountNum,
-      paymentMethod: txMethod,
-      date: txDate,
-      description: txDesc.trim() || (txType === 'DEBT' ? 'Harici Borç Girişi' : 'Cari Tahsilat'),
-    });
-
-    if (txType === 'DEBT') {
-      notify.success('Borç İşlendi', `[${targetCustomer?.name}] hesabına +${formatMoney(amountNum)} borç eklendi.`);
-    } else {
-      notify.success('Tahsilat Alındı', `[${targetCustomer?.name}] hesabından -${formatMoney(amountNum)} tahsilat düşüldü.`);
-    }
-
-    setTxModalOpen(false);
-    refreshAll();
   };
 
   return (
@@ -229,9 +211,9 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex items-center justify-between">
           <div>
-            <div className="text-xs font-black uppercase text-[#8E8E98]">Toplam Cari Alacağımız (Müşteri Borçları)</div>
+            <div className="text-xs font-black uppercase text-[#8E8E98]">Toplam Cari Alacağımız</div>
             <div className="text-3xl font-black text-[#F5C877] font-mono mt-1">{formatMoney(totalReceivables)}</div>
-            <div className="text-[11px] text-[#8E8E98] mt-0.5">Müşterilerden tahsil edilecek veresiye toplamı</div>
+            <div className="text-[11px] text-[#8E8E98] mt-0.5">Müşterilerden tahsil edilecek veresiye tutarı</div>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center font-black">
             <TrendingUp className="w-7 h-7" />
@@ -240,9 +222,9 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
 
         <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex items-center justify-between">
           <div>
-            <div className="text-xs font-black uppercase text-[#8E8E98]">Kayıtlı Cari Müşteri Sayısı</div>
+            <div className="text-xs font-black uppercase text-[#8E8E98]">Kayıtlı Müşteri Sayısı</div>
             <div className="text-3xl font-black text-white mt-1">{customers.length} Müşteri</div>
-            <div className="text-[11px] text-[#F5C877] mt-0.5">Caller ID ve Veresiye Rehberi</div>
+            <div className="text-[11px] text-[#F5C877] mt-0.5">Caller ID ve Cari Rehber</div>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center font-black">
             <Users className="w-7 h-7" />
@@ -250,7 +232,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
         </div>
       </div>
 
-      {/* ARAMA VE HARİCİ İŞLEM BUTONLARI */}
+      {/* ARAMA VE BUTON BARI */}
       <div className="bg-[#1C1C20] p-4 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-[#8E8E98] absolute left-3.5 top-3.5" />
@@ -264,28 +246,27 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* HARİCİ BORÇLANDIRMA BUTONU */}
+          {/* HARİCİ BORÇ EKLEME BUTONU */}
           <button
-            onClick={() => openExternalTxModal(undefined, 'DEBT')}
-            className="px-4 py-2.5 bg-rose-600/90 hover:bg-rose-500 text-white font-black text-xs rounded-2xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-rose-600/20"
+            onClick={() => openTransactionModal(undefined, 'DEBT')}
+            className="px-4 py-2.5 bg-rose-600/90 hover:bg-rose-500 text-white font-black text-xs rounded-2xl flex items-center gap-1.5 shadow-md shadow-rose-600/20 cursor-pointer"
           >
             <ArrowUpRight className="w-4 h-4" />
-            <span>+ Harici Borç Yaz</span>
+            <span>+ Harici Borç Ekle</span>
           </button>
 
-          {/* HARİCİ TAHSİLAT BUTONU */}
+          {/* HARİCİ TAHSİLAT ALMA BUTONU */}
           <button
-            onClick={() => openExternalTxModal(undefined, 'COLLECTION')}
-            className="px-4 py-2.5 bg-emerald-600/90 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/20"
+            onClick={() => openTransactionModal(undefined, 'COLLECTION')}
+            className="px-4 py-2.5 bg-emerald-600/90 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
           >
             <ArrowDownRight className="w-4 h-4" />
             <span>+ Tahsilat Al</span>
           </button>
 
-          {/* YENİ MÜŞTERİ BUTONU */}
           <button
             onClick={handleOpenAddModal}
-            className="px-5 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-2xl shadow-lg shadow-[#F5C877]/15 flex items-center gap-1.5 cursor-pointer"
+            className="px-5 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-2xl shadow-lg shadow-[#F5C877]/15 flex items-center gap-2 cursor-pointer transition-transform active:scale-95"
           >
             <Plus className="w-4 h-4 text-[#141416]" />
             <span>Yeni Müşteri Ekle</span>
@@ -324,13 +305,14 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
                   </div>
                 </th>
 
-                <th className="py-4 px-6 text-center">HIZLI İŞLEM & KONTROL</th>
+                <th className="py-4 px-6 text-center">HIZLI CARİ</th>
+                <th className="py-4 px-6 text-center">İŞLEMLER</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2C2C34]/60 font-medium">
               {processedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-xs text-[#8E8E98]">
+                  <td colSpan={6} className="py-12 text-center text-xs text-[#8E8E98]">
                     Kayıtlı müşteri bulunamadı.
                   </td>
                 </tr>
@@ -358,32 +340,34 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
                         </span>
                       </td>
 
+                      {/* SATIR BAZINDA HIZLI BORÇLANDIR / TAHSİLAT AL */}
                       <td className="py-4 px-6 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* HIZLI BORÇLANDIRMA */}
+                        <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => openExternalTxModal(c, 'DEBT')}
-                            className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-lg text-[10px] font-black cursor-pointer"
-                            title="Bu Müşteriye Borç Yaz"
+                            onClick={() => openTransactionModal(c.id, 'DEBT')}
+                            className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-black cursor-pointer"
+                            title="Borç Ekle"
                           >
                             + Borç
                           </button>
-
-                          {/* HIZLI TAHSİLAT */}
                           <button
-                            onClick={() => openExternalTxModal(c, 'COLLECTION')}
-                            className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-black cursor-pointer"
-                            title="Bu Müşteriden Tahsilat Al"
+                            onClick={() => openTransactionModal(c.id, 'COLLECTION')}
+                            className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[10px] font-black cursor-pointer"
+                            title="Tahsilat Al"
                           >
-                            ✓ Tahsilat
+                            + Tahsilat
                           </button>
+                        </div>
+                      </td>
 
+                      <td className="py-4 px-6 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleOpenEditModal(c)}
                             className="p-1.5 text-[#8E8E98] hover:text-[#F5C877] hover:bg-[#282830] rounded-lg transition-colors cursor-pointer"
                             title="Düzenle"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-4 h-4" />
                           </button>
 
                           <button
@@ -393,7 +377,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
                             }`}
                             title={hasDebt ? 'Borcu olduğu için silinemez' : 'Sil'}
                           >
-                            {hasDebt ? <Lock className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            {hasDebt ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
                           </button>
                         </div>
                       </td>
@@ -459,25 +443,24 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
         </div>
       )}
 
-      {/* HARİCİ BORÇLANDIRMA / TAHSİLAT MODALI */}
+      {/* HARİCİ CARİ HAREKET MODALI (BORÇLANDIRMA / TAHSİLAT ALMA) */}
       {txModalOpen && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
           <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
             <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                {txType === 'DEBT' ? <ArrowUpRight className="w-5 h-5 text-rose-400" /> : <ArrowDownRight className="w-5 h-5 text-emerald-400" />}
-                <span>{txType === 'DEBT' ? 'Müşteriye Harici Borç Yaz' : 'Müşteriden Cari Tahsilat Al'}</span>
+              <h3 className="text-base font-black text-white">
+                {txType === 'DEBT' ? 'Müşteri Borçlandırma (+Borç Ekle)' : 'Müşteriden Tahsilat Alma (-Borç Düş)'}
               </h3>
               <button onClick={() => setTxModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSaveExternalTx} className="space-y-3.5">
+            <form onSubmit={handleSaveTransactionSubmit} className="space-y-3.5">
               <div>
                 <label className="text-xs font-bold text-[#8E8E98]">Müşteri Seçiniz</label>
                 <select
                   required
-                  value={txCustomerId}
-                  onChange={(e) => setTxCustomerId(e.target.value)}
+                  value={selectedCustomerIdForTx}
+                  onChange={(e) => setSelectedCustomerIdForTx(e.target.value)}
                   className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                 >
                   {customers.map(c => (
@@ -488,23 +471,37 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-[#8E8E98]">İşlem Tutarı (₺)</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">İşlem Türü</label>
+                  <select
+                    value={txType}
+                    onChange={(e) => setTxType(e.target.value as any)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
+                  >
+                    <option value="DEBT">➕ Borçlandır (Borç Artar)</option>
+                    <option value="COLLECTION">➖ Tahsilat Al (Borç Düşer)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E98]">Tutar (₺)</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={txAmount}
                     onChange={(e) => setTxAmount(e.target.value)}
-                    placeholder="750.00"
-                    className={`w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold focus:outline-none ${txType === 'DEBT' ? 'text-rose-400' : 'text-emerald-400'}`}
+                    placeholder="1500.00"
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-[#F5C877] focus:outline-none"
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-[#8E8E98]">Ödeme / İşlem Kanalı</label>
+                  <label className="text-xs font-bold text-[#8E8E98]">Ödeme Şekli</label>
                   <select
-                    value={txMethod}
-                    onChange={(e) => setTxMethod(e.target.value as any)}
+                    value={txPaymentMethod}
+                    onChange={(e) => setTxPaymentMethod(e.target.value as any)}
                     className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-bold text-[#FAF7F2]"
                   >
                     <option value="CASH">💵 Nakit</option>
@@ -512,25 +509,25 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
                     <option value="CREDIT_CARD">💳 Kredi Kartı</option>
                   </select>
                 </div>
+
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E98]">İşlem Tarihi</label>
+                  <input
+                    type="date"
+                    value={txDate}
+                    onChange={(e) => setTxDate(e.target.value)}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono text-[#FAF7F2]"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-[#8E8E98]">İşlem Tarihi</label>
-                <input
-                  type="date"
-                  value={txDate}
-                  onChange={(e) => setTxDate(e.target.value)}
-                  className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono text-[#FAF7F2]"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-[#8E8E98]">Açıklama / Dekont Notu</label>
+                <label className="text-xs font-bold text-[#8E8E98]">Açıklama</label>
                 <input
                   type="text"
-                  value={txDesc}
-                  onChange={(e) => setTxDesc(e.target.value)}
-                  placeholder="Eski veresiye hesabı, havale..."
+                  value={txDescription}
+                  onChange={(e) => setTxDescription(e.target.value)}
+                  placeholder="Örn: Hizmet bedeli, elden ödeme..."
                   className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs text-[#FAF7F2]"
                 />
               </div>
@@ -539,11 +536,11 @@ export const CustomerListView: React.FC<CustomerListViewProps> = () => {
                 <button type="button" onClick={() => setTxModalOpen(false)} className="px-4 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold">Vazgeç</button>
                 <button
                   type="submit"
-                  className={`px-5 py-2.5 text-white rounded-xl text-xs font-black shadow-lg ${
-                    txType === 'DEBT' ? 'bg-rose-600 hover:bg-rose-500' : 'bg-emerald-600 hover:bg-emerald-500'
+                  className={`px-5 py-2.5 rounded-xl text-xs font-black shadow-lg ${
+                    txType === 'DEBT' ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
                 >
-                  {txType === 'DEBT' ? 'Borcu Kaydet (+Borç)' : 'Tahsilatı İşle (-Borç)'}
+                  {txType === 'DEBT' ? 'Borcu Kaydet (+)' : 'Tahsilatı İşle (-)'}
                 </button>
               </div>
             </form>

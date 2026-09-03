@@ -34,7 +34,79 @@ export const Commands = {
   DOUBLE_LINE: '================================\n',
 };
 
-// 1. MUTFAK FİŞİ
+// 1. ETHERNET IP AĞ YAZICILARI TARAMASI (Port 9100)
+export async function scanLocalNetworkPrinters(): Promise<{ ip: string; port: number; status: string; model: string }[]> {
+  const interfaces = os.networkInterfaces();
+  const baseIps: string[] = [];
+
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        const parts = iface.address.split('.');
+        if (parts.length === 4) {
+          const subnet = `${parts[0]}.${parts[1]}.${parts[2]}`;
+          if (!baseIps.includes(subnet)) {
+            baseIps.push(subnet);
+          }
+        }
+      }
+    }
+  }
+
+  if (baseIps.length === 0) baseIps.push('192.168.1', '192.168.0');
+
+  const foundPrinters: { ip: string; port: number; status: string; model: string }[] = [];
+  const scanPromises: Promise<void>[] = [];
+
+  for (const baseIp of baseIps) {
+    for (let i = 1; i <= 254; i++) {
+      const targetIp = `${baseIp}.${i}`;
+      const p = new Promise<void>((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(500);
+
+        socket.connect(9100, targetIp, () => {
+          foundPrinters.push({
+            ip: targetIp,
+            port: 9100,
+            status: 'ONLINE',
+            model: 'Afanda 892E / Ethernet Ağ Yazıcısı'
+          });
+          socket.destroy();
+          resolve();
+        });
+
+        socket.on('error', () => { socket.destroy(); resolve(); });
+        socket.on('timeout', () => { socket.destroy(); resolve(); });
+      });
+
+      scanPromises.push(p);
+    }
+  }
+
+  await Promise.all(scanPromises);
+  return foundPrinters;
+}
+
+// 2. IP ÜZERİNDEN VERİ GÖNDERME
+export async function sendToNetworkPrinter(ip: string, port: number = 9100, buffer: Buffer): Promise<boolean> {
+  return new Promise((resolve) => {
+    const client = new net.Socket();
+    client.setTimeout(3500);
+
+    client.connect(port, ip, () => {
+      client.write(buffer, () => {
+        client.end();
+        resolve(true);
+      });
+    });
+
+    client.on('error', () => { client.destroy(); resolve(false); });
+    client.on('timeout', () => { client.destroy(); resolve(false); });
+  });
+}
+
+// 3. MUTFAK FİŞİ (CALLER ID MÜŞTERİ ADRES VE TELEFONUYLA)
 export function generateKitchenReceipt(data: any): Buffer {
   let text = '';
   text += Commands.INIT + Commands.BEEP + Commands.ALIGN_CENTER;
@@ -82,7 +154,7 @@ export function generateKitchenReceipt(data: any): Buffer {
   return Buffer.from(text, 'binary');
 }
 
-// 2. HESAP FİŞİ
+// 4. HESAP FİŞİ
 export function generateBillReceipt(data: any): Buffer {
   let text = '';
   text += Commands.INIT + Commands.ALIGN_CENTER;
@@ -90,6 +162,13 @@ export function generateBillReceipt(data: any): Buffer {
   text += `${formatTurkishText(data.restaurantName || 'GAZIANTEPLI TAHA USTA')}\n`;
   text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
   text += `Masa: ${formatTurkishText(data.tableName)}  |  Saat: ${data.orderTime}\n`;
+
+  if (data.customerInfo) {
+    text += Commands.LINE + Commands.ALIGN_LEFT;
+    text += `Musteri: ${formatTurkishText(data.customerInfo.name)} (${formatTurkishText(data.customerInfo.phone)})\n`;
+    text += `Adres  : ${formatTurkishText(data.customerInfo.address)}\n`;
+  }
+
   text += Commands.LINE + Commands.ALIGN_LEFT;
 
   for (const item of data.items || []) {
@@ -108,7 +187,7 @@ export function generateBillReceipt(data: any): Buffer {
   return Buffer.from(text, 'binary');
 }
 
-// 3. RESMİ Z RAPORU (GİDERLER, TOPTANCI GİRİŞ-ÇIKIŞLARI VE NET NAKİT MUTABAKATLI)
+// 5. RESMİ Z RAPORU
 export function generateZReportReceipt(data: any): Buffer {
   let text = '';
   text += Commands.INIT + Commands.ALIGN_CENTER;
@@ -143,14 +222,12 @@ export function generateZReportReceipt(data: any): Buffer {
   text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
   text += Commands.DOUBLE_LINE;
 
-  // GİDERLER VE TOPTANCI MALİ AKIŞI
   text += Commands.ALIGN_LEFT + Commands.BOLD_ON + 'GIDER VE TOPTANCI AKISI:\n' + Commands.BOLD_OFF;
   text += `Isletme Giderleri : -${(Number(data.totalExpenses) || 0).toFixed(2)} TL\n`;
   text += `Toptanci Alislari :  ${(Number(data.supplierInvoicesTotal) || 0).toFixed(2)} TL\n`;
   text += `Toptanci Odemeleri: -${(Number(data.supplierPaymentsTotal) || 0).toFixed(2)} TL\n`;
   text += Commands.LINE;
 
-  // KASADA OLAN NET NAKİT MUTABAKATI
   text += Commands.ALIGN_LEFT;
   text += `Nakit Satis Geliri: ${(Number(data.paymentBreakdown?.['Nakit']) || 0).toFixed(2)} TL\n`;
   text += `Kasadan Cikan Gider: -${(Number(data.cashExpenses) || 0).toFixed(2)} TL\n`;
@@ -172,8 +249,7 @@ export function generateZReportReceipt(data: any): Buffer {
 
   text += Commands.DOUBLE_LINE;
   text += Commands.ALIGN_CENTER;
-  text += 'GUN SONU ISLEMI TAMAMLANDI\n';
-  text += '\n\n\n' + Commands.CUT_PAPER;
+  text += 'GUN SONU ISLEMI TAMAMLANDI\n\n\n' + Commands.CUT_PAPER;
 
   return Buffer.from(text, 'binary');
 }

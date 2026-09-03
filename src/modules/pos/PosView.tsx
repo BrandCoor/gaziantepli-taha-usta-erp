@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   UtensilsCrossed, 
   Users, 
@@ -41,7 +41,7 @@ import {
   OrderItemState,
   PaymentMethodConfig,
   CustomerDeliveryInfo,
-  CallLogItem
+  CallLogItem 
 } from '../../services/restaurantDataService';
 import { dataService, Customer } from '../../services/dataService';
 import { notify } from '../../services/notificationService';
@@ -87,32 +87,27 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   const [orderItems, setOrderItems] = useState<OrderItemState[]>([]);
   const [generalOrderNote, setGeneralOrderNote] = useState('');
 
-  // MÜŞTERİ SEÇİM MERKEZİ MODALI (SON ARAYANLAR / REHBER / YENİ)
-  const [customerAttachModalOpen, setCustomerAttachModalOpen] = useState(false);
-  const [customerPickerTab, setCustomerPickerTab] = useState<'recent_calls' | 'directory' | 'new'>('recent_calls');
-  const [custSearchQuery, setCustSearchQuery] = useState('');
-  const [newCustName, setNewCustName] = useState('');
-  const [newCustPhone, setNewCustPhone] = useState('');
-  const [newCustAddress, setNewCustAddress] = useState('');
+  // 3 SEÇENEKLİ MÜŞTERİ ATAMA MODALI STATE (CALLER ID / SON EKLENENLER / ARAMA)
+  const [customerAssignModalOpen, setCustomerAssignModalOpen] = useState(false);
+  const [customerAssignTab, setCustomerAssignTab] = useState<'CALLER_ID' | 'RECENT_CUSTOMERS' | 'SEARCH_ALL'>('CALLER_ID');
+  const [assignSearchQuery, setAssignSearchQuery] = useState('');
+  const [newQuickCustName, setNewQuickCustName] = useState('');
+  const [newQuickCustPhone, setNewQuickCustPhone] = useState('');
+  const [newQuickCustAddress, setNewQuickCustAddress] = useState('');
 
-  // HIZLI NOT MODALI
+  // HIZLI NOT MODALI STATE
   const [itemNoteModal, setItemNoteModal] = useState<{ open: boolean; itemIndex: number; noteText: string }>({ open: false, itemIndex: -1, noteText: '' });
-
-  // PARÇALI HESAP MODALI
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [calcInput, setCalcInput] = useState<string>('');
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [selectedPayItemIndices, setSelectedPayItemIndices] = useState<number[]>([]);
 
-  // CARİ POPUP
   const [cariModalOpen, setCariModalOpen] = useState(false);
   const [cariSearchQuery, setCariSearchQuery] = useState('');
 
-  // MASA TAŞIMA MODALI
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [targetTransferTableId, setTargetTransferTableId] = useState('');
 
-  // İPTAL MODALI
   const [itemCancelModal, setItemCancelModal] = useState<{
     open: boolean;
     itemIndex: number;
@@ -135,7 +130,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     customNote: ''
   });
 
-  // CALLER ID'DEN GELEN OTOMATİK PAKET MASASINI ANINDA AÇ
+  // CALLER ID OTOMATİK PAKET MASASI AÇMA
   useEffect(() => {
     const tableIdToOpen = autoOpenTableId || restaurantDataService.getAndClearPendingPosTable();
     if (tableIdToOpen) {
@@ -150,12 +145,13 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   }, [autoOpenTableId]);
 
   useEffect(() => {
-    const unsubR = restaurantDataService.subscribe(() => {
+    const unsub = restaurantDataService.subscribe(() => {
       setSections(restaurantDataService.getSections() || []);
       const freshTables = restaurantDataService.getTables() || [];
       setTables(freshTables);
       setCategories(restaurantDataService.getCategories() || []);
       setProducts(restaurantDataService.getProducts() || []);
+      setCustomers(dataService.getCustomers() || []);
       setPaymentMethods(restaurantDataService.getPaymentMethods() || []);
       setRecentCalls(restaurantDataService.getRecentCalls() || []);
 
@@ -181,15 +177,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
         }
       }
     });
-
-    const unsubD = dataService.subscribe(() => {
-      setCustomers(dataService.getCustomers() || []);
-    });
-
-    return () => {
-      unsubR();
-      unsubD();
-    };
+    return () => unsub();
   }, [selectedTable]);
 
   const filteredTables = (tables || []).filter(t => t.sectionId === selectedSectionId);
@@ -278,7 +266,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     setItemCancelModal({ open: false, itemIndex: -1, maxQty: 1, cancelQty: 1, selectedReason: CANCEL_REASONS[0], customNote: '' });
   };
 
-  // MUTFAĞA / PAKETE GÖNDERME
+  // MUTFAĞA GÖNDERME
   const handleSendToKitchen = () => {
     if (!selectedTable) return;
     const pendingItems = orderItems.filter(i => i.status === 'PENDING');
@@ -324,8 +312,8 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     }
   };
 
-  // MÜŞTERİYİ BU MASAYA/ADİSYONA BAĞLA
-  const handleAttachCustomerToOrder = (info: CustomerDeliveryInfo) => {
+  // MÜŞTERİYİ MASAYA ATAMA İŞLEMİ
+  const handleAssignCustomerToTable = (info: CustomerDeliveryInfo) => {
     if (!selectedTable) return;
 
     restaurantDataService.updateTableOrder(
@@ -336,33 +324,29 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       generalOrderNote
     );
 
-    notify.success('Müşteri Bağlandı', `[${info.name}] bu adisyona paket müşterisi olarak atandı.`);
-    setCustomerAttachModalOpen(false);
+    notify.success('Müşteri Atandı', `[${info.name}] müşteri bilgileri ${selectedTable.name} masasına bağlandı.`);
+    setCustomerAssignModalOpen(false);
   };
 
-  // HIZLI YENİ MÜŞTERİ KAYDET & MASAYA BAĞLA
-  const handleSaveAndAttachNewCustomer = (e: React.FormEvent) => {
+  // HIZLI MÜŞTERİ KAYDEDİP MASAYA ATAMA
+  const handleQuickCreateAndAssignCustomer = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustName.trim()) return notify.error('Eksik Alan', 'Müşteri adını girin!');
+    if (!newQuickCustName.trim()) return notify.error('Eksik Bilgi', 'Müşteri adını giriniz.');
 
     const created = dataService.addCustomer({
-      name: newCustName.trim(),
-      phone: newCustPhone.trim(),
-      address: newCustAddress.trim(),
+      name: newQuickCustName.trim(),
+      phone: newQuickCustPhone.trim(),
+      address: newQuickCustAddress.trim(),
       balance: 0,
-      notes: 'Paket Adisyonundan Eklendi'
+      notes: 'Paket masası üzerinden kaydedildi'
     });
 
-    handleAttachCustomerToOrder({
+    handleAssignCustomerToTable({
       customerId: created.id,
       name: created.name,
-      phone: created.phone || newCustPhone,
-      address: created.address || newCustAddress,
+      phone: created.phone || newQuickCustPhone,
+      address: created.address || newQuickCustAddress,
     });
-
-    setNewCustName('');
-    setNewCustPhone('');
-    setNewCustAddress('');
   };
 
   // PARÇALI HESAPLAMA
@@ -522,10 +506,10 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     (c.phone || '').includes(cariSearchQuery)
   );
 
-  const filteredDirectoryCustomers = (customers || []).filter(c => 
-    c.name.toLowerCase().includes(custSearchQuery.toLowerCase()) || 
-    (c.phone || '').includes(custSearchQuery) ||
-    (c.address || '').toLowerCase().includes(custSearchQuery.toLowerCase())
+  const filteredAssignCustomers = (customers || []).filter(c => 
+    c.name.toLowerCase().includes(assignSearchQuery.toLowerCase()) || 
+    (c.phone || '').includes(assignSearchQuery) ||
+    (c.address || '').toLowerCase().includes(assignSearchQuery.toLowerCase())
   );
 
   return (
@@ -648,7 +632,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
         </div>
       </div>
 
-      {/* ADİSYON VE SİPARİŞ ALMA MODALI (ERGONOMİK & KULLANICI DOSTU) */}
+      {/* ADİSYON VE SİPARİŞ ALMA MODALI */}
       {selectedTable && (
         <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
           <div className="bg-[#1C1C20] rounded-3xl max-w-6xl w-full h-[88vh] shadow-2xl border border-[#2C2C34] flex overflow-hidden">
@@ -664,11 +648,27 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {/* MÜŞTERİ ATA / DEĞİŞTİR BUTONU */}
+                    <button
+                      onClick={() => {
+                        setAssignSearchQuery('');
+                        setNewQuickCustName('');
+                        setNewQuickCustPhone('');
+                        setNewQuickCustAddress('');
+                        setCustomerAssignModalOpen(true);
+                      }}
+                      className="px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-[#F5C877] border border-[#F5C877]/40 text-xs font-black rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Müşteri Seç / Değiştir"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>{selectedTable.customerInfo ? 'Müşteri Değiştir' : 'Müşteri Ata'}</span>
+                    </button>
+
                     {selectedTable.status !== 'EMPTY' && (
                       <>
                         <button
                           onClick={() => setTransferModalOpen(true)}
-                          className="px-3 py-1.5 bg-[#282830] hover:bg-[#343440] text-sky-400 border border-sky-500/30 text-xs font-black rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
+                          className="px-2.5 py-1.5 bg-[#282830] hover:bg-[#343440] text-sky-400 border border-sky-500/30 text-xs font-black rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
                           title="Masayı Taşı"
                         >
                           <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -677,7 +677,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
                         <button
                           onClick={() => setTableCancelModal({ open: true, selectedReason: CANCEL_REASONS[0], customNote: '' })}
-                          className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-black rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
+                          className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-black rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
                           title="İptal Et"
                         >
                           <Ban className="w-3.5 h-3.5" />
@@ -692,36 +692,22 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                   </div>
                 </div>
 
-                {/* PAKET MÜŞTERİ KARTI & MÜŞTERİ DEĞİŞTİRME BUTONU */}
-                <div className="p-3 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl flex items-center justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    {selectedTable.customerInfo ? (
-                      <div>
-                        <div className="font-bold text-xs text-white flex items-center gap-1.5">
-                          <Bike className="w-4 h-4 text-[#F5C877]" />
-                          <span className="truncate">{selectedTable.customerInfo.name}</span>
-                          <span className="font-mono text-[#F5C877] text-[11px]">({selectedTable.customerInfo.phone})</span>
-                        </div>
-                        <div className="text-[10px] text-[#8E8E98] truncate mt-0.5">📍 {selectedTable.customerInfo.address}</div>
+                {/* BAĞLI MÜŞTERİ KARTI (PAKET VE ADRES DETAYI) */}
+                {selectedTable.customerInfo ? (
+                  <div className="p-2.5 bg-[#261E16] border border-orange-600/40 rounded-xl text-[11px] text-orange-200 shadow-md">
+                    <div className="font-bold flex items-center justify-between text-xs text-[#FAF7F2]">
+                      <div className="flex items-center gap-1.5">
+                        <Bike className="w-4 h-4 text-[#F5C877]" />
+                        <span>{selectedTable.customerInfo.name}</span>
+                        <span className="font-mono text-[#F5C877]">({selectedTable.customerInfo.phone})</span>
                       </div>
-                    ) : (
-                      <div className="text-xs text-[#8E8E98] flex items-center gap-1.5">
-                        <Users className="w-4 h-4 text-slate-500" />
-                        <span>Müşteri atanmadı (Masa / Salon)</span>
-                      </div>
-                    )}
+                    </div>
+                    <div className="text-[11px] text-orange-100 font-medium mt-1 flex items-start gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-[#F5C877] flex-shrink-0 mt-0.5" />
+                      <span>{selectedTable.customerInfo.address || 'Adres bilgisi yok'}</span>
+                    </div>
                   </div>
-
-                  <button
-                    onClick={() => {
-                      setCustomerPickerTab('recent_calls');
-                      setCustomerAttachModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 bg-[#282830] hover:bg-[#343440] text-[#F5C877] border border-[#F5C877]/30 rounded-xl text-[11px] font-black cursor-pointer whitespace-nowrap"
-                  >
-                    {selectedTable.customerInfo ? 'Müşteri Değiştir' : '+ Müşteri / Paket Bağla'}
-                  </button>
-                </div>
+                ) : null}
 
                 {generalOrderNote && (
                   <div className="p-2.5 bg-[#F5C877]/10 border border-[#F5C877]/30 rounded-xl text-xs text-[#F5C877] font-bold flex items-start gap-1.5">
@@ -816,7 +802,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                     className="py-3 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-transform active:scale-95"
                   >
                     <Flame className="w-4 h-4" />
-                    <span>Mutfağa Gönder</span>
+                    <span>Mutfağa / Pakete Gönder</span>
                   </button>
 
                   <button
@@ -840,7 +826,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Menüde ürün ara..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#141416] border border-[#2C2C34] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:outline-none"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#141416] border border-[#2C2C34] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-white focus:outline-none"
                   />
                 </div>
 
@@ -898,196 +884,200 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       )}
 
       {/* ========================================================================= */}
-      {/* 4'LÜ AKILLI MÜŞTERİ SEÇİM MERKEZİ (SON ARAYANLAR / REHBER / HIZLI YENİ) */}
+      {/* 3 SEÇENEKLİ MÜŞTERİ ATAMA MODALI (SON ARAYANLAR / SON EKLENEN / REHBER) */}
       {/* ========================================================================= */}
-      {customerAttachModalOpen && selectedTable && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
-          <div className="bg-[#1C1C20] rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4 text-[#FAF7F2] max-h-[88vh] flex flex-col">
+      {customerAssignModalOpen && selectedTable && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4 text-[#FAF7F2] max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] flex items-center justify-center font-black">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white">{selectedTable.name} — Paket Müşterisi Seç</h3>
-                  <p className="text-xs text-[#8E8E98]">Son arayan numarayı bağlayabilir veya rehberden seçebilirsiniz.</p>
-                </div>
+              <div>
+                <h3 className="text-base font-black text-white">{selectedTable.name} — Müşteri ve Teslimat Bilgisi Bağla</h3>
+                <p className="text-[11px] text-[#F5C877] font-medium">Kurye ve mutfak fişlerinde adres ve telefonun çıkması için müşteri seçin.</p>
               </div>
-
-              <button onClick={() => setCustomerAttachModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer">
+              <button onClick={() => setCustomerAssignModalOpen(false)} className="text-[#8E8E98] hover:text-white cursor-pointer">
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
 
-            {/* Sekme Butonları */}
-            <div className="flex bg-[#141416] p-1.5 rounded-2xl border border-[#2C2C34] gap-1">
+            {/* 3 Seçenek Sekmesi */}
+            <div className="flex bg-[#141416] p-1 rounded-2xl border border-[#2C2C34] gap-1">
               <button
-                onClick={() => setCustomerPickerTab('recent_calls')}
-                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  customerPickerTab === 'recent_calls' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
+                onClick={() => setCustomerAssignTab('CALLER_ID')}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  customerAssignTab === 'CALLER_ID' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
                 }`}
               >
-                <PhoneIncoming className="w-4 h-4" />
-                <span>Son Arayanlar (Caller ID)</span>
+                <PhoneIncoming className="w-3.5 h-3.5" />
+                <span>📞 Son Arayanlar</span>
               </button>
 
               <button
-                onClick={() => setCustomerPickerTab('directory')}
-                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  customerPickerTab === 'directory' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
+                onClick={() => setCustomerAssignTab('RECENT_CUSTOMERS')}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  customerAssignTab === 'RECENT_CUSTOMERS' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
                 }`}
               >
-                <Users className="w-4 h-4" />
-                <span>Müşteri Rehberi ({customers.length})</span>
+                <Clock className="w-3.5 h-3.5" />
+                <span>✨ Son Müşteriler</span>
               </button>
 
               <button
-                onClick={() => setCustomerPickerTab('new')}
-                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  customerPickerTab === 'new' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
+                onClick={() => setCustomerAssignTab('SEARCH_ALL')}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  customerAssignTab === 'SEARCH_ALL' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
                 }`}
               >
-                <UserPlus className="w-4 h-4" />
-                <span>+ Yeni Müşteri</span>
+                <Search className="w-3.5 h-3.5" />
+                <span>🔍 Rehber / Yeni Ekle</span>
               </button>
             </div>
 
-            {/* SEKME 1: SON ARAYANLAR (CALLER ID) */}
-            {customerPickerTab === 'recent_calls' && (
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-72">
+            {/* SEKME 1: SON ARAYANLAR */}
+            {customerAssignTab === 'CALLER_ID' && (
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {recentCalls.length === 0 ? (
                   <div className="p-8 text-center text-xs text-[#8E8E98] bg-[#141416] rounded-2xl">
                     Henüz gelen arama kaydı yok.
                   </div>
                 ) : (
-                  recentCalls.map((call) => (
-                    <div
-                      key={call.id}
-                      className="p-3.5 bg-[#141416] hover:bg-[#222228] border border-[#2C2C34] rounded-2xl flex items-center justify-between gap-3"
-                    >
-                      <div>
-                        <div className="font-black text-xs text-white flex items-center gap-2">
-                          <span>{call.customerName}</span>
-                          <span className="font-mono text-[#F5C877] text-[11px]">({call.phone})</span>
-                        </div>
-                        <div className="text-[10px] text-[#8E8E98] mt-0.5">{call.address || 'Adres bilgisi yok'}</div>
-                      </div>
+                  recentCalls.map((call) => {
+                    const matched = customers.find(c => (c.phone || '').includes(call.phone));
+                    const name = matched ? matched.name : call.customerName;
+                    const address = matched ? matched.address : call.address;
 
-                      <button
-                        onClick={() => handleAttachCustomerToOrder({
-                          customerId: call.customerId,
-                          name: call.customerName,
+                    return (
+                      <div
+                        key={call.id}
+                        onClick={() => handleAssignCustomerToTable({
+                          customerId: matched?.id,
+                          name: name,
                           phone: call.phone,
-                          address: call.address || '',
+                          address: address || 'Adres bilgisi yok',
                         })}
-                        className="px-3.5 py-2 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-xl cursor-pointer shadow-md"
+                        className="p-3 bg-[#141416] hover:bg-[#282830] border border-[#2C2C34] hover:border-[#F5C877]/50 rounded-2xl flex items-center justify-between cursor-pointer transition-all"
                       >
-                        Bu Müşteriyi Ata
-                      </button>
-                    </div>
-                  ))
+                        <div>
+                          <div className="font-bold text-xs text-white flex items-center gap-2">
+                            <span>{name}</span>
+                            <span className="text-[10px] text-[#F5C877] font-mono">{call.phone}</span>
+                          </div>
+                          <div className="text-[11px] text-[#8E8E98] truncate max-w-[340px] mt-0.5">📍 {address || 'Adres yok'}</div>
+                        </div>
+
+                        <span className="px-3 py-1.5 bg-[#F5C877] text-[#141416] rounded-xl text-[10px] font-black">
+                          Bu Müşteriyi Ata →
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             )}
 
-            {/* SEKME 2: REHBERDEN SEÇ (ARAMALI) */}
-            {customerPickerTab === 'directory' && (
-              <div className="space-y-3 flex-1 flex flex-col overflow-hidden">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E8E98]" />
-                  <input
-                    type="text"
-                    value={custSearchQuery}
-                    onChange={(e) => setCustSearchQuery(e.target.value)}
-                    placeholder="Müşteri adı, telefon veya adres ara..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#141416] border border-[#2C2C34] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-white focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-60">
-                  {filteredDirectoryCustomers.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-[#8E8E98] bg-[#141416] rounded-2xl">
-                      Müşteri bulunamadı.
+            {/* SEKME 2: SON EKLENEN MÜŞTERİLER */}
+            {customerAssignTab === 'RECENT_CUSTOMERS' && (
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {[...customers].reverse().slice(0, 10).map((c) => (
+                  <div
+                    key={c.id}
+                    onClick={() => handleAssignCustomerToTable({
+                      customerId: c.id,
+                      name: c.name,
+                      phone: c.phone || '',
+                      address: c.address || 'Adres yok',
+                    })}
+                    className="p-3 bg-[#141416] hover:bg-[#282830] border border-[#2C2C34] hover:border-[#F5C877]/50 rounded-2xl flex items-center justify-between cursor-pointer transition-all"
+                  >
+                    <div>
+                      <div className="font-bold text-xs text-white">{c.name}</div>
+                      <div className="text-[11px] text-[#F5C877] font-mono">{c.phone || 'Telefon yok'}</div>
+                      <div className="text-[10px] text-[#8E8E98] truncate max-w-[340px]">📍 {c.address || 'Adres yok'}</div>
                     </div>
-                  ) : (
-                    filteredDirectoryCustomers.map((c) => (
-                      <div
-                        key={c.id}
-                        className="p-3 bg-[#141416] hover:bg-[#222228] border border-[#2C2C34] rounded-2xl flex items-center justify-between gap-3"
-                      >
-                        <div>
-                          <div className="font-black text-xs text-white">{c.name}</div>
-                          <div className="text-[11px] text-[#F5C877] font-mono">{c.phone || 'Telefon yok'}</div>
-                          <div className="text-[10px] text-[#8E8E98] truncate max-w-[260px]">{c.address || 'Adres yok'}</div>
-                        </div>
 
-                        <button
-                          onClick={() => handleAttachCustomerToOrder({
-                            customerId: c.id,
-                            name: c.name,
-                            phone: c.phone || '',
-                            address: c.address || '',
-                          })}
-                          className="px-3.5 py-2 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-xl cursor-pointer shadow-md"
-                        >
-                          Seç & Ata
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
+                    <span className="px-3 py-1.5 bg-[#F5C877] text-[#141416] rounded-xl text-[10px] font-black">
+                      Ata →
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* SEKME 3: HIZLI YENİ MÜŞTERİ EKLEME */}
-            {customerPickerTab === 'new' && (
-              <form onSubmit={handleSaveAndAttachNewCustomer} className="space-y-3">
-                <div>
-                  <label className="text-xs font-bold text-[#8E8E98]">Müşteri Adı Soyadı</label>
+            {/* SEKME 3: TÜM REHBERDE ARAMA VEYA YENİ MÜŞTERİ KAYDI */}
+            {customerAssignTab === 'SEARCH_ALL' && (
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#8E8E98]" />
                   <input
                     type="text"
-                    required
-                    value={newCustName}
-                    onChange={(e) => setNewCustName(e.target.value)}
-                    placeholder="Örn: Hasan Yılmaz"
-                    className="w-full mt-1 p-2.5 bg-[#141416] border border-[#2C2C34] rounded-2xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
+                    value={assignSearchQuery}
+                    onChange={(e) => setAssignSearchQuery(e.target.value)}
+                    placeholder="Müşteri adı, telefon veya adres ara..."
+                    className="w-full pl-9 pr-3 py-2 bg-[#141416] border border-[#2C2C34] rounded-xl text-xs text-white focus:outline-none focus:border-[#F5C877]"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-[#8E8E98]">Telefon Numarası</label>
+                <div className="max-h-36 overflow-y-auto space-y-1.5 divide-y divide-[#2C2C34]/40">
+                  {filteredAssignCustomers.slice(0, 5).map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={() => handleAssignCustomerToTable({
+                        customerId: c.id,
+                        name: c.name,
+                        phone: c.phone || '',
+                        address: c.address || '',
+                      })}
+                      className="pt-1.5 flex items-center justify-between text-xs cursor-pointer hover:text-[#F5C877]"
+                    >
+                      <div>
+                        <div className="font-bold text-white">{c.name} ({c.phone})</div>
+                        <div className="text-[10px] text-[#8E8E98] truncate">{c.address}</div>
+                      </div>
+                      <span className="text-[10px] font-bold text-[#F5C877]">Ata →</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* HIZLI YENİ MÜŞTERİ FORMU */}
+                <form onSubmit={handleQuickCreateAndAssignCustomer} className="p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-2 pt-2">
+                  <div className="text-[10px] font-black uppercase text-[#F5C877]">Yeni Müşteri Oluştur & Masaya Ata:</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      required
+                      value={newQuickCustName}
+                      onChange={(e) => setNewQuickCustName(e.target.value)}
+                      placeholder="Müşteri Adı Soyadı"
+                      className="p-2 bg-[#1C1C20] border border-[#2C2C34] rounded-xl text-xs text-white focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={newQuickCustPhone}
+                      onChange={(e) => setNewQuickCustPhone(e.target.value)}
+                      placeholder="Telefon No"
+                      className="p-2 bg-[#1C1C20] border border-[#2C2C34] rounded-xl text-xs text-[#F5C877] font-mono focus:outline-none"
+                    />
+                  </div>
                   <input
                     type="text"
-                    value={newCustPhone}
-                    onChange={(e) => setNewCustPhone(e.target.value)}
-                    placeholder="0532..."
-                    className="w-full mt-1 p-2.5 bg-[#141416] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-[#F5C877] focus:outline-none focus:border-[#F5C877]"
+                    value={newQuickCustAddress}
+                    onChange={(e) => setNewQuickCustAddress(e.target.value)}
+                    placeholder="Açık Teslimat Adresi..."
+                    className="w-full p-2 bg-[#1C1C20] border border-[#2C2C34] rounded-xl text-xs text-white focus:outline-none"
                   />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-[#8E8E98]">Teslimat Adresi & Daire No</label>
-                  <textarea
-                    value={newCustAddress}
-                    onChange={(e) => setNewCustAddress(e.target.value)}
-                    placeholder="Mahalle, Cadde, Sokak, Daire No..."
-                    className="w-full mt-1 p-2.5 bg-[#141416] border border-[#2C2C34] rounded-2xl text-xs text-white focus:outline-none focus:border-[#F5C877]"
-                    rows={2}
-                  />
-                </div>
-
-                <div className="pt-2 flex justify-end gap-2">
-                  <button type="submit" className="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-2xl shadow-lg cursor-pointer">
-                    Müşteriyi Kaydet ve Bu Masaya Ata
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-xl shadow-md cursor-pointer"
+                  >
+                    + Kaydet ve Bu Masaya Bağla
                   </button>
-                </div>
-              </form>
+                </form>
+              </div>
             )}
 
-            <div className="pt-3 border-t border-[#2C2C34] flex justify-end">
+            <div className="pt-2 border-t border-[#2C2C34] flex justify-end">
               <button
-                onClick={() => setCustomerAttachModalOpen(false)}
-                className="px-5 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold cursor-pointer"
+                onClick={() => setCustomerAssignModalOpen(false)}
+                className="px-4 py-2 bg-[#282830] text-[#8E8E98] rounded-xl text-xs font-bold"
               >
                 Kapat
               </button>
@@ -1133,7 +1123,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                 value={itemNoteModal.noteText}
                 onChange={(e) => setItemNoteModal({ ...itemNoteModal, noteText: e.target.value })}
                 placeholder="Örn: Lavaş çift, az pişmiş..."
-                className="w-full p-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs text-amber-300 focus:outline-none focus:border-[#F5C877]"
+                className="w-full p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs text-amber-300 focus:outline-none focus:border-[#F5C877]"
               />
             </div>
 
@@ -1153,7 +1143,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                   }
                   setItemNoteModal({ open: false, itemIndex: -1, noteText: '' });
                 }}
-                className="flex-1 py-2.5 bg-[#F5C877] hover:bg-amber-600 text-slate-950 text-xs font-black rounded-xl shadow-lg cursor-pointer"
+                className="flex-1 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] text-xs font-black rounded-xl shadow-lg cursor-pointer"
               >
                 Notu Kaydet
               </button>
@@ -1328,7 +1318,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                   <button onClick={() => setCalcInput('50')} className="py-2 bg-[#1C1C20] hover:bg-[#282830] border border-[#2C2C34] rounded-xl font-bold text-xs text-[#FAF7F2] cursor-pointer">50 ₺</button>
                   <button onClick={() => setCalcInput('100')} className="py-2 bg-[#1C1C20] hover:bg-[#282830] border border-[#2C2C34] rounded-xl font-bold text-xs text-[#FAF7F2] cursor-pointer">100 ₺</button>
                   <button onClick={() => setCalcInput('200')} className="py-2 bg-[#1C1C20] hover:bg-[#282830] border border-[#2C2C34] rounded-xl font-bold text-xs text-[#FAF7F2] cursor-pointer">200 ₺</button>
-                  <button onClick={() => setCalcInput(remainingTotal.toFixed(2))} className="py-2 bg-[#F5C877]/15 hover:bg-[#F5C877]/25 border border-[#F5C877]/30 rounded-xl font-black text-xs text-amber-300 cursor-pointer">Tam Tutar</button>
+                  <button onClick={() => setCalcInput(remainingTotal.toFixed(2))} className="py-2 bg-[#F5C877]/15 hover:bg-[#F5C877]/25 border border-[#F5C877]/30 rounded-xl font-black text-xs text-[#F5C877] cursor-pointer">Tam Tutar</button>
                 </div>
 
                 <div className="grid grid-cols-4 gap-1.5 flex-1 my-1">
@@ -1373,7 +1363,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
                     <button
                       onClick={handleOpenCariPicker}
-                      className="py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+                      className="py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
                     >
                       <Building2 className="w-4 h-4 text-[#141416]" />
                       <span>Cari (Veresiye)</span>
@@ -1450,7 +1440,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
         </div>
       )}
 
-      {/* CARİ (VERESİYE) MÜŞTERİ SEÇİM POPUP */}
+      {/* CARİ POPUP */}
       {cariModalOpen && (
         <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
           <div className="bg-[#1C1C20] rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4 text-[#FAF7F2]">
@@ -1477,7 +1467,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                 value={cariSearchQuery}
                 onChange={(e) => setCariSearchQuery(e.target.value)}
                 placeholder="Müşteri adı veya telefon ara..."
-                className="w-full pl-10 pr-4 py-2.5 bg-[#141416] border border-[#2C2C34] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-[#FAF7F2] focus:outline-none"
+                className="w-full pl-10 pr-4 py-2.5 bg-[#141416] border border-[#2C2C34] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-white focus:outline-none"
               />
             </div>
 
@@ -1494,14 +1484,14 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                     className="p-3.5 bg-[#141416] hover:bg-[#F5C877]/10 border border-[#2C2C34] hover:border-[#F5C877]/50 rounded-2xl flex items-center justify-between cursor-pointer transition-all group"
                   >
                     <div>
-                      <div className="font-black text-xs text-white group-hover:text-[#F5C877]">{c.name}</div>
+                      <div className="font-black text-xs text-white group-hover:text-amber-300">{c.name}</div>
                       <div className="text-[11px] text-[#8E8E98] font-mono mt-0.5">{c.phone || 'Telefon yok'}</div>
                     </div>
 
                     <div className="text-right">
                       <div className="text-[10px] uppercase font-bold text-[#8E8E98]">Mevcut Bakiye</div>
                       <div className={`font-mono font-black text-xs ${c.balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                        {c.balance.toFixed(2)} ₺
+                        {formatMoney(c.balance)}
                       </div>
                     </div>
                   </div>
@@ -1512,7 +1502,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
             <div className="pt-3 border-t border-[#2C2C34] flex justify-end">
               <button
                 onClick={() => setCariModalOpen(false)}
-                className="px-5 py-2.5 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] rounded-xl text-xs font-bold cursor-pointer"
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-[#FAF7F2] rounded-xl text-xs font-bold cursor-pointer"
               >
                 Vazgeç
               </button>
@@ -1523,7 +1513,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
       {/* MASA TAŞIMA MODALI */}
       {transferModalOpen && selectedTable && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
           <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
             <h3 className="text-base font-black text-white flex items-center gap-2">
               <ArrowRightLeft className="w-5 h-5 text-[#F5C877]" />
@@ -1556,7 +1546,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
       {/* İPTAL MODALI */}
       {itemCancelModal.open && selectedTable && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
           <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
             <h3 className="text-base font-black text-rose-400 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" />
@@ -1602,7 +1592,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
       {/* KOMPLE MASA İPTAL MODALI */}
       {tableCancelModal.open && selectedTable && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
           <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-500/30 space-y-4">
             <h3 className="text-base font-black text-rose-400">{selectedTable.name} Masasını Komple İptal Et</h3>
             <div className="space-y-1">
