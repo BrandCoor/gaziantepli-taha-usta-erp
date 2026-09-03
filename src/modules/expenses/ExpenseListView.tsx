@@ -411,12 +411,12 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   // 5. EKSTRE DÜZENLEME & SİLME
   const openEditStatementTxModal = (tx: SupplierTransaction) => {
     setEditingTx(tx);
-    setEditTxType(tx.type);
+    setEditTxType(tx.type === 'INVOICE' ? 'INVOICE' : 'PAYMENT');
     setEditTxAmount(String(tx.amount || 0));
     setEditTxDate(tx.date || new Date().toISOString().split('T')[0]);
     setEditTxInvoiceNo(tx.invoiceNo || '');
     setEditTxDesc(tx.description || '');
-    setEditTxMethod(tx.paymentMethod || 'BANK');
+    setEditTxMethod(tx.paymentMethod === 'CASH' ? 'CASH' : tx.paymentMethod === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'BANK');
     setEditTxModalOpen(true);
   };
 
@@ -651,7 +651,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
 
                         <td className="py-4 px-6">
                           <span className="px-2.5 py-1 bg-[#18181C] border border-[#2C2C34] text-slate-300 rounded-lg text-[11px] font-bold">
-                            {exp.paymentMethod === 'CASH' || exp.paymentMethod === 'Nakit' ? '💵 Nakit' : exp.paymentMethod === 'BANK' ? '🏦 Banka / Havale' : '💳 Kredi Kartı'}
+                            {(exp.paymentMethod as string) === 'CASH' || (exp.paymentMethod as string) === 'Nakit' ? '💵 Nakit' : exp.paymentMethod === 'BANK' ? '🏦 Banka / Havale' : '💳 Kredi Kartı'}
                           </span>
                         </td>
 

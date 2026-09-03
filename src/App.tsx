@@ -48,7 +48,7 @@ export default function App() {
           )}
           {activeTab === 'restaurant-settings' && <RestaurantSettingsView />}
           {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
-          {activeTab === 'customers' && <CustomerListView />}
+          {activeTab === 'customers' && <CustomerListView customers={customers} onRefresh={refreshAll} />}
           {activeTab === 'expenses' && <ExpenseListView />}
           {activeTab === 'employees' && <EmployeeListView employees={employees} onRefresh={refreshAll} onOpenPaymentModal={() => {}} />}
           {activeTab === 'reports' && <ReportsView />}

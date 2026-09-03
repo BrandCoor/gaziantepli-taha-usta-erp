@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Shield, User as UserIcon, Trash2, Edit2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { dataService, User, RoleType, Permission } from '../../services/dataService';
 
@@ -43,7 +43,7 @@ export const UserManagementView: React.FC = () => {
     setEditingUserId(user.id);
     setFullName(user.fullName);
     setUsername(user.username);
-    setPassword(user.password);
+    setPassword(user.password || '');
     setRole(user.role);
     setFormError('');
     setShowModal(true);

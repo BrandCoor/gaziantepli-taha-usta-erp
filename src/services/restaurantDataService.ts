@@ -47,7 +47,35 @@ export interface PaymentRecord {
   amount: number;
   customerId?: string;
   customerName?: string;
-  time: string;
+  time?: string;
+}
+
+export interface ReportFilterOptions {
+  startDate?: string;
+  endDate?: string;
+  sectionName?: string;
+  waiterName?: string;
+  paymentType?: string;
+}
+
+export interface DetailedReportResult {
+  grossTotal: number;
+  netTotal: number;
+  discountTotal: number;
+  giftTotal: number;
+  cancelTotal: number;
+  totalOrders: number;
+  avgOrderAmount: number;
+  paymentBreakdown: { [key: string]: number };
+  sectionBreakdown: { [key: string]: number };
+  waiterBreakdown: { [key: string]: number };
+  vatBreakdown: Array<{ rate: number; baseAmount: number; vatAmount: number; total: number }>;
+  productSales: { [key: string]: { quantity: number; total: number } };
+  totalExpenses: number;
+  supplierInvoicesTotal: number;
+  supplierPaymentsTotal: number;
+  netCashFlow: number;
+  orders?: CompletedOrderArchive[];
 }
 
 export interface ActiveOrder {
@@ -742,6 +770,120 @@ class RestaurantDataService {
   public getZReportsHistory(): ZReport[] {
     const data = localStorage.getItem(STORAGE_KEYS.Z_REPORTS);
     return data ? JSON.parse(data) : [];
+  }
+
+  public getFilteredReport(filters: ReportFilterOptions = {}): DetailedReportResult {
+    const allCompleted: CompletedOrderArchive[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.COMPLETED_ORDERS) || '[]');
+    const currentOrders = this.getCompletedOrdersCurrentSession();
+
+    const orderMap = new Map<string, CompletedOrderArchive>();
+    allCompleted.forEach(o => orderMap.set(o.id, o));
+    currentOrders.forEach(o => orderMap.set(o.id, o));
+    let orders = Array.from(orderMap.values());
+
+    if (filters.startDate) {
+      orders = orders.filter(o => {
+        const d = (o.closedTime || o.orderTime || '').split('T')[0];
+        return !d || d >= filters.startDate!;
+      });
+    }
+    if (filters.endDate) {
+      orders = orders.filter(o => {
+        const d = (o.closedTime || o.orderTime || '').split('T')[0];
+        return !d || d <= filters.endDate!;
+      });
+    }
+    if (filters.sectionName && filters.sectionName !== 'ALL') {
+      orders = orders.filter(o => o.sectionName === filters.sectionName);
+    }
+    if (filters.waiterName && filters.waiterName !== 'ALL') {
+      orders = orders.filter(o => o.waiterName === filters.waiterName);
+    }
+    if (filters.paymentType && filters.paymentType !== 'ALL') {
+      orders = orders.filter(o => (o.payments || []).some(p => p.type === filters.paymentType));
+    }
+
+    let grossTotal = 0;
+    let discountTotal = 0;
+    let giftTotal = 0;
+    const paymentBreakdown: { [key: string]: number } = {};
+    const sectionBreakdown: { [key: string]: number } = {};
+    const waiterBreakdown: { [key: string]: number } = {};
+    const productSales: { [key: string]: { quantity: number; total: number } } = {};
+
+    orders.forEach(ord => {
+      grossTotal += Number(ord.totalAmount) || 0;
+      sectionBreakdown[ord.sectionName || 'Diğer'] = (sectionBreakdown[ord.sectionName || 'Diğer'] || 0) + (Number(ord.totalAmount) || 0);
+      waiterBreakdown[ord.waiterName || 'Garson'] = (waiterBreakdown[ord.waiterName || 'Garson'] || 0) + (Number(ord.totalAmount) || 0);
+
+      (ord.payments || []).forEach(p => {
+        const pType = p.type || 'Nakit';
+        const pAmount = Number(p.amount) || 0;
+        if (pType.includes('İndirim') || pType.includes('İskonto')) {
+          discountTotal += pAmount;
+        } else if (pType.includes('İkram')) {
+          giftTotal += pAmount;
+        } else {
+          paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
+        }
+      });
+
+      (ord.items || []).forEach(item => {
+        if (!productSales[item.productName]) {
+          productSales[item.productName] = { quantity: 0, total: 0 };
+        }
+        productSales[item.productName].quantity += Number(item.quantity) || 1;
+        productSales[item.productName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+      });
+    });
+
+    const netTotal = grossTotal - discountTotal;
+    const totalOrders = orders.length;
+    const avgOrderAmount = totalOrders > 0 ? grossTotal / totalOrders : 0;
+
+    const allExpenses = dataService.getExpenses() || [];
+    const filteredExpenses = allExpenses.filter(e => {
+      if (filters.startDate && e.date < filters.startDate) return false;
+      if (filters.endDate && e.date > filters.endDate) return false;
+      return true;
+    });
+    const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    const allSupplierTxs = dataService.getSupplierTransactions() || [];
+    const filteredSupplierTxs = allSupplierTxs.filter(t => {
+      if (filters.startDate && t.date < filters.startDate) return false;
+      if (filters.endDate && t.date > filters.endDate) return false;
+      return true;
+    });
+    const supplierInvoicesTotal = filteredSupplierTxs.filter(t => t.type === 'INVOICE').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const supplierPaymentsTotal = filteredSupplierTxs.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+    const cancelTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
+
+    const vatRate = 10;
+    const vatBase = netTotal / 1.10;
+    const vatAmount = netTotal - vatBase;
+
+    return {
+      grossTotal,
+      netTotal,
+      discountTotal,
+      giftTotal,
+      cancelTotal,
+      totalOrders,
+      avgOrderAmount,
+      paymentBreakdown,
+      sectionBreakdown,
+      waiterBreakdown,
+      vatBreakdown: [{ rate: vatRate, baseAmount: vatBase, vatAmount, total: netTotal }],
+      productSales,
+      totalExpenses,
+      supplierInvoicesTotal,
+      supplierPaymentsTotal,
+      netCashFlow: netTotal - totalExpenses - supplierPaymentsTotal,
+      orders,
+    };
   }
 
   public getPaymentMethods(): PaymentMethodConfig[] {

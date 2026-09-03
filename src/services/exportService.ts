@@ -441,7 +441,7 @@ export const exportService = {
     headerRow.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
     expenses.forEach(exp => {
-      const row = worksheet.addRow({ date: formatDate(exp.date), title: exp.title, cat: exp.category, supp: exp.supplier || '-', method: exp.paymentMethod === 'CASH' ? 'Nakit' : exp.paymentMethod === 'CREDIT_CARD' ? 'Kredi Kartı' : 'Banka', amount: exp.amount });
+      const row = worksheet.addRow({ date: formatDate(exp.date), title: exp.title, cat: exp.category, supp: exp.supplierName || exp.supplier || '-', method: exp.paymentMethod === 'CASH' ? 'Nakit' : exp.paymentMethod === 'CREDIT_CARD' ? 'Kredi Kartı' : 'Banka', amount: exp.amount });
       row.getCell(6).numFmt = '#,##0.00 "₺"';
       row.getCell(6).font = { color: { argb: 'FFE11D48' }, bold: true };
     });
@@ -466,7 +466,7 @@ export const exportService = {
       <body>
         <div class="header"><div class="brand-box">${logoHtml}<div><h1 style="margin:0;font-size:18px;">${company.companyName.toUpperCase()}</h1><div style="font-size:11px;color:#64748b;">İşletme Gider & Harcama Raporu</div></div></div><div>Dönem: ${periodText}</div></div>
         <table><thead><tr><th>#</th><th>Tarih</th><th>Gider / Malzeme</th><th>Kategori</th><th>Tedarikçi</th><th>Kanal</th><th style="text-align:right;">Tutar</th></tr></thead>
-        <tbody>${expenses.map((exp, i) => `<tr><td>${i+1}</td><td>${formatDate(exp.date)}</td><td><b>${exp.title}</b></td><td>${exp.category}</td><td>${exp.supplier||'-'}</td><td>${exp.paymentMethod==='CASH'?'Nakit':exp.paymentMethod==='CREDIT_CARD'?'Kredi Kartı':'Banka'}</td><td style="text-align:right;color:#e11d48;font-weight:bold;">${formatCurrency(exp.amount)}</td></tr>`).join('')}</tbody></table>
+        <tbody>${expenses.map((exp, i) => `<tr><td>${i+1}</td><td>${formatDate(exp.date)}</td><td><b>${exp.title}</b></td><td>${exp.category}</td><td>${exp.supplierName||exp.supplier||'-'}</td><td>${exp.paymentMethod==='CASH'?'Nakit':exp.paymentMethod==='CREDIT_CARD'?'Kredi Kartı':'Banka'}</td><td style="text-align:right;color:#e11d48;font-weight:bold;">${formatCurrency(exp.amount)}</td></tr>`).join('')}</tbody></table>
         <div class="total-box"><b>TOPLAM GİDER: <span style="color:#e11d48;">${formatCurrency(totalAmount)}</span></b></div>
         <script>window.onload = function() { window.print(); };</script>
       </body></html>

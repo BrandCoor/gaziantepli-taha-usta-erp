@@ -19,6 +19,7 @@ export interface Customer {
   address?: string;
   notes?: string;
   balance: number;
+  transactions?: CustomerTransaction[];
   createdAt: string;
   updatedAt: string;
 }
@@ -26,11 +27,13 @@ export interface Customer {
 export interface SupplierTransaction {
   id: string;
   supplierId: string;
-  type: 'INVOICE' | 'PAYMENT';
+  type: 'INVOICE' | 'PAYMENT' | 'PURCHASE' | string;
   amount: number;
-  paymentMethod: 'CASH' | 'BANK' | 'CREDIT_CARD';
+  paymentMethod: 'CASH' | 'BANK' | 'CREDIT_CARD' | 'CHECK' | string;
   date: string;
   invoiceNo?: string;
+  documentNumber?: string;
+  dueDate?: string;
   description?: string;
   createdAt: string;
 }
@@ -45,6 +48,7 @@ export interface Supplier {
   address?: string;
   balance: number;
   notes?: string;
+  transactions?: SupplierTransaction[];
   createdAt: string;
   updatedAt: string;
 }
@@ -52,9 +56,9 @@ export interface Supplier {
 export interface EmployeePayment {
   id: string;
   employeeId: string;
-  type: 'SALARY_ACCRUAL' | 'ADVANCE' | 'SALARY_PAYMENT' | 'BONUS' | 'DEDUCTION';
+  type: 'SALARY_ACCRUAL' | 'ADVANCE' | 'SALARY_PAYMENT' | 'BONUS' | 'DEDUCTION' | 'TERMINATION_SETTLEMENT' | 'OVERTIME_ACCRUAL' | 'OVERTIME_PAYMENT' | string;
   amount: number;
-  paymentMethod: 'CASH' | 'BANK';
+  paymentMethod: 'CASH' | 'BANK' | string;
   date: string;
   description?: string;
   createdAt: string;
@@ -69,6 +73,8 @@ export interface Employee {
   iban?: string;
   balance: number;
   isActive: boolean;
+  startDate?: string;
+  payments?: EmployeePayment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +85,7 @@ export interface Expense {
   category: string;
   supplierId?: string;
   supplierName?: string;
+  supplier?: string;
   amount: number;
   paymentMethod: 'CASH' | 'CREDIT_CARD' | 'BANK';
   date: string;
@@ -86,18 +93,31 @@ export interface Expense {
   createdAt: string;
 }
 
+export type RoleType = 'ADMIN' | 'CASHIER' | 'WAITER' | 'ACCOUNTANT' | 'HR' | 'VIEWER';
+export type Permission = 'ALL' | 'CUSTOMERS_VIEW' | 'CUSTOMERS_MANAGE' | 'CUSTOMERS_TRANSACTION' | 'EMPLOYEES_VIEW' | 'EMPLOYEES_MANAGE' | 'EMPLOYEES_PAYMENT' | 'REPORTS_VIEW' | string;
+
 export interface User {
   id: string;
   username: string;
   fullName: string;
-  role: 'ADMIN' | 'CASHIER' | 'WAITER';
+  password?: string;
+  role: RoleType;
+  roleName?: string;
+  permissions?: Permission[];
+  isActive?: boolean;
 }
 
 export interface CompanySettings {
   companyName: string;
+  subTitle?: string;
   logoBase64?: string;
   phone?: string;
+  email?: string;
+  taxOffice?: string;
+  taxNumber?: string;
   address?: string;
+  dailyWorkHours?: number;
+  overtimeMultiplier?: number;
 }
 
 export interface PendingSalaryAccrual {
@@ -481,11 +501,64 @@ class DataService {
 
   // 5. KULLANICILAR & AYARLAR
   public getUsers(): User[] {
-    return [{ id: 'u-1', username: 'admin', fullName: 'Taha Usta', role: 'ADMIN' }];
+    const data = localStorage.getItem(STORAGE_KEYS.USERS);
+    if (data) {
+      try {
+        return JSON.parse(data);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    const defaultUsers: User[] = [
+      { id: 'u-1', username: 'admin', fullName: 'Taha Usta', password: '1', role: 'ADMIN', roleName: 'Yönetici (Tam Yetkili)', permissions: ['ALL'], isActive: true },
+      { id: 'u-2', username: 'kasa', fullName: 'Kasa Görevlisi', password: '123', role: 'CASHIER', roleName: 'Kasa Terminali', permissions: ['CUSTOMERS_VIEW', 'CUSTOMERS_TRANSACTION'], isActive: true },
+      { id: 'u-3', username: 'garson', fullName: 'Garson Terminali', password: '123', role: 'WAITER', roleName: 'Garson', permissions: [], isActive: true },
+    ];
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(defaultUsers));
+    return defaultUsers;
   }
 
   public getCurrentUser(): User {
-    return { id: 'u-1', username: 'admin', fullName: 'Taha Usta', role: 'ADMIN' };
+    const saved = localStorage.getItem('gtu_erp_current_user');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return this.getUsers()[0];
+  }
+
+  public setCurrentUser(user: User): void {
+    localStorage.setItem('gtu_erp_current_user', JSON.stringify(user));
+    this.notify();
+  }
+
+  public saveUser(user: Partial<User> & { username: string; fullName: string }): User {
+    const users = this.getUsers();
+    let savedUser: User;
+    if (user.id) {
+      const idx = users.findIndex(u => u.id === user.id);
+      if (idx !== -1) {
+        users[idx] = { ...users[idx], ...user } as User;
+        savedUser = users[idx];
+      } else {
+        savedUser = { ...user, id: user.id } as User;
+        users.push(savedUser);
+      }
+    } else {
+      savedUser = { ...user, id: `u-${Date.now()}` } as User;
+      users.push(savedUser);
+    }
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    this.notify();
+    return savedUser;
+  }
+
+  public deleteUser(userId: string): boolean {
+    const users = this.getUsers();
+    if (users.length <= 1) return false;
+    const updated = users.filter(u => u.id !== userId);
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
+    this.notify();
+    return true;
   }
 
   public hasPermission(perm: string): boolean {
@@ -494,7 +567,12 @@ class DataService {
 
   public getCompanySettings(): CompanySettings {
     const data = localStorage.getItem(STORAGE_KEYS.COMPANY);
-    return data ? JSON.parse(data) : { companyName: 'Gaziantepli Taha Usta', phone: '0 (342) 555 00 27' };
+    return data ? JSON.parse(data) : { companyName: 'Gaziantepli Taha Usta', phone: '0 (342) 555 00 27', dailyWorkHours: 10, overtimeMultiplier: 1.5 };
+  }
+
+  public saveCompanySettings(settings: CompanySettings): void {
+    localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify(settings));
+    this.notify();
   }
 }
 

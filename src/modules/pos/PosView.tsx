@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   UtensilsCrossed, 
   Users, 
@@ -560,7 +560,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
       {/* MASA PLANI GRID */}
       <div className="flex-1 p-6 overflow-y-auto bg-[#141416]">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {filteredTables.map((table) => {
             const isOccupied = table.status === 'OCCUPIED';
             const isBillReq = table.status === 'BILL_REQUESTED';
@@ -638,10 +638,10 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       {/* ADİSYON VE SİPARİŞ ALMA MODALI */}
       {selectedTable && (
         <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#1C1C20] rounded-3xl w-full max-w-[1400px] h-[92vh] max-h-[960px] shadow-2xl border border-[#2C2C34] flex flex-col md:flex-row overflow-hidden">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-6xl w-full h-[88vh] shadow-2xl border border-[#2C2C34] flex overflow-hidden">
             
             {/* SOL TARAF: MENÜ & İLAVE ÜRÜN SEÇİCİ (Geniş ve Ferah Menü) */}
-            <div className="flex-1 flex flex-col h-full bg-[#1C1C20] min-w-0">
+            <div className="flex-1 flex flex-col h-full bg-[#1C1C20]">
               <div className="p-4 border-b border-[#2C2C34] space-y-3">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E8E98]" />
@@ -678,7 +678,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
               </div>
 
               <div className="flex-1 p-4 overflow-y-auto">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 sm:gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {filteredProducts.map((prod) => (
                     <button
                       key={prod.id}
@@ -706,7 +706,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
           
 
             {/* SAĞ TARAF: ADİSYON SEPETİ (Geniş & Ferah) */}
-            <div className="w-full md:w-[380px] lg:w-[420px] xl:w-[450px] bg-[#141416] border-t md:border-t-0 md:border-l border-[#2C2C34] flex flex-col h-full flex-shrink-0">
+            <div className="w-5/12 lg:w-[450px] bg-[#141416] border-l border-[#2C2C34] flex flex-col h-full flex-shrink-0">
               
               <div className="p-4 bg-[#1C1C20] border-b border-[#2C2C34] space-y-2.5 flex-shrink-0">
                 <div className="flex items-center justify-between">
@@ -1160,7 +1160,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       {/* TAHSİLAT & HESAP KAPATMA MERKEZİ */}
       {checkoutModalOpen && selectedTable && (
         <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-3 z-50 backdrop-blur-md animate-fadeIn font-sans">
-          <div className="bg-[#1C1C20] rounded-3xl max-w-6xl w-full h-[94vh] max-h-[960px] shadow-2xl border border-[#2C2C34] flex flex-col overflow-hidden text-[#FAF7F2]">
+          <div className="bg-[#1C1C20] rounded-3xl max-w-6xl w-full h-[92vh] shadow-2xl border border-[#2C2C34] flex flex-col overflow-hidden text-[#FAF7F2]">
             
             <div className="py-3 px-6 border-b border-[#2C2C34] flex items-center justify-between bg-[#141416] flex-shrink-0">
               <div className="flex items-center gap-3">
@@ -1181,10 +1181,10 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
               </button>
             </div>
 
-            <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden p-3 sm:p-5 gap-3 sm:gap-5 bg-[#141416]/60">
+            <div className="flex-1 flex overflow-hidden p-5 gap-5 bg-[#141416]/60">
               
               {/* SOL SÜTUN */}
-              <div className="w-full lg:w-1/2 flex flex-col gap-3.5 overflow-hidden min-h-[320px]">
+              <div className="w-1/2 flex flex-col gap-3.5 overflow-hidden">
                 
                 <div className="bg-[#141416] rounded-2xl border border-[#2C2C34] flex-1 overflow-hidden flex flex-col">
                   <div className="p-3 bg-[#1C1C20] border-b border-[#2C2C34] flex items-center justify-between text-xs font-bold">
@@ -1290,7 +1290,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
               </div>
 
               {/* SAĞ SÜTUN */}
-              <div className="w-full lg:w-1/2 bg-[#141416] rounded-2xl border border-[#2C2C34] p-3 sm:p-4 flex flex-col justify-between">
+              <div className="w-1/2 bg-[#141416] rounded-2xl border border-[#2C2C34] p-4 flex flex-col justify-between">
                 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl px-4 py-2">
