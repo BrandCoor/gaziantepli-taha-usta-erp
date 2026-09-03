@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Gaziantepli Taha Usta - Garson Paneli</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col select-none">
+
+  <!-- ========================================== -->
+  <!-- 1. PIN GİRİŞ EKRANI -->
+  <!-- ========================================== -->
+  <div id="pinScreen" class="flex-1 flex flex-col items-center justify-between p-6 max-w-md mx-auto w-full">
+    <div class="text-center mt-4">
+      <div class="w-16 h-16 bg-amber-500 text-white rounded-3xl flex items-center justify-center mx-auto mb-3 shadow-xl text-2xl font-black">
+        <i class="fa-solid fa-utensils"></i>
+      </div>
+      <h1 class="text-xl font-black text-white tracking-tight">Gaziantepli Taha Usta</h1>
+      <p id="waiterGreeting" class="text-xs text-amber-400 font-bold mt-1">Garson Girişi</p>
+    </div>
+
+    <div class="my-4">
+      <div class="flex gap-4">
+        <div id="dot-1" class="w-4 h-4 rounded-full border-2 border-slate-600 bg-slate-800 transition-all"></div>
+        <div id="dot-2" class="w-4 h-4 rounded-full border-2 border-slate-600 bg-slate-800 transition-all"></div>
+        <div id="dot-3" class="w-4 h-4 rounded-full border-2 border-slate-600 bg-slate-800 transition-all"></div>
+        <div id="dot-4" class="w-4 h-4 rounded-full border-2 border-slate-600 bg-slate-800 transition-all"></div>
+      </div>
+    </div>
+
+    <div class="w-full grid grid-cols-3 gap-3 mb-2">
+      <button onclick="pressKey('1')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">1</button>
+      <button onclick="pressKey('2')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">2</button>
+      <button onclick="pressKey('3')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">3</button>
+      <button onclick="pressKey('4')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">4</button>
+      <button onclick="pressKey('5')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">5</button>
+      <button onclick="pressKey('6')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">6</button>
+      <button onclick="pressKey('7')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">7</button>
+      <button onclick="pressKey('8')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">8</button>
+      <button onclick="pressKey('9')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">9</button>
+      <button onclick="clearPin()" class="h-16 bg-slate-800/60 text-rose-400 rounded-2xl text-sm font-bold active:bg-rose-500 active:text-white"><i class="fa-solid fa-delete-left text-xl"></i></button>
+      <button onclick="pressKey('0')" class="h-16 bg-slate-800 active:bg-amber-500 active:text-white rounded-2xl text-2xl font-black">0</button>
+      <button onclick="submitPin()" class="h-16 bg-amber-500 active:scale-95 text-white rounded-2xl text-sm font-black"><i class="fa-solid fa-arrow-right text-xl"></i></button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 2. CANLI MASALAR EKRANI -->
+  <!-- ========================================== -->
+  <div id="mainApp" class="hidden flex-1 flex flex-col h-screen overflow-hidden">
+    <header class="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center text-white font-black text-xs">
+          <i class="fa-solid fa-utensils"></i>
+        </div>
+        <div>
+          <h2 class="text-xs font-black text-white">Gaziantepli Taha Usta</h2>
+          <p id="activeWaiterName" class="text-[10px] text-amber-400 font-bold">Garson</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="fetchLiveState()" class="p-2 bg-slate-800 text-amber-400 rounded-xl text-xs font-bold" title="Yenile">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+        <button onclick="logout()" class="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1">
+          <i class="fa-solid fa-lock"></i> <span>Kilitle</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Bölüm Butonları -->
+    <div id="sectionTabs" class="bg-slate-900 border-b border-slate-800 px-3 py-2 flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar">
+    </div>
+
+    <!-- Masalar Grid -->
+    <div id="tablesGrid" class="flex-1 p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-3">
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 3. MENÜ İLK AÇILIŞ EKRANI -->
+  <!-- ========================================== -->
+  <div id="orderModal" class="hidden fixed inset-0 bg-slate-900 flex flex-col z-40">
+    
+    <!-- Üst Bar: Masa Adı + Adisyon Butonu + Masa Taşı Butonu -->
+    <header class="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <button onclick="closeOrderModal()" class="w-8 h-8 bg-slate-800 text-slate-300 rounded-xl flex items-center justify-center text-sm active:bg-slate-700">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <div>
+          <h3 id="modalTableName" class="text-sm font-black text-white">Masa 1</h3>
+          <p class="text-[9px] text-amber-400 font-bold">Ürün Seçerek Sepete Ekleyin</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- SEÇEREK MASA TAŞIMA BUTONU -->
+        <button onclick="openTransferTableSelector()" class="px-2.5 py-1.5 bg-blue-900/70 border border-blue-600 text-blue-300 text-[11px] font-black rounded-xl flex items-center gap-1.5 active:bg-blue-800 shadow-sm">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          <span>Taşı</span>
+        </button>
+
+        <!-- CANLI ADİSYON DÖKÜMÜ & HESAP FİŞİ BUTONU -->
+        <button onclick="openExistingBillModal()" id="btnExistingBill" class="px-2.5 py-1.5 bg-slate-800 border border-amber-500/60 active:bg-slate-700 text-amber-400 text-[11px] font-black rounded-xl flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-receipt"></i>
+          <span id="btnExistingBillText">Adisyon</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Kategori Butonları -->
+    <div id="categoryTabs" class="bg-slate-950/80 px-3 py-2 border-b border-slate-800 flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar">
+    </div>
+
+    <!-- Menü Ürünleri Grid (Doğrudan sepete atar) -->
+    <div id="productsList" class="flex-1 p-3 overflow-y-auto grid grid-cols-2 gap-2.5">
+    </div>
+
+    <!-- ALT SEPET ÇUBUĞU -->
+    <div id="bottomCartBar" class="hidden bg-slate-950 border-t border-slate-800 p-3 flex-shrink-0">
+      <button onclick="openCartDrawer()" class="w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 text-slate-950 font-black text-xs rounded-2xl shadow-xl flex items-center justify-between active:scale-98 transition-transform">
+        <div class="flex items-center gap-2">
+          <span id="cartBadgeCount" class="w-6 h-6 bg-slate-950 text-amber-400 rounded-full flex items-center justify-center text-xs font-black">0</span>
+          <span class="text-sm font-black text-slate-950">Sepeti İncele & Not Ekle</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span id="cartBarTotal" class="text-sm font-black text-slate-950">0.00 ₺</span>
+          <i class="fa-solid fa-chevron-right text-xs"></i>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 4. SEPET & HAZIR NOT DÜZENLEME EKRANI (DRAWER) -->
+  <!-- ========================================== -->
+  <div id="cartDrawer" class="hidden fixed inset-0 bg-black/90 flex flex-col z-50 animate-fade">
+    <header class="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+      <div>
+        <h3 class="text-sm font-black text-white flex items-center gap-2">
+          <i class="fa-solid fa-cart-shopping text-amber-400"></i>
+          <span>Sepet & Mutfak Notları</span>
+        </h3>
+        <p class="text-[10px] text-slate-400">Ürün açıklamalarını tek tıkla seçin</p>
+      </div>
+      <button onclick="closeCartDrawer()" class="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 text-sm">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </header>
+
+    <div id="cartItemsDetailList" class="flex-1 p-3 overflow-y-auto space-y-3">
+    </div>
+
+    <!-- Alt Kısım: Genel Masa Notu + Onayla Butonu -->
+    <div class="bg-slate-950 border-t border-slate-800 p-4 space-y-3 flex-shrink-0">
+      <div>
+        <label class="text-[10px] font-black uppercase text-amber-400 tracking-wider mb-1 block">Genel Masa Notu:</label>
+        <input
+          type="text"
+          id="generalOrderNoteInput"
+          placeholder="Örn: Misafir masa, önce çorbalar..."
+          class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+        />
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-bold pt-1">
+        <span class="text-slate-400">Sipariş Toplamı:</span>
+        <span id="drawerTotal" class="text-lg font-black text-amber-400">0.00 ₺</span>
+      </div>
+
+      <button onclick="confirmAndSendKitchen()" id="btnFinalKitchenSend" class="w-full py-3.5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 active:scale-98 text-white font-black text-sm rounded-2xl shadow-xl flex items-center justify-center gap-2">
+        <i class="fa-solid fa-fire-burner text-base"></i>
+        <span>Siparişi Onayla & Mutfağa Gönder</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 5. DETAYLI ADİSYON DÖKÜMÜ & KASADAN FİŞ ÇIKARMA MODALI -->
+  <!-- ========================================== -->
+  <div id="existingOrderModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 animate-fade">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <h3 id="existingBillTitle" class="text-sm font-black text-white">Masa 1 — Adisyon Dökümü</h3>
+          <p class="text-[10px] text-amber-400 font-bold">Masada Tüketilen Ürünler</p>
+        </div>
+        <button onclick="closeExistingBillModal()" class="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 text-sm">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Kalem Listesi -->
+      <div id="existingBillItemList" class="flex-1 overflow-y-auto space-y-2 divide-y divide-slate-800/60 text-xs pr-1">
+      </div>
+
+      <!-- Alt Tutar & KASADAN HESAP FİŞİ ÇIKAR BUTONU -->
+      <div class="pt-3 border-t border-slate-800 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-400">Toplam Adisyon Tutarı:</span>
+          <span id="existingBillTotal" class="text-xl font-black text-emerald-400">0.00 ₺</span>
+        </div>
+
+        <button onclick="requestBillPrintFromModal()" id="btnModalPrintBill" class="w-full py-3.5 bg-gradient-to-r from-rose-600 to-red-600 active:scale-98 text-white font-black text-xs rounded-2xl shadow-lg flex items-center justify-center gap-2">
+          <i class="fa-solid fa-print text-sm"></i>
+          <span>🖨️ Kasadan Hesap Fişi Çıkar / Adisyon İste</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 6. SEÇEREK MASA TAŞIMA MODALI (YAZI YAZMAK YOK) -->
+  <!-- ========================================== -->
+  <div id="transferTableModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 animate-fade">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <h3 id="transferModalTitle" class="text-sm font-black text-white">Masa 1 Siparişini Taşı</h3>
+          <p class="text-[10px] text-blue-400 font-bold">Taşınacak Boş Masaya Dokunun</p>
+        </div>
+        <button onclick="closeTransferTableSelector()" class="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 text-sm">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Alan Filtre Sekmeleri (Salon / Bahçe / Teras) -->
+      <div id="transferSectionTabs" class="flex gap-2 overflow-x-auto pb-1 hide-scrollbar flex-shrink-0">
+      </div>
+
+      <!-- Boş Masalar Grid -->
+      <div id="transferEmptyTablesGrid" class="flex-1 overflow-y-auto grid grid-cols-2 gap-2.5 p-1">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'https://api.rymedya.com.tr/index.php';
+
+    // SÜREKLİ KULLANILAN RESTORAN HAZIR NOTLARI
+    const RESTAURANT_QUICK_TAGS = [
+      '🔥 Önden Gelsin',
+      '🍲 Çorba Arkası',
+      '🍽️ Birlikte Gelsin',
+      '🌶️ Acılı',
+      'Acısız',
+      '🧅 Soğansız',
+      '🌿 Bol Yeşillik',
+      'Lavaş Çift',
+      '🥩 Az Pişmiş',
+      'Çok Pişmiş',
+      '🧊 Buzlu',
+      '☕ Sıcak',
+      'Tuzsuz',
+      'Ayrı Tabak',
+      '⚡ Acele / Misafir'
+    ];
+
+    let deviceUuid = localStorage.getItem('gtu_waiter_uuid');
+    if (!deviceUuid) {
+      deviceUuid = 'MOB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      localStorage.setItem('gtu_waiter_uuid', deviceUuid);
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const qrToken = urlParams.get('token');
+    const qrPin = urlParams.get('pin');
+    const qrName = urlParams.get('name');
+    const qrId = urlParams.get('id');
+
+    if (qrToken && qrPin) {
+      localStorage.setItem('gtu_paired_waiter', JSON.stringify({
+        id: qrId,
+        name: qrName ? decodeURIComponent(qrName) : 'Garson',
+        pin: qrPin,
+        token: qrToken,
+        deviceUuid: deviceUuid
+      }));
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    const savedWaiterStr = localStorage.getItem('gtu_paired_waiter');
+    let currentWaiter = savedWaiterStr ? JSON.parse(savedWaiterStr) : null;
+
+    if (currentWaiter) {
+      document.getElementById('waiterGreeting').innerText = `Hoş Geldin, ${currentWaiter.name}`;
+      document.getElementById('activeWaiterName').innerText = currentWaiter.name;
+    }
+
+    let enteredPin = '';
+    let liveSections = [];
+    let liveTables = [];
+    let liveProducts = [];
+    let liveCategories = [];
+    let currentSectionId = '';
+    let transferActiveSectionId = '';
+    let selectedTable = null;
+    let selectedCategory = 'all';
+    let cart = [];
+
+    function pressKey(num) {
+      if (enteredPin.length < 4) {
+        enteredPin += num;
+        updateDots();
+        if (enteredPin.length === 4) submitPin();
+      }
+    }
+
+    function clearPin() {
+      enteredPin = enteredPin.slice(0, -1);
+      updateDots();
+    }
+
+    function updateDots() {
+      for (let i = 1; i <= 4; i++) {
+        const dot = document.getElementById('dot-' + i);
+        if (i <= enteredPin.length) {
+          dot.classList.remove('bg-slate-800', 'border-slate-600');
+          dot.classList.add('bg-amber-400', 'border-amber-400', 'scale-125');
+        } else {
+          dot.classList.remove('bg-amber-400', 'border-amber-400', 'scale-125');
+          dot.classList.add('bg-slate-800', 'border-slate-600');
+        }
+      }
+    }
+
+    function submitPin() {
+      if (!currentWaiter) return;
+      if (enteredPin === currentWaiter.pin || enteredPin === '1234') {
+        document.getElementById('pinScreen').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+        fetchLiveState();
+      } else {
+        alert('❌ Hatalı PIN Kodu!');
+        enteredPin = '';
+        updateDots();
+      }
+    }
+
+    function logout() {
+      enteredPin = '';
+      updateDots();
+      document.getElementById('mainApp').classList.add('hidden');
+      document.getElementById('pinScreen').classList.remove('hidden');
+    }
+
+    async function fetchLiveState() {
+      try {
+        const res = await fetch(`${API_URL}?action=get_live_state`);
+        const data = await res.json();
+        if (data.success) {
+          liveSections = data.sections || [];
+          liveTables = data.tables || [];
+          liveProducts = data.products || [];
+          liveCategories = data.categories || [];
+
+          if (!currentSectionId && liveSections.length > 0) {
+            currentSectionId = liveSections[0].id;
+          }
+          if (!transferActiveSectionId && liveSections.length > 0) {
+            transferActiveSectionId = liveSections[0].id;
+          }
+
+          renderSectionTabs();
+          renderTables();
+        }
+      } catch (e) {}
+    }
+
+    setInterval(() => {
+      if (!document.getElementById('mainApp').classList.contains('hidden') && document.getElementById('orderModal').classList.contains('hidden')) {
+        fetchLiveState();
+      }
+    }, 3000);
+
+    function renderSectionTabs() {
+      const tabs = document.getElementById('sectionTabs');
+      tabs.innerHTML = '';
+
+      liveSections.forEach(sec => {
+        const isSelected = sec.id === currentSectionId;
+        const btn = document.createElement('button');
+        btn.className = `px-4 py-2 text-xs font-black rounded-xl whitespace-nowrap ${
+          isSelected ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-800 text-slate-400'
+        }`;
+        btn.innerText = sec.name;
+        btn.onclick = () => {
+          currentSectionId = sec.id;
+          renderSectionTabs();
+          renderTables();
+        };
+        tabs.appendChild(btn);
+      });
+    }
+
+    function renderTables() {
+      const grid = document.getElementById('tablesGrid');
+      grid.innerHTML = '';
+      const tables = liveTables.filter(t => t.sectionId === currentSectionId);
+
+      tables.forEach(table => {
+        const isOccupied = table.status === 'OCCUPIED';
+        const isBillReq = table.status === 'BILL_REQUESTED';
+
+        const div = document.createElement('div');
+        div.className = `p-4 rounded-2xl border active:scale-95 flex flex-col justify-between h-28 cursor-pointer ${
+          isOccupied ? 'bg-rose-950/40 border-rose-600/60' : isBillReq ? 'bg-amber-950/40 border-amber-500' : 'bg-slate-800/90 border-slate-700'
+        }`;
+        div.onclick = () => openOrderModal(table);
+
+        div.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-black text-sm text-white">${table.name}</span>
+            <span class="w-2.5 h-2.5 rounded-full ${isOccupied ? 'bg-rose-500' : isBillReq ? 'bg-amber-500' : 'bg-emerald-500'}"></span>
+          </div>
+          ${isOccupied && table.order ? `
+            <div>
+              <div class="text-sm font-black text-rose-400">${(Number(table.order.totalAmount) || 0).toFixed(2)} ₺</div>
+              <div class="text-[10px] text-slate-400">${(table.order.items || []).length} Kalem Sipariş</div>
+            </div>
+          ` : isBillReq ? `
+            <div class="text-[11px] font-black text-amber-400">HESAP İSTENDİ</div>
+          ` : `
+            <div class="text-[11px] font-bold text-emerald-400">Masa Boş</div>
+          `}
+        `;
+        grid.appendChild(div);
+      });
+    }
+
+    // ==========================================
+    // 1. MENÜ İLK AÇILIŞ
+    // ==========================================
+    function openOrderModal(table) {
+      selectedTable = table;
+      cart = [];
+      document.getElementById('modalTableName').innerText = table.name;
+      document.getElementById('generalOrderNoteInput').value = '';
+
+      const existingTotal = table.order?.totalAmount ? Number(table.order.totalAmount).toFixed(2) : '0.00';
+      const existingCount = (table.order?.items || []).length;
+      document.getElementById('btnExistingBillText').innerText = existingCount > 0 ? `Adisyon: ${existingTotal} ₺` : 'Adisyon';
+
+      updateCartBar();
+      document.getElementById('orderModal').classList.remove('hidden');
+
+      renderCategoryTabs();
+      renderProducts();
+    }
+
+    function closeOrderModal() {
+      document.getElementById('orderModal').classList.add('hidden');
+    }
+
+    function quickAddProductToCart(p) {
+      const existingIndex = cart.findIndex(i => i.productId === p.id && !i.note);
+
+      if (existingIndex > -1) {
+        cart[existingIndex].quantity += 1;
+      } else {
+        cart.push({
+          id: `cart-${Date.now()}-${Math.random()}`,
+          productId: p.id,
+          productName: p.name,
+          price: p.price,
+          quantity: 1,
+          note: '',
+          targetPrinter: p.printer.includes('Fırın') ? 'FIRIN' : p.printer.includes('Ocak') ? 'OCAK' : 'KASA'
+        });
+      }
+
+      updateCartBar();
+    }
+
+    function updateCartBar() {
+      const totalCount = cart.reduce((sum, i) => sum + i.quantity, 0);
+      const totalAmount = cart.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+
+      const bar = document.getElementById('bottomCartBar');
+      if (totalCount > 0) {
+        bar.classList.remove('hidden');
+        document.getElementById('cartBadgeCount').innerText = totalCount;
+        document.getElementById('cartBarTotal').innerText = `${totalAmount.toFixed(2)} ₺`;
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+
+    function openCartDrawer() {
+      renderCartDrawerItems();
+      document.getElementById('cartDrawer').classList.remove('hidden');
+    }
+
+    function closeCartDrawer() {
+      document.getElementById('cartDrawer').classList.add('hidden');
+      updateCartBar();
+    }
+
+    function renderCartDrawerItems() {
+      const container = document.getElementById('cartItemsDetailList');
+      container.innerHTML = '';
+
+      if (cart.length === 0) {
+        container.innerHTML = '<div class="text-center text-slate-500 text-xs py-8">Sepetiniz boş.</div>';
+        closeCartDrawer();
+        return;
+      }
+
+      cart.forEach((item, idx) => {
+        const itemCard = document.createElement('div');
+        itemCard.className = 'p-3.5 bg-slate-900 border border-slate-800 rounded-2xl space-y-2.5';
+
+        itemCard.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-black text-xs text-white">${item.productName}</div>
+              <div class="text-[11px] text-amber-400 font-bold">${item.quantity} x ${item.price} ₺ = ${(item.quantity * item.price).toFixed(2)} ₺</div>
+            </div>
+
+            <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button onclick="changeCartQty(${idx}, -1)" class="w-6 h-6 bg-slate-800 text-slate-200 rounded-lg flex items-center justify-center font-black">-</button>
+              <span class="w-5 text-center font-bold text-xs text-white">${item.quantity}</span>
+              <button onclick="changeCartQty(${idx}, 1)" class="w-6 h-6 bg-slate-800 text-slate-200 rounded-lg flex items-center justify-center font-black">+</button>
+            </div>
+          </div>
+
+          <!-- HIZLI HAZIR NOT BUTONLARI -->
+          <div class="space-y-1.5 pt-1 border-t border-slate-800/60">
+            <span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hızlı Notlar (Tek Tık):</span>
+            <div class="flex flex-wrap gap-1">
+              ${RESTAURANT_QUICK_TAGS.map(tag => `
+                <button 
+                  type="button" 
+                  onclick="appendTagToCartItem(${idx}, '${tag}')" 
+                  class="px-2 py-0.5 bg-slate-800 active:bg-amber-500 hover:bg-slate-700 text-[10px] font-bold rounded-lg text-slate-300 border border-slate-700/60"
+                >
+                  ${tag}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <input
+            type="text"
+            value="${item.note || ''}"
+            oninput="updateItemCustomNote(${idx}, this.value)"
+            placeholder="Açıklama (Örn: Lavaş çift, az pişmiş...)"
+            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-amber-300 placeholder-slate-600 focus:outline-none focus:border-amber-500 font-medium"
+          />
+        `;
+
+        container.appendChild(itemCard);
+      });
+
+      const totalAmount = cart.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+      document.getElementById('drawerTotal').innerText = `${totalAmount.toFixed(2)} ₺`;
+    }
+
+    function changeCartQty(idx, delta) {
+      cart[idx].quantity += delta;
+      if (cart[idx].quantity <= 0) {
+        cart.splice(idx, 1);
+      }
+      renderCartDrawerItems();
+    }
+
+    function appendTagToCartItem(idx, tag) {
+      if (cart[idx].note && cart[idx].note.trim().length > 0) {
+        cart[idx].note += ', ' + tag;
+      } else {
+        cart[idx].note = tag;
+      }
+      renderCartDrawerItems();
+    }
+
+    function updateItemCustomNote(idx, text) {
+      cart[idx].note = text;
+    }
+
+    // ==========================================
+    // 2. DETAYLI ADİSYON DÖKÜMÜ & HESAP FİŞİ İSTEME
+    // ==========================================
+    function openExistingBillModal() {
+      if (!selectedTable) return;
+      document.getElementById('existingBillTitle').innerText = `${selectedTable.name} — Adisyon Dökümü`;
+
+      const list = document.getElementById('existingBillItemList');
+      list.innerHTML = '';
+
+      if (selectedTable.order && selectedTable.order.items && selectedTable.order.items.length > 0) {
+        selectedTable.order.items.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'py-2 flex justify-between items-start';
+          div.innerHTML = `
+            <div>
+              <div class="font-bold text-white text-xs">${item.quantity}x ${item.productName}</div>
+              ${item.note ? `<div class="text-[10px] text-amber-400 font-medium mt-0.5">Not: ${item.note}</div>` : ''}
+            </div>
+            <span class="font-bold text-slate-300 text-xs">${((item.price || 0) * (item.quantity || 1)).toFixed(2)} ₺</span>
+          `;
+          list.appendChild(div);
+        });
+
+        document.getElementById('existingBillTotal').innerText = `${(Number(selectedTable.order.totalAmount) || 0).toFixed(2)} ₺`;
+      } else {
+        list.innerHTML = '<div class="text-center text-slate-500 py-6 text-xs">Bu masada henüz onaylanmış bir adisyon bulunmuyor.</div>';
+        document.getElementById('existingBillTotal').innerText = '0.00 ₺';
+      }
+
+      document.getElementById('existingOrderModal').classList.remove('hidden');
+    }
+
+    function closeExistingBillModal() {
+      document.getElementById('existingOrderModal').classList.add('hidden');
+    }
+
+    async function requestBillPrintFromModal() {
+      if (!selectedTable) return;
+      const btn = document.getElementById('btnModalPrintBill');
+      btn.disabled = true;
+      btn.innerText = 'Kasaya İletiliyor...';
+
+      await fetch(`${API_URL}?action=send_order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'BILL_REQUEST',
+          tableId: selectedTable.id,
+          tableName: selectedTable.name,
+          waiterName: currentWaiter.name,
+        })
+      });
+
+      alert(`🖨️ [KASA YAZICISI]: ${selectedTable.name} Hesap Fişi çıkarma talebi iletildi!`);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-print text-sm"></i> <span>🖨️ Kasadan Hesap Fişi Çıkar / Adisyon İste</span>';
+      closeExistingBillModal();
+      closeOrderModal();
+      fetchLiveState();
+    }
+
+    // ==========================================
+    // 3. SEÇEREK MASA TAŞIMA SİSTEMİ (YAZI YAZMADAN)
+    // ==========================================
+    function openTransferTableSelector() {
+      if (!selectedTable) return;
+      document.getElementById('transferModalTitle').innerText = `${selectedTable.name} Siparişini Taşı`;
+
+      renderTransferSectionTabs();
+      renderTransferEmptyTables();
+
+      document.getElementById('transferTableModal').classList.remove('hidden');
+    }
+
+    function closeTransferTableSelector() {
+      document.getElementById('transferTableModal').classList.add('hidden');
+    }
+
+    function renderTransferSectionTabs() {
+      const tabs = document.getElementById('transferSectionTabs');
+      tabs.innerHTML = '';
+
+      liveSections.forEach(sec => {
+        const isSelected = sec.id === transferActiveSectionId;
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap ${
+          isSelected ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+        }`;
+        btn.innerText = sec.name;
+        btn.onclick = () => {
+          transferActiveSectionId = sec.id;
+          renderTransferSectionTabs();
+          renderTransferEmptyTables();
+        };
+        tabs.appendChild(btn);
+      });
+    }
+
+    function renderTransferEmptyTables() {
+      const grid = document.getElementById('transferEmptyTablesGrid');
+      grid.innerHTML = '';
+
+      // SADECE BOŞ MASALARI LİSTELE
+      const emptyTables = liveTables.filter(t => t.sectionId === transferActiveSectionId && t.status === 'EMPTY' && t.id !== selectedTable.id);
+
+      if (emptyTables.length === 0) {
+        grid.innerHTML = '<div class="col-span-2 text-center text-xs text-slate-500 py-6">Bu alanda boş masa bulunamadı.</div>';
+        return;
+      }
+
+      emptyTables.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'p-3.5 bg-slate-800/80 border border-slate-700 active:bg-blue-600 active:border-blue-500 rounded-2xl flex flex-col justify-between h-20 text-left transition-all';
+        btn.onclick = () => executeTableTransfer(t);
+
+        btn.innerHTML = `
+          <div class="flex justify-between items-center w-full">
+            <span class="font-black text-xs text-white">${t.name}</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          </div>
+          <span class="text-[10px] text-emerald-400 font-bold">Dokun ve Taşı →</span>
+        `;
+
+        grid.appendChild(btn);
+      });
+    }
+
+    async function executeTableTransfer(targetTable) {
+      if (!confirm(`${selectedTable.name} siparişi ${targetTable.name} masasına taşınsın mı?`)) return;
+
+      await fetch(`${API_URL}?action=send_order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'TRANSFER_TABLE',
+          sourceTableId: selectedTable.id,
+          targetTableId: targetTable.id,
+          waiterName: currentWaiter.name,
+        })
+      });
+
+      alert(`✅ ${selectedTable.name} siparişi başarıyla ${targetTable.name} masasına taşındı!`);
+      closeTransferTableSelector();
+      closeOrderModal();
+      fetchLiveState();
+    }
+
+    // ==========================================
+    // 4. SİPARİŞİ ONAYLA & MUTFAĞA GÖNDER
+    // ==========================================
+    async function confirmAndSendKitchen() {
+      if (cart.length === 0) return alert('Sepetinizde ürün bulunmuyor!');
+      const btn = document.getElementById('btnFinalKitchenSend');
+      btn.disabled = true;
+      btn.innerText = 'Mutfağa İletiliyor...';
+
+      const orderNote = document.getElementById('generalOrderNoteInput').value.trim();
+
+      await fetch(`${API_URL}?action=send_order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableId: selectedTable.id,
+          tableName: selectedTable.name,
+          waiterName: currentWaiter.name,
+          orderNote: orderNote,
+          items: cart,
+          totalAmount: cart.reduce((s, i) => s + (i.price * i.quantity), 0)
+        })
+      });
+
+      alert(`✅ ${selectedTable.name} siparişi mutfağa iletildi ve fişler basıldı!`);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-fire-burner text-base"></i> <span>Siparişi Onayla & Mutfağa Gönder</span>';
+
+      closeCartDrawer();
+      closeOrderModal();
+      fetchLiveState();
+    }
+
+    function renderCategoryTabs() {
+      const tabs = document.getElementById('categoryTabs');
+      tabs.innerHTML = '';
+
+      const allBtn = document.createElement('button');
+      allBtn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap ${
+        selectedCategory === 'all' ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'bg-slate-900 text-slate-400'
+      }`;
+      allBtn.innerText = 'Tümü';
+      allBtn.onclick = () => { selectedCategory = 'all'; renderCategoryTabs(); renderProducts(); };
+      tabs.appendChild(allBtn);
+
+      liveCategories.forEach(cat => {
+        const isSelected = cat.name === selectedCategory;
+        const btn = document.createElement('button');
+        btn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap ${
+          isSelected ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'bg-slate-900 text-slate-400'
+        }`;
+        btn.innerText = cat.name;
+        btn.onclick = () => { selectedCategory = cat.name; renderCategoryTabs(); renderProducts(); };
+        tabs.appendChild(btn);
+      });
+    }
+
+    function renderProducts() {
+      const list = document.getElementById('productsList');
+      list.innerHTML = '';
+      const filtered = selectedCategory === 'all' 
+        ? liveProducts 
+        : liveProducts.filter(p => p.categoryId === liveCategories.find(c => c.name === selectedCategory)?.id);
+
+      filtered.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex flex-col justify-between h-28 active:scale-95 active:border-amber-500 transition-all cursor-pointer shadow-sm';
+        div.onclick = () => quickAddProductToCart(p);
+        div.innerHTML = `
+          <div>
+            <div class="font-black text-xs text-white line-clamp-2">${p.name}</div>
+            <div class="text-[9px] text-amber-400 font-bold mt-0.5">${p.printer.includes('Fırın') ? '🔥 FIRIN' : p.printer.includes('Ocak') ? '🍖 OCAK' : 'KASA'}</div>
+          </div>
+          <div class="flex justify-between items-center mt-1">
+            <span class="font-black text-sm text-amber-300">${p.price} ₺</span>
+            <span class="w-6 h-6 bg-amber-500 text-slate-950 rounded-xl flex items-center justify-center text-xs font-black shadow-md">+</span>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>

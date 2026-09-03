@@ -7,17 +7,27 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ==========================================
+// 1. CARİ VE MÜŞTERİ MODÜLÜ (CALLER ID & PAKET DESTEKLİ)
+// ==========================================
 model Customer {
   id           String                @id @default(uuid())
   name         String
-  phone        String?
+  phone        String?               @unique
+  altPhone     String?
   email        String?
   address      String?
+  buildingNo   String?
+  floor        String?
+  apartmentNo  String?
+  addressNotes String?               // Örn: "4. kat, zil bozuk"
   notes        String?
-  balance      Float                 @default(0)
+  balance      Float                 @default(0) // Cari bakiye
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
   transactions CustomerTransaction[]
+  orders       Order[]
+  callLogs     CallLog[]
 }
 
 model CustomerTransaction {
@@ -32,28 +42,249 @@ model CustomerTransaction {
   createdAt     DateTime @default(now())
 }
 
+model CallLog {
+  id          String    @id @default(uuid())
+  phoneNumber String
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status      String    @default("RINGING") // RINGING, ANSWERED, MISSED, ORDER_CREATED
+  createdAt   DateTime  @default(now())
+}
+
+// ==========================================
+// 2. PERSONEL VE GARSON CİHAZ YETKİLENDİRME
+// ==========================================
 model Employee {
-  id         String            @id @default(uuid())
-  fullName   String
-  phone      String?
-  position   String?
-  salary     Float             @default(0)
-  iban       String?
-  balance    Float             @default(0)
-  isActive   Boolean           @default(true)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  payments   EmployeePayment[]
+  id                 String            @id @default(uuid())
+  fullName           String
+  phone              String?
+  position           String?           // WAITER, CASHIER, CHEF, COURIER, MANAGER
+  role               String            @default("WAITER") // ADMIN, CASHIER, WAITER, KITCHEN
+  pinCode            String?           // Garson 4 Haneli Hızlı Giriş Şifresi
+  qrToken            String?           @unique // Cihaz eşleştirme benzersiz anahtarı
+  salary             Float             @default(0)
+  iban               String?
+  balance            Float             @default(0)
+  isActive           Boolean           @default(true)
+  allowedSectionIds  String?           // İzinli olduğu alanlar (JSON array örn: ["salon","bahce"])
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  payments           EmployeePayment[]
+  orders             Order[]
+  pairedDevices      DevicePairing[]
 }
 
 model EmployeePayment {
   id            String   @id @default(uuid())
   employeeId    String
   employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  type          String   // SALARY_ACCRUAL (Maaş Hak Edişi), ADVANCE (Avans), SALARY_PAYMENT (Maaş Ödemesi), BONUS (Prim), DEDUCTION (Kesinti)
+  type          String   // SALARY_ACCRUAL, ADVANCE, SALARY_PAYMENT, BONUS, DEDUCTION
   amount        Float
   paymentMethod String   @default("BANK")
   date          DateTime @default(now())
   description   String?
   createdAt     DateTime @default(now())
+}
+
+model DevicePairing {
+  id           String    @id @default(uuid())
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  deviceName   String    // Örn: "Ahmet Garson iPhone 13"
+  deviceFingerprint String @unique
+  isApproved   Boolean   @default(true)
+  lastSeenAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+}
+
+// ==========================================
+// 3. RESTORAN YERLEŞİM (BÖLGELER VE MASALAR)
+// ==========================================
+model Section {
+  id         String     @id @default(uuid())
+  name       String     // "Bahçe", "Salon", "Teras", "Paket Servis"
+  orderIndex Int        @default(0)
+  isActive   Boolean    @default(true)
+  tables     Table[]
+  orders     Order[]
+}
+
+model Table {
+  id         String     @id @default(uuid())
+  sectionId  String
+  section    Section    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  name       String     // "Masa 1", "Bahçe 4", "B-12"
+  capacity   Int        @default(4)
+  status     String     @default("EMPTY") // EMPTY, OCCUPIED, BILL_REQUESTED, RESERVED
+  posX       Int        @default(0)
+  posY       Int        @default(0)
+  isActive   Boolean    @default(true)
+  orders     Order[]
+}
+
+// ==========================================
+// 4. DONANIM VE YAZICI YÖNLENDİRME (ESC/POS)
+// ==========================================
+model Printer {
+  id             String     @id @default(uuid())
+  name           String     // "Kasa Yazıcı", "Fırın Yazıcı", "Ocak Yazıcı"
+  type           String     @default("NETWORK") // NETWORK (Ethernet IP), USB, SERIAL
+  ipAddress      String?    // Örn: "192.168.1.150"
+  port           Int        @default(9100)
+  usbDeviceName  String?    // Windows USB Aygıt Adı (Afanda 892E)
+  paperWidth     Int        @default(80) // 80mm veya 58mm
+  isBillPrinter  Boolean    @default(false) // Hesap fişi buradan mı çıksın?
+  isKitchen      Boolean    @default(false) // Mutfak yazıcısı mı?
+  autoCut        Boolean    @default(true)
+  beepOnPrint    Boolean    @default(true)
+  isActive       Boolean    @default(true)
+  categories     Category[]
+  products       Product[]
+}
+
+// ==========================================
+// 5. MENÜ, KATEGORİ VE ÜRÜNLER
+// ==========================================
+model Category {
+  id          String    @id @default(uuid())
+  name        String    // "Kebaplar", "Pide & Lahmacun", "İçecekler", "Tatlılar"
+  icon        String?   // Lucide icon name
+  color       String?   // UI Renk kodu
+  orderIndex  Int       @default(0)
+  printerId   String?   // Varsayılan Mutfak Yazıcısı (Fırın / Ocak)
+  printer     Printer?  @relation(fields: [printerId], references: [id], onDelete: SetNull)
+  products    Product[]
+  isActive    Boolean   @default(true)
+}
+
+model Product {
+  id             String          @id @default(uuid())
+  categoryId     String
+  category       Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name           String          // "Adana Kebap", "Lahmacun", "Kuşbaşılı Pide"
+  price          Float
+  costPrice      Float           @default(0) // Maliyet takibi için
+  description    String?
+  image          String?
+  barcode        String?
+  vatRate        Int             @default(10) // KDV Oranı (%)
+  isAvailable    Boolean         @default(true) // Stokta / Menüde var mı?
+  preparationMin Int             @default(15) // Tahmini hazırlık süresi (dk)
+  printerId      String?         // Kategori yazıcısını ezmek isterse özel yazıcı
+  printer        Printer?        @relation(fields: [printerId], references: [id], onDelete: SetNull)
+  options        ProductOption[]
+  orderItems     OrderItem[]
+  isActive       Boolean         @default(true)
+}
+
+model ProductOption {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String   // "1.5 Porsiyon", "Dürüm", "Acılı", "Soğansız", "Az Pişmiş"
+  extraPrice Float    @default(0)
+  isDefault  Boolean  @default(false)
+}
+
+// ==========================================
+// 6. ADİSYON VE SİPARİŞ SİSTEMİ
+// ==========================================
+model Order {
+  id             String                @id @default(uuid())
+  orderNumber    Int                   // Günlük artan sipariş no (#101, #102)
+  orderType      String                @default("DINE_IN") // DINE_IN, TAKE_AWAY, DELIVERY, TRENDYOL, GETIR, YEMEKSEPETI
+  status         String                @default("OPEN") // OPEN, PREPARING, READY, COMPLETED, CANCELLED
+  tableId        String?
+  table          Table?                @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  sectionId      String?
+  section        Section?              @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  waiterId       String?
+  waiter         Employee?             @relation(fields: [waiterId], references: [id], onDelete: SetNull)
+  customerId     String?
+  customer       Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  
+  // Finansal Alanlar
+  totalAmount    Float                 @default(0)
+  discountAmount Float                 @default(0)
+  payableAmount  Float                 @default(0)
+  paidAmount     Float                 @default(0)
+  
+  // Paket & Müşteri Notları
+  orderNote      String?
+  deliveryAddress String?
+  courierName    String?
+  
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  closedAt       DateTime?
+  
+  items          OrderItem[]
+  payments       OrderPayment[]
+  onlineOrder    OnlinePlatformOrder?
+}
+
+model OrderItem {
+  id               String    @id @default(uuid())
+  orderId          String
+  order            Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productName      String
+  quantity         Int       @default(1)
+  unitPrice        Float
+  totalPrice       Float
+  selectedOptions  String?   // JSON array: ["Acılı", "1.5 Porsiyon"]
+  note             String?   // "Lavaş ekstra sıcak olsun"
+  status           String    @default("PENDING") // PENDING, SENT_TO_KITCHEN, PREPARING, READY, SERVED, CANCELLED, GIFT
+  isGift           Boolean   @default(false) // İkram ürünü
+  cancelReason     String?
+  
+  // Yazıcı Baskı Takibi (Mükerrer yazdırmayı önler)
+  printedToKitchen Boolean   @default(false)
+  printedAt        DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model OrderPayment {
+  id            String   @id @default(uuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentType   String   // CASH, CREDIT_CARD, MEAL_CARD (Sodexo/Multinet), DEBT (Cari Hesap)
+  note          String?
+  createdAt     DateTime @default(now())
+}
+
+// ==========================================
+// 7. YEMEK PLATFORMLARI (TRENDYOL, GETİR, YEMEKSEPETİ)
+// ==========================================
+model OnlinePlatformOrder {
+  id               String   @id @default(uuid())
+  orderId          String   @unique
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  platform         String   // TRENDYOL, GETIR, YEMEKSEPETI
+  platformOrderId  String
+  platformShortCode String? // Örn: "#GY-842"
+  rawPayload       String?  // Gelen ham JSON verisi
+  status           String   @default("NEW") // NEW, ACCEPTED, PREPARING, ON_DELIVERY, DELIVERED, CANCELLED
+  createdAt        DateTime @default(now())
+}
+
+// ==========================================
+// 8. KASA GÜN SONU VE Z RAPORU
+// ==========================================
+model DailyRegister {
+  id             String    @id @default(uuid())
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+  openingBalance Float     @default(0)
+  cashTotal      Float     @default(0)
+  cardTotal      Float     @default(0)
+  mealCardTotal  Float     @default(0)
+  onlineTotal    Float     @default(0)
+  debtTotal      Float     @default(0)
+  discountTotal  Float     @default(0)
+  netTotal       Float     @default(0)
+  notes          String?
+  status         String    @default("OPEN") // OPEN, CLOSED
 }

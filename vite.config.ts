@@ -1,8 +1,8 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import electron from 'vite-plugin-electron'
-import renderer from 'vite-plugin-electron-renderer'
-import path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import electron from 'vite-plugin-electron';
+import renderer from 'vite-plugin-electron-renderer';
+import path from 'path';
 
 export default defineConfig({
   plugins: [
@@ -10,6 +10,22 @@ export default defineConfig({
     electron([
       {
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: [
+                '@prisma/client',
+                'prisma',
+                'ws',
+                'bufferutil',
+                'utf-8-validate',
+                'express',
+                'cors'
+              ],
+            },
+          },
+        },
       },
     ]),
     renderer(),
@@ -19,4 +35,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-})
+  server: {
+    port: 5173,
+  },
+});

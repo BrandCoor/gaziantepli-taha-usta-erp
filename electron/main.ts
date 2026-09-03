@@ -1,38 +1,23 @@
-import { app, BrowserWindow, Menu, ipcMain, nativeImage } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import path from 'path';
-
-Menu.setApplicationMenu(null);
+import { startLocalServer } from './server';
 
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    show: false,
     width: 1400,
     height: 900,
     minWidth: 1024,
-    minHeight: 650,
-    frame: false,
-    autoHideMenuBar: true,
-    title: 'Gaziantepli Taha Usta',
-    focusable: true,
+    minHeight: 700,
+    title: 'Gaziantepli Taha Usta - Restoran Otomasyon Sistemi',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      spellcheck: false,
     },
   });
 
-  mainWindow.removeMenu();
-  mainWindow.setMenuBarVisibility(false);
-
-  mainWindow.once('ready-to-show', () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.maximize();
-    }
-  });
-
+  // Geliştirme ortamında Vite yerel portunu dinle
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -44,34 +29,19 @@ function createWindow() {
   });
 }
 
-// Pencere Kontrolleri
-ipcMain.on('window-minimize', () => {
-  if (mainWindow) {
-    mainWindow.minimize();
-  }
-});
+app.whenReady().then(() => {
+  // 1. Kasa Yerel API ve WebSocket Sunucusunu Başlat
+  startLocalServer(4545);
 
-ipcMain.on('window-close', () => {
-  if (mainWindow) {
-    mainWindow.close();
-  }
-  app.quit();
-});
+  // 2. Ana Masaüstü Arayüzünü Aç
+  createWindow();
 
-ipcMain.on('update-app-icon', (event, circularBase64Icon) => {
-  if (circularBase64Icon && mainWindow) {
-    try {
-      const image = nativeImage.createFromDataURL(circularBase64Icon);
-      if (!image.isEmpty()) {
-        mainWindow.setIcon(image);
-      }
-    } catch (e) {
-      console.error('İkon hatası:', e);
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
     }
-  }
+  });
 });
-
-app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
