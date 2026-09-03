@@ -1,8 +1,9 @@
-﻿import React from 'react';
+import React from 'react';
 import { notify } from '../../services/notificationService';
-import { Minus, Maximize, Power, Lock, Calendar, Clock, ShieldCheck, Sparkles } from 'lucide-react';
+import { Minus, Maximize, Power, Lock, Calendar, Clock, ShieldCheck, Sparkles, Menu } from 'lucide-react';
 
 interface HeaderProps {
+  onToggleMobileMenu?: () => void;
   pendingAccrualCount?: number;
   onOpenPendingAccruals?: () => void;
   onQuickDebt?: () => void;
@@ -13,7 +14,7 @@ interface HeaderProps {
   onLockApp?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onLockApp }) => {
+export const Header: React.FC<HeaderProps> = ({ onLockApp, onToggleMobileMenu }) => {
   const currentDate = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
 
   const handleMinimize = (e: React.MouseEvent) => {
@@ -51,14 +52,23 @@ export const Header: React.FC<HeaderProps> = ({ onLockApp }) => {
   return (
     <header className="h-14 bg-[#121214] border-b border-[#2C2C34] px-5 flex items-center justify-between select-none z-30 flex-shrink-0 text-[#FAF7F2]" style={{ WebkitAppRegion: 'drag' } as any}>
       
-      {/* Sol: Tarih & Canlı Durum */}
-      <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        <div className="flex items-center gap-2 text-xs font-bold text-[#E4E4E8]">
-          <Calendar className="w-4 h-4 text-[#F5C877]" />
-          <span>{currentDate}</span>
+      {/* Sol: Menü butonu (Mobil) & Tarih & Canlı Durum */}
+      <div className="flex items-center gap-2 sm:gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        {onToggleMobileMenu && (
+          <button
+            onClick={onToggleMobileMenu}
+            className="lg:hidden p-2 rounded-xl bg-[#1C1C20] border border-[#2C2C34] text-[#F5C877] hover:text-white"
+            title="Ana Menüyü Aç"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+        )}
+        <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold text-[#E4E4E8]">
+          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#F5C877]" />
+          <span className="hidden xs:inline truncate max-w-[120px] sm:max-w-none">{currentDate}</span>
         </div>
-        <div className="h-4 w-px bg-[#2C2C34]"></div>
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-full text-[10px] font-black uppercase">
+        <div className="hidden sm:block h-4 w-px bg-[#2C2C34]"></div>
+        <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-full text-[10px] font-black uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-[#F5C877] animate-pulse"></span>
           <span>Ana Kasa Terminali Aktif</span>
         </div>

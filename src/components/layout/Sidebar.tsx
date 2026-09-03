@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { 
   LayoutDashboard, 
   UtensilsCrossed, 
@@ -32,11 +32,18 @@ export type ActiveTab =
 interface SidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
+  mobileOpen?: boolean;
+  onClose?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, mobileOpen, onClose }) => {
   const canManageUsers = dataService.hasPermission('USERS_MANAGE');
   const company = dataService.getCompanySettings();
+
+  const handleSelectTab = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    if (onClose) onClose();
+  };
 
   const posMenuItems = [
     { id: 'pos', label: '🍽️ Restoran Masaları (POS)', icon: UtensilsCrossed, highlight: true },
@@ -61,34 +68,44 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     settingsMenuItems.push({ id: 'company-settings', label: 'Firma & Logo Ayarları', icon: Building2 });
   }
 
-  return (
+  const sidebarBody = (
     <aside className="w-72 bg-[#161619] text-[#E4E4E8] flex flex-col h-full border-r border-[#2C2C34] select-none shadow-2xl z-20 flex-shrink-0">
       
       {/* ÜST LOGO & BAŞLIK ALANI */}
-      <div className="h-24 flex items-center gap-3.5 px-6 border-b border-[#2C2C34] bg-[#121214]">
+      <div className="h-20 sm:h-24 flex items-center gap-3.5 px-5 sm:px-6 border-b border-[#2C2C34] bg-[#121214] relative">
         {company.logoBase64 ? (
-          <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-[#F5C877]/80 shadow-xl bg-black flex-shrink-0">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-[#F5C877]/80 shadow-xl bg-black flex-shrink-0">
             <img src={company.logoBase64} alt={company.companyName} className="w-full h-full object-fill rounded-full" />
           </div>
         ) : (
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F5C877] via-[#D4A351] to-[#A87B28] border border-[#F5C877]/50 flex items-center justify-center text-[#141416] font-black text-xl shadow-lg shadow-[#F5C877]/10 flex-shrink-0">
-            <UtensilsCrossed className="w-7 h-7 text-[#141416]" />
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-[#F5C877] via-[#D4A351] to-[#A87B28] border border-[#F5C877]/50 flex items-center justify-center text-[#141416] font-black text-xl shadow-lg shadow-[#F5C877]/10 flex-shrink-0">
+            <UtensilsCrossed className="w-6 h-6 sm:w-7 sm:h-7 text-[#141416]" />
           </div>
         )}
 
-        <div className="overflow-hidden">
-          <h1 className="font-black text-sm text-[#FAF7F2] truncate tracking-tight uppercase" title={company.companyName || 'GAZİANTEPLİ TAHA USTA'}>
+        <div className="overflow-hidden flex-1 min-w-0 pr-2">
+          <h1 className="font-black text-xs sm:text-sm text-[#FAF7F2] truncate tracking-tight uppercase" title={company.companyName || 'GAZİANTEPLİ TAHA USTA'}>
             {company.companyName || 'GAZİANTEPLİ TAHA USTA'}
           </h1>
-          <p className="text-[11px] text-[#F5C877] font-bold tracking-wide flex items-center gap-1.5 mt-0.5">
+          <p className="text-[10px] sm:text-[11px] text-[#F5C877] font-bold tracking-wide flex items-center gap-1.5 mt-0.5">
             <span className="w-2 h-2 rounded-full bg-[#F5C877] animate-pulse"></span>
             Restoran & POS ERP
           </p>
         </div>
+
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-2 text-[#8E8E98] hover:text-white rounded-xl hover:bg-[#202025]"
+            title="Kapat"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* MENÜ LİSTESİ */}
-      <div className="flex-1 py-4 px-3 space-y-5 overflow-y-auto">
+      <div className="flex-1 py-4 px-3 space-y-4 overflow-y-auto">
         
         {/* 1. RESTORAN VE MASALAR */}
         <div className="space-y-1">
@@ -102,7 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id as ActiveTab)}
+                onClick={() => handleSelectTab(item.id as ActiveTab)}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
                   isActive 
                     ? 'bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black shadow-lg shadow-[#F5C877]/15 translate-x-1' 
@@ -127,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id as ActiveTab)}
+                onClick={() => handleSelectTab(item.id as ActiveTab)}
                 className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
                   isActive 
                     ? 'bg-[#282830] text-[#F5C877] border border-[#F5C877]/40 shadow-md translate-x-1 font-black' 
@@ -152,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id as ActiveTab)}
+                onClick={() => handleSelectTab(item.id as ActiveTab)}
                 className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
                   isActive 
                     ? 'bg-[#282830] text-[#F5C877] border border-[#F5C877]/40 shadow-md translate-x-1 font-black' 
@@ -169,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       </div>
 
       {/* ALT VERSİYON VE DONANIM BİLGİSİ */}
-      <div className="p-4 border-t border-[#2C2C34] bg-[#121214] text-[10px] text-[#8E8E98] flex items-center justify-between">
+      <div className="p-3.5 border-t border-[#2C2C34] bg-[#121214] text-[10px] text-[#8E8E98] flex items-center justify-between">
         <div>
           <div className="font-black text-[#F5C877]">Gaziantepli Taha Usta</div>
           <div>Afanda 892E & POS Hazır</div>
@@ -180,5 +197,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       </div>
 
     </aside>
+  );
+
+  return (
+    <>
+      {/* Desktop static */}
+      <div className="hidden lg:flex h-full flex-shrink-0">
+        {sidebarBody}
+      </div>
+
+      {/* Mobile drawer with backdrop */}
+      {mobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/80 z-50 lg:hidden backdrop-blur-sm animate-fadeIn flex"
+          onClick={onClose}
+        >
+          <div className="h-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {sidebarBody}
+          </div>
+        </div>
+      )}
+    </>
   );
 };

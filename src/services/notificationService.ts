@@ -1,4 +1,4 @@
-﻿export type ToastType = 'success' | 'error' | 'warning' | 'info';
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 export interface ToastItem {
   id: string;
@@ -57,20 +57,36 @@ class NotificationService {
     }
   }
 
-  public success(title: string, message: string) {
-    this.showToast('success', title, message);
+  public success(titleOrMsg: string, message?: string) {
+    if (message === undefined) {
+      this.showToast('success', 'İşlem Başarılı', titleOrMsg);
+    } else {
+      this.showToast('success', titleOrMsg, message);
+    }
   }
 
-  public error(title: string, message: string) {
-    this.showToast('error', title, message, 4500);
+  public error(titleOrMsg: string, message?: string) {
+    if (message === undefined) {
+      this.showToast('error', 'Hata', titleOrMsg, 4500);
+    } else {
+      this.showToast('error', titleOrMsg, message, 4500);
+    }
   }
 
-  public warning(title: string, message: string) {
-    this.showToast('warning', title, message, 4000);
+  public warning(titleOrMsg: string, message?: string) {
+    if (message === undefined) {
+      this.showToast('warning', 'Uyarı', titleOrMsg, 4000);
+    } else {
+      this.showToast('warning', titleOrMsg, message, 4000);
+    }
   }
 
-  public info(title: string, message: string) {
-    this.showToast('info', title, message);
+  public info(titleOrMsg: string, message?: string) {
+    if (message === undefined) {
+      this.showToast('info', 'Bilgi', titleOrMsg);
+    } else {
+      this.showToast('info', titleOrMsg, message);
+    }
   }
 
   public removeToast(id: string) {

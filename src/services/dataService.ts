@@ -61,6 +61,13 @@ export interface EmployeePayment {
   paymentMethod: 'CASH' | 'BANK' | string;
   date: string;
   description?: string;
+  // Mesai & Vardiya Hesap Detayları
+  overtimeHours?: number;
+  overtimeMultiplier?: number;
+  normalDailyHours?: number;
+  hourlyRate?: number;
+  isManualAmount?: boolean;
+  payoutType?: 'CASH_IMMEDIATE' | 'SALARY_ACCRUAL';
   createdAt: string;
 }
 
@@ -139,19 +146,65 @@ const STORAGE_KEYS = {
   COMPANY: 'gtu_erp_company_settings',
 };
 
-const DEFAULT_SUPPLIERS: Supplier[] = [
-  { id: 'sup-1', name: 'Antep Et & Kasap Dünyası', contactPerson: 'Mustafa Usta', phone: '0532 222 33 44', category: 'Et & Tavuk', address: 'Gaziantep Kasaplar Hali', balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'sup-2', name: 'Hal Sebze & Meyve Tedarik', contactPerson: 'Ali Bey', phone: '0544 333 44 55', category: 'Hal / Sebze', address: 'Şehitkamil Toptancılar Hali', balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'sup-3', name: 'Gaziantep Un & Fırın Malzemeleri', contactPerson: 'Hasan Bey', phone: '0342 555 11 22', category: 'Un / Fırın', address: 'Sanayi Sitesi', balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-];
+const DEFAULT_SUPPLIERS: Supplier[] = [];
 
-const DEFAULT_CUSTOMERS: Customer[] = [
-  { id: 'cust-1', name: 'Ahmet Demir (Cari Müşteri)', phone: '0532 111 22 33', address: 'Şehitkamil / Gaziantep', balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'cust-2', name: 'Gaziantep İnşaat A.Ş.', phone: '0342 222 33 44', address: 'İncilipınar Mah. No:12', balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-];
+const DEFAULT_CUSTOMERS: Customer[] = [];
+
+const DEFAULT_EMPLOYEES: Employee[] = [];
 
 class DataService {
   private listeners: Set<() => void> = new Set();
+
+  constructor() {
+    this.purgeDemoData();
+  }
+
+  private purgeDemoData() {
+    try {
+      const demoSupIds = ['sup-1', 'sup-2', 'sup-3'];
+      const demoCustIds = ['cust-1', 'cust-2'];
+      const demoEmpIds = ['emp-1', 'emp-2', 'emp-3', 'emp-4', 'emp-5'];
+
+      const rawCust = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
+      if (rawCust) {
+        const custs: Customer[] = JSON.parse(rawCust);
+        const filtered = custs.filter(c => !demoCustIds.includes(c.id));
+        if (filtered.length !== custs.length) {
+          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(filtered));
+        }
+      }
+
+      const rawSup = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
+      if (rawSup) {
+        const sups: Supplier[] = JSON.parse(rawSup);
+        const filtered = sups.filter(s => !demoSupIds.includes(s.id));
+        if (filtered.length !== sups.length) {
+          localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(filtered));
+        }
+      }
+
+      const rawEmp = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
+      if (rawEmp) {
+        const emps: Employee[] = JSON.parse(rawEmp);
+        const filtered = emps.filter(e => !demoEmpIds.includes(e.id));
+        if (filtered.length !== emps.length) {
+          localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(filtered));
+        }
+      }
+
+      // Purge demo payments
+      const rawPay = localStorage.getItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS);
+      if (rawPay) {
+        const pays: EmployeePayment[] = JSON.parse(rawPay);
+        const filtered = pays.filter(p => !demoEmpIds.includes(p.employeeId));
+        if (filtered.length !== pays.length) {
+          localStorage.setItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS, JSON.stringify(filtered));
+        }
+      }
+    } catch (e) {
+      console.warn('Demo purge error:', e);
+    }
+  }
 
   public subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -165,7 +218,13 @@ class DataService {
   // 1. MÜŞTERİLER
   public getCustomers(): Customer[] {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    return data ? JSON.parse(data) : DEFAULT_CUSTOMERS;
+    if (!data) return [...DEFAULT_CUSTOMERS];
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [...DEFAULT_CUSTOMERS];
+    } catch {
+      return [...DEFAULT_CUSTOMERS];
+    }
   }
 
   public saveCustomers(customers: Customer[]) {
@@ -178,6 +237,7 @@ class DataService {
     const newCust: Customer = {
       ...c,
       id: `cust-${Date.now()}`,
+      balance: Number(c.balance) || 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -211,11 +271,31 @@ class DataService {
 
   public getCustomerTransactions(): CustomerTransaction[] {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMER_TX);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
 
   public saveCustomerTransactions(txs: CustomerTransaction[]) {
     localStorage.setItem(STORAGE_KEYS.CUSTOMER_TX, JSON.stringify(txs));
+    this.notify();
+  }
+
+  public getCustomerWithTransactions(customerId: string): (Customer & { transactions: CustomerTransaction[] }) | null {
+    const customer = this.getCustomers().find(c => c.id === customerId);
+    if (!customer) return null;
+    const allTx = this.getCustomerTransactions();
+    const transactions = allTx
+      .filter(t => t.customerId === customerId)
+      .sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
+    return {
+      ...customer,
+      transactions,
+    };
   }
 
   public addCustomerTransaction(customerId: string, tx: Omit<CustomerTransaction, 'id' | 'customerId' | 'createdAt'>): CustomerTransaction | null {
@@ -245,10 +325,71 @@ class DataService {
     return newTx;
   }
 
+  public updateCustomerTransaction(txId: string, partial: Partial<CustomerTransaction>) {
+    const transactions = this.getCustomerTransactions();
+    const txIndex = transactions.findIndex(t => t.id === txId);
+    if (txIndex === -1) return;
+
+    const oldTx = transactions[txIndex];
+    const customers = this.getCustomers();
+    const customer = customers.find(c => c.id === oldTx.customerId);
+
+    if (customer) {
+      if (oldTx.type === 'DEBT') {
+        customer.balance = (Number(customer.balance) || 0) - Number(oldTx.amount);
+      } else if (oldTx.type === 'COLLECTION') {
+        customer.balance = (Number(customer.balance) || 0) + Number(oldTx.amount);
+      }
+
+      const newAmount = partial.amount !== undefined ? Number(partial.amount) : oldTx.amount;
+      const newType = partial.type || oldTx.type;
+
+      if (newType === 'DEBT') {
+        customer.balance = (Number(customer.balance) || 0) + Number(newAmount);
+      } else if (newType === 'COLLECTION') {
+        customer.balance = (Number(customer.balance) || 0) - Number(newAmount);
+      }
+
+      customer.updatedAt = new Date().toISOString();
+      this.saveCustomers(customers);
+    }
+
+    transactions[txIndex] = { ...oldTx, ...partial };
+    this.saveCustomerTransactions(transactions);
+  }
+
+  public deleteCustomerTransaction(txId: string) {
+    const transactions = this.getCustomerTransactions();
+    const tx = transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    const customers = this.getCustomers();
+    const customer = customers.find(c => c.id === tx.customerId);
+
+    if (customer) {
+      if (tx.type === 'DEBT') {
+        customer.balance = (Number(customer.balance) || 0) - Number(tx.amount);
+      } else if (tx.type === 'COLLECTION') {
+        customer.balance = (Number(customer.balance) || 0) + Number(tx.amount);
+      }
+      customer.updatedAt = new Date().toISOString();
+      this.saveCustomers(customers);
+    }
+
+    const updated = transactions.filter(t => t.id !== txId);
+    this.saveCustomerTransactions(updated);
+  }
+
   // 2. TOPTANCILAR
   public getSuppliers(): Supplier[] {
     const data = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-    return data ? JSON.parse(data) : DEFAULT_SUPPLIERS;
+    if (!data) return [...DEFAULT_SUPPLIERS];
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [...DEFAULT_SUPPLIERS];
+    } catch {
+      return [...DEFAULT_SUPPLIERS];
+    }
   }
 
   public saveSuppliers(suppliers: Supplier[]) {
@@ -295,7 +436,13 @@ class DataService {
 
   public getSupplierTransactions(): SupplierTransaction[] {
     const data = localStorage.getItem(STORAGE_KEYS.SUPPLIER_TX);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
 
   public saveSupplierTransactions(txs: SupplierTransaction[]) {
@@ -394,7 +541,13 @@ class DataService {
   // 3. İŞLETME GİDERLERİ
   public getExpenses(): Expense[] {
     const data = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
 
   public saveExpensesList(expenses: Expense[]) {
@@ -414,6 +567,10 @@ class DataService {
     return newExp;
   }
 
+  public addExpense(exp: Omit<Expense, 'id' | 'createdAt'>): Expense {
+    return this.saveExpense(exp);
+  }
+
   public updateExpense(id: string, partial: Partial<Expense>) {
     const expenses = this.getExpenses().map(e => e.id === id ? { ...e, ...partial } : e);
     this.saveExpensesList(expenses);
@@ -424,15 +581,34 @@ class DataService {
     this.saveExpensesList(expenses);
   }
 
-  // 4. PERSONELLER
+  // 4. PERSONELLER & GARSONLAR
   public getEmployees(): Employee[] {
     const data = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
-    return data ? JSON.parse(data) : [];
+    if (!data) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      return [];
+    } catch {
+      return [];
+    }
   }
 
   public saveEmployees(emps: Employee[]) {
     localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(emps));
     this.notify();
+  }
+
+  public getEmployeeById(id: string): Employee | undefined {
+    const employees = this.getEmployees();
+    const emp = employees.find(e => e.id === id);
+    if (!emp) return undefined;
+    const payments = this.getEmployeePayments().filter(p => p.employeeId === id);
+    return { ...emp, payments };
   }
 
   public addEmployee(emp: Omit<Employee, 'id' | 'createdAt' | 'updatedAt' | 'balance'>): Employee {
@@ -472,27 +648,177 @@ class DataService {
     return { success: true };
   }
 
-  public getEmployeePayments(): EmployeePayment[] {
+  public getEmployeePayments(employeeId?: string): EmployeePayment[] {
     const data = localStorage.getItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS);
-    return data ? JSON.parse(data) : [];
+    const payments: EmployeePayment[] = data ? JSON.parse(data) : [];
+    if (employeeId) {
+      return payments.filter(p => p.employeeId === employeeId);
+    }
+    return payments;
   }
 
-  public addEmployeePayment(employeeId: string, payment: Omit<EmployeePayment, 'id' | 'employeeId' | 'createdAt'>) {
+  public recalculateEmployeeBalance(employeeId: string): number {
     const employees = this.getEmployees();
     const emp = employees.find(e => e.id === employeeId);
-    if (!emp) return;
+    if (!emp) return 0;
+
+    const allPayments = this.getEmployeePayments().filter(p => p.employeeId === employeeId);
+    let balance = 0;
+    allPayments.forEach(p => {
+      const amt = Number(p.amount) || 0;
+      if (p.type === 'SALARY_ACCRUAL' || p.type === 'OVERTIME_ACCRUAL' || p.type === 'BONUS' || p.type === 'TERMINATION_SETTLEMENT') {
+        balance += amt;
+      } else if (p.type === 'SALARY_PAYMENT' || p.type === 'OVERTIME_PAYMENT' || p.type === 'ADVANCE' || p.type === 'DEDUCTION') {
+        balance -= amt;
+      }
+    });
+
+    emp.balance = balance;
+    emp.updatedAt = new Date().toISOString();
+    this.saveEmployees(employees);
+    return balance;
+  }
+
+  public addEmployeePayment(employeeId: string, payment: Omit<EmployeePayment, 'id' | 'employeeId' | 'createdAt'>): EmployeePayment | null {
+    const employees = this.getEmployees();
+    const emp = employees.find(e => e.id === employeeId);
+    if (!emp) return null;
 
     const payments = this.getEmployeePayments();
-    const newPay: EmployeePayment = { ...payment, id: `ep-${Date.now()}`, employeeId, createdAt: new Date().toISOString() };
+    const newPay: EmployeePayment = { 
+      ...payment, 
+      id: `ep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`, 
+      employeeId, 
+      createdAt: new Date().toISOString() 
+    };
     payments.push(newPay);
     localStorage.setItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS, JSON.stringify(payments));
 
-    if (payment.type === 'SALARY_ACCRUAL') {
-      emp.balance = (Number(emp.balance) || 0) + Number(payment.amount);
-    } else {
-      emp.balance = (Number(emp.balance) || 0) - Number(payment.amount);
+    this.recalculateEmployeeBalance(employeeId);
+    this.notify();
+    return newPay;
+  }
+
+  public updateEmployeePayment(id: string, partial: Partial<EmployeePayment>): boolean {
+    const payments = this.getEmployeePayments();
+    const target = payments.find(p => p.id === id);
+    if (!target) return false;
+
+    const updated = payments.map(p => p.id === id ? { ...p, ...partial } : p);
+    localStorage.setItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS, JSON.stringify(updated));
+    this.recalculateEmployeeBalance(target.employeeId);
+    this.notify();
+    return true;
+  }
+
+  public deleteEmployeePayment(id: string): boolean {
+    const payments = this.getEmployeePayments();
+    const target = payments.find(p => p.id === id);
+    if (!target) return false;
+
+    const updated = payments.filter(p => p.id !== id);
+    localStorage.setItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS, JSON.stringify(updated));
+    this.recalculateEmployeeBalance(target.employeeId);
+    this.notify();
+    return true;
+  }
+
+  // MESAİ EKLEME (Katsayılı, Düzenlenebilir Normal Çalışma Saati, Manuel Ücret ve Nakit/Maaşa Aktarma)
+  public addOvertime(params: {
+    employeeId: string;
+    date: string;
+    normalDailyHours: number;
+    overtimeHours: number;
+    multiplier: number;
+    hourlyRate: number;
+    amount: number;
+    isManualAmount: boolean;
+    payoutType: 'CASH_IMMEDIATE' | 'SALARY_ACCRUAL';
+    paymentMethod?: 'CASH' | 'BANK' | string;
+    recordExpense?: boolean;
+    description?: string;
+  }): { success: boolean; message?: string } {
+    const employees = this.getEmployees();
+    const emp = employees.find(e => e.id === params.employeeId);
+    if (!emp) return { success: false, message: 'Personel bulunamadı.' };
+
+    const overtimeNote = params.description ? ` (${params.description})` : '';
+    const methodLabel = params.payoutType === 'CASH_IMMEDIATE' 
+      ? (params.paymentMethod === 'BANK' ? 'Banka Havalesi İle Gününde Ödendi' : 'Nakit Olarak Gününde Ödendi')
+      : 'Maaş / Hakedişe Eklendi';
+
+    const calculationDesc = params.isManualAmount
+      ? `${params.overtimeHours} Saat Fazla Mesai [Manuel Tutar: ${params.amount.toFixed(2)} ₺] - ${methodLabel}${overtimeNote}`
+      : `${params.overtimeHours} Saat Fazla Mesai [${params.multiplier}x Katsayı / Normal: ${params.normalDailyHours} Saat] - ${methodLabel}${overtimeNote}`;
+
+    // 1. Her durumda mesai hakedişi kaydı oluştur (OVERTIME_ACCRUAL)
+    this.addEmployeePayment(params.employeeId, {
+      type: 'OVERTIME_ACCRUAL',
+      amount: params.amount,
+      paymentMethod: params.paymentMethod || 'CASH',
+      date: params.date,
+      description: calculationDesc,
+      overtimeHours: params.overtimeHours,
+      overtimeMultiplier: params.multiplier,
+      normalDailyHours: params.normalDailyHours,
+      hourlyRate: params.hourlyRate,
+      isManualAmount: params.isManualAmount,
+      payoutType: params.payoutType,
+    });
+
+    // 2. Eğer "Gününde Nakit / Elden Ödendi" seçildiyse anında ödeme hareketi ekle
+    if (params.payoutType === 'CASH_IMMEDIATE') {
+      this.addEmployeePayment(params.employeeId, {
+        type: 'OVERTIME_PAYMENT',
+        amount: params.amount,
+        paymentMethod: params.paymentMethod || 'CASH',
+        date: params.date,
+        description: `Mesai Günü ${params.paymentMethod === 'BANK' ? 'Banka Havalesiyle' : 'Nakit'} Elden Ödendi (${params.overtimeHours} Saat Mesai Karşılığı)`,
+        overtimeHours: params.overtimeHours,
+        overtimeMultiplier: params.multiplier,
+        normalDailyHours: params.normalDailyHours,
+        hourlyRate: params.hourlyRate,
+        isManualAmount: params.isManualAmount,
+        payoutType: params.payoutType,
+      });
+
+      // İsteğe bağlı olarak genel restoran giderleri/kasa tablosuna da işle
+      if (params.recordExpense !== false) {
+        this.addExpense({
+          title: `Personel Mesai Ödemesi - ${emp.fullName}`,
+          category: 'Personel / Mesai',
+          amount: params.amount,
+          paymentMethod: params.paymentMethod === 'BANK' ? 'BANK' : 'CASH',
+          date: params.date,
+          description: `${emp.fullName} için ${params.overtimeHours} saat mesai ücreti ödendi.`,
+        });
+      }
     }
-    this.saveEmployees(employees);
+
+    this.recalculateEmployeeBalance(params.employeeId);
+    return { success: true };
+  }
+
+  // TOPLU MAAŞ TAHAKKUKU
+  public batchSalaryAccrual(periodDescription: string, date: string): { success: boolean; count: number } {
+    const employees = this.getEmployees().filter(e => e.isActive !== false);
+    if (employees.length === 0) return { success: false, count: 0 };
+
+    let count = 0;
+    employees.forEach(emp => {
+      if (emp.salary > 0) {
+        this.addEmployeePayment(emp.id, {
+          type: 'SALARY_ACCRUAL',
+          amount: emp.salary,
+          paymentMethod: 'BANK',
+          date: date || new Date().toISOString().split('T')[0],
+          description: `${periodDescription || 'Aylık'} Maaş Hakedişi Tahakkuku`,
+        });
+        count++;
+      }
+    });
+
+    return { success: true, count };
   }
 
   public getPendingSalaryAccruals(): PendingSalaryAccrual[] { return []; }

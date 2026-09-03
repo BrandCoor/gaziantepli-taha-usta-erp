@@ -1,1408 +1,277 @@
-﻿import React, { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Sliders, 
-  Grid, 
-  UtensilsCrossed, 
   Printer, 
-  Smartphone, 
-  ShieldCheck, 
-  Plus, 
-  Trash2, 
-  Edit3,
-  CheckCircle2, 
-  XCircle, 
-  RefreshCw, 
-  Flame, 
-  Search, 
-  QrCode, 
-  Receipt, 
-  RotateCcw, 
+  Cpu, 
+  FileText, 
+  Grid, 
   Tag, 
-  CreditCard, 
-  Wallet,
-  Usb,
-  Wifi
+  UtensilsCrossed, 
+  Smartphone, 
+  Wallet, 
+  HardDrive,
+  DollarSign,
+  Bell,
+  Download,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import { 
   restaurantDataService, 
+  PrinterConfig, 
   SectionConfig, 
-  ProductConfig, 
   CategoryConfig, 
+  ProductConfig, 
   WaiterConfig, 
-  PrinterConfig,
-  PaymentMethodConfig,
-  ReceiptSettingsConfig 
+  PaymentMethodConfig, 
+  ReceiptSettingsConfig,
+  HardwareSettingsConfig
 } from '../../services/restaurantDataService';
 import { notify } from '../../services/notificationService';
 
+// Sub-components
+import { PrintersTab } from './components/PrintersTab';
+import { HardwarePeripheralsTab } from './components/HardwarePeripheralsTab';
+import { ReceiptTemplateTab } from './components/ReceiptTemplateTab';
+import { SectionsTablesTab } from './components/SectionsTablesTab';
+import { CategoriesTab } from './components/CategoriesTab';
+import { ProductsTab } from './components/ProductsTab';
+import { PaymentsTab } from './components/PaymentsTab';
+import { SystemBackupTab } from './components/SystemBackupTab';
+
+type SettingsSubTab = 
+  | 'PRINTERS' 
+  | 'HARDWARE' 
+  | 'RECEIPT' 
+  | 'SECTIONS' 
+  | 'CATEGORIES' 
+  | 'PRODUCTS' 
+  | 'PAYMENTS' 
+  | 'BACKUP';
+
 export const RestaurantSettingsView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'printers' | 'tables' | 'categories' | 'products' | 'waiters' | 'payments' | 'receipts'>('printers');
+  const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>('PRINTERS');
 
-  // Canlı Veriler
-  const [sections, setSections] = useState<SectionConfig[]>([]);
-  const [categories, setCategories] = useState<CategoryConfig[]>([]);
-  const [products, setProducts] = useState<ProductConfig[]>([]);
-  const [waiters, setWaiters] = useState<WaiterConfig[]>([]);
-  const [printers, setPrinters] = useState<PrinterConfig[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
-  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettingsConfig>({ title: '', subtitle: '', phone: '', address: '', taxNumber: '', footerMessage: '' });
+  // Core Data
+  const [printers, setPrinters] = useState<PrinterConfig[]>(restaurantDataService.getPrinters());
+  const [sections, setSections] = useState<SectionConfig[]>(restaurantDataService.getSections());
+  const [categories, setCategories] = useState<CategoryConfig[]>(restaurantDataService.getCategories());
+  const [products, setProducts] = useState<ProductConfig[]>(restaurantDataService.getProducts());
+  const [waiters, setWaiters] = useState<WaiterConfig[]>(restaurantDataService.getWaiters());
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>(restaurantDataService.getPaymentMethods());
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettingsConfig>(restaurantDataService.getReceiptSettings());
+  const [hardwareSettings, setHardwareSettings] = useState<HardwareSettingsConfig>(restaurantDataService.getHardwareSettings());
 
-  const [selectedWaiter, setSelectedWaiter] = useState<WaiterConfig | null>(null);
-
-  // TARANAN YAZICILAR STATE (HEM USB HEM AĞ)
-  const [isScanning, setIsScanning] = useState(false);
-  const [scannedNetworkPrinters, setScannedNetworkPrinters] = useState<any[]>([]);
-  const [scannedUsbPrinters, setScannedUsbPrinters] = useState<any[]>([]);
-
-  // MODALLAR
-  const [newSectionModalOpen, setNewSectionModalOpen] = useState(false);
-  const [newSectionName, setNewSectionName] = useState('');
-  const [newSectionTables, setNewSectionTables] = useState('8');
-
-  const [printerModalOpen, setPrinterModalOpen] = useState(false);
-  const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
-  const [printerForm, setPrinterForm] = useState<Omit<PrinterConfig, 'id'>>({
-    name: '',
-    type: 'NETWORK',
-    ipAddress: '192.168.1.201',
-    port: 9100,
-    usbName: 'Afanda 892E',
-    role: 'Mutfak Fişleri',
-    paperWidth: 80,
-    autoCut: true,
-    beepOnPrint: true,
-    isBillPrinter: false,
-    isKitchen: true,
-  });
-
-  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
-  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-  const [categoryForm, setCategoryForm] = useState<Omit<CategoryConfig, 'id'>>({
-    name: '',
-    color: '#ef4444',
-    printerId: '',
-  });
-
-  const [productModalOpen, setProductModalOpen] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [productForm, setProductForm] = useState<Omit<ProductConfig, 'id'>>({
-    name: '',
-    categoryId: '',
-    price: 150,
-    costPrice: 80,
-    preparationMin: 15,
-    isAvailable: true,
-  });
-
-  const [waiterModalOpen, setWaiterModalOpen] = useState(false);
-  const [editingWaiterId, setEditingWaiterId] = useState<string | null>(null);
-  const [waiterForm, setWaiterForm] = useState({
-    name: '',
-    pin: '',
-    allowedSections: [] as string[],
-  });
-
-  const [newPmModalOpen, setNewPmModalOpen] = useState(false);
-  const [newPmName, setNewPmName] = useState('');
-  const [newPmType, setNewPmType] = useState<PaymentMethodConfig['type']>('MEAL_CARD');
-
-  const [productSearch, setProductSearch] = useState('');
-
-  const refreshAllSettings = () => {
-    const s = restaurantDataService.getSections() || [];
-    const c = restaurantDataService.getCategories() || [];
-    const p = restaurantDataService.getProducts() || [];
-    const w = restaurantDataService.getWaiters() || [];
-    const pr = restaurantDataService.getPrinters() || [];
-    const pm = restaurantDataService.getPaymentMethods() || [];
-    const rc = restaurantDataService.getReceiptSettings();
-
-    setSections(s);
-    setCategories(c);
-    setProducts(p);
-    setWaiters(w);
-    setPrinters(pr);
-    setPaymentMethods(pm);
-    setReceiptSettings(rc);
-
-    if (w.length > 0) {
-      if (!selectedWaiter || !w.some(item => item.id === selectedWaiter.id)) {
-        setSelectedWaiter(w[0]);
-      }
-    } else {
-      setSelectedWaiter(null);
-    }
+  const refreshAllData = () => {
+    setPrinters(restaurantDataService.getPrinters());
+    setSections(restaurantDataService.getSections());
+    setCategories(restaurantDataService.getCategories());
+    setProducts(restaurantDataService.getProducts());
+    setWaiters(restaurantDataService.getWaiters());
+    setPaymentMethods(restaurantDataService.getPaymentMethods());
+    setReceiptSettings(restaurantDataService.getReceiptSettings());
+    setHardwareSettings(restaurantDataService.getHardwareSettings());
   };
 
   useEffect(() => {
-    refreshAllSettings();
-    const unsub = restaurantDataService.subscribe(refreshAllSettings);
+    const unsub = restaurantDataService.subscribe(refreshAllData);
     return () => unsub();
   }, []);
 
-  // HİBRİT YAZICI TARAMA (HEM USB HEM ETHERNET IP)
-  const handleFullHardwareScan = async () => {
-    setIsScanning(true);
-    setScannedNetworkPrinters([]);
-    setScannedUsbPrinters([]);
-
-    // 1. USB Yazıcıları Windows'tan Çek
-    if ((window as any).require) {
-      try {
-        const { ipcRenderer } = (window as any).require('electron');
-        const usbList = await ipcRenderer.invoke('get-system-usb-printers');
-        if (usbList && usbList.length > 0) {
-          setScannedUsbPrinters(usbList);
-        }
-      } catch (e) {}
-    }
-
-    // 2. Ağ Yazıcılarını (Port 9100) Tara
-    try {
-      const res = await fetch('http://localhost:4545/api/printers/auto-scan');
-      const data = await res.json();
-      if (data.success && data.printers && data.printers.length > 0) {
-        setScannedNetworkPrinters(data.printers);
-      }
-    } catch (e) {
-      setScannedNetworkPrinters([
-        { ip: '192.168.1.201', port: 9100, model: 'Afanda 892E (Fırın Bölgesi IP)' },
-        { ip: '192.168.1.202', port: 9100, model: 'Afanda 892E (Kebap Ocağı IP)' },
-      ]);
-    } finally {
-      setIsScanning(false);
-      notify.success('Yazıcı Taraması Tamamlandı', 'Bağlı tüm USB ve Ağ yazıcıları algılandı.');
-    }
-  };
-
-  // 1. MASA VE BÖLÜM İŞLEMLERİ
-  const handleAddSectionSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSectionName.trim()) return notify.error('Eksik Alan', 'Lütfen bölüm adını girin!');
-
-    const updated = [
-      ...sections,
-      {
-        id: `sec-${Date.now()}`,
-        name: newSectionName.trim(),
-        tableCount: Number(newSectionTables) || 6,
-        capacityPerTable: 4,
-      }
-    ];
-    restaurantDataService.saveSections(updated);
-    setNewSectionName('');
-    setNewSectionModalOpen(false);
-    notify.success('Bölüm Eklendi', `[${newSectionName}] alanı masalarıyla birlikte oluşturuldu.`);
-  };
-
-  const handleDeleteSection = (id: string, name: string) => {
-    notify.confirm({
-      title: 'Bölüm Silme Onayı',
-      message: `[${name}] alanını ve içindeki tüm masaları silmek istediğinize emin misiniz?`,
-      type: 'danger',
-      onConfirm: () => {
-        const updated = sections.filter(s => s.id !== id);
-        restaurantDataService.saveSections(updated);
-        notify.success('Bölüm Silindi', `[${name}] alanı başarıyla silindi.`);
-      }
-    });
-  };
-
-  // 2. YAZICI İŞLEMLERİ
-  const openNewPrinterModal = () => {
-    setEditingPrinterId(null);
-    setPrinterForm({
-      name: '',
-      type: 'NETWORK',
-      ipAddress: '192.168.1.201',
-      port: 9100,
-      usbName: 'Afanda 892E',
-      role: 'Mutfak Fişleri',
-      paperWidth: 80,
-      autoCut: true,
-      beepOnPrint: true,
-      isBillPrinter: false,
-      isKitchen: true,
-    });
-    setPrinterModalOpen(true);
-  };
-
-  const openEditPrinterModal = (pr: PrinterConfig) => {
-    setEditingPrinterId(pr.id);
-    setPrinterForm({
-      name: pr.name,
-      type: pr.type,
-      ipAddress: pr.ipAddress || '192.168.1.200',
-      port: pr.port || 9100,
-      usbName: pr.usbName || 'Afanda 892E',
-      role: pr.role,
-      paperWidth: pr.paperWidth || 80,
-      autoCut: pr.autoCut,
-      beepOnPrint: pr.beepOnPrint,
-      isBillPrinter: pr.isBillPrinter,
-      isKitchen: pr.isKitchen,
-    });
-    setPrinterModalOpen(true);
-  };
-
-  const handleSavePrinterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!printerForm.name.trim()) return notify.error('Eksik Alan', 'Yazıcı adını girin!');
-
-    if (editingPrinterId) {
-      restaurantDataService.updatePrinter(editingPrinterId, printerForm);
-      notify.success('Yazıcı Güncellendi', `[${printerForm.name}] ayarları kaydedildi.`);
+  // Quick Hardware Actions
+  const handleQuickDrawerOpen = async () => {
+    const res = await restaurantDataService.openCashDrawer();
+    if (res.success) {
+      notify.success('Çekmece Açıldı', res.message);
     } else {
-      restaurantDataService.addPrinter(printerForm);
-      notify.success('Yazıcı Eklendi', `[${printerForm.name}] sisteme bağlandı.`);
-    }
-    setPrinterModalOpen(false);
-  };
-
-  const handleDeletePrinter = (id: string, name: string) => {
-    notify.confirm({
-      title: 'Yazıcıyı Sil',
-      message: `[${name}] yazıcısını sistemden kaldırmak istediğinize emin misiniz?`,
-      type: 'danger',
-      onConfirm: () => {
-        restaurantDataService.deletePrinter(id);
-        notify.success('Silindi', `[${name}] yazıcısı silindi.`);
-      }
-    });
-  };
-
-  const handleTestPrint = async (pr: PrinterConfig) => {
-    if (pr.type === 'NETWORK' && pr.ipAddress) {
-      try {
-        await fetch('http://localhost:4545/api/printers/test-print', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ip: pr.ipAddress, port: pr.port || 9100, name: pr.name })
-        });
-        notify.success('Test Fişi Basıldı', `[${pr.name}] (${pr.ipAddress}) yazıcısına fiş gönderildi.`);
-      } catch (e) {
-        notify.warning('Test Sinyali', `[${pr.name}] yazıcısına sinyal iletildi.`);
-      }
-    } else {
-      notify.success('USB Test Fişi', `[${pr.name}] USB portundan test dökümü alındı.`);
+      notify.warning('Uyarı', res.message);
     }
   };
 
-  // 3. KATEGORİ İŞLEMLERİ
-  const openNewCategoryModal = () => {
-    setEditingCategoryId(null);
-    setCategoryForm({ name: '', color: '#ef4444', printerId: printers[0]?.id || '' });
-    setCategoryModalOpen(true);
+  const handleQuickChime = () => {
+    restaurantDataService.playAudioAlert('kitchen');
+    notify.info('Ses Testi', 'Mutfak çağrı çanı (Ding-Dong) çalındı.');
   };
 
-  const openEditCategoryModal = (cat: CategoryConfig) => {
-    setEditingCategoryId(cat.id);
-    setCategoryForm({ name: cat.name, color: cat.color, printerId: cat.printerId });
-    setCategoryModalOpen(true);
+  const handleQuickBackup = () => {
+    const jsonStr = restaurantDataService.exportRestaurantBackup();
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.href = url;
+    a.download = `taha_usta_pos_yedek_${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    notify.success('Yedek İndirildi', 'Restoran yapılandırması JSON olarak kaydedildi.');
   };
 
-  const handleSaveCategorySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!categoryForm.name.trim()) return notify.error('Eksik Alan', 'Kategori adını girin!');
-
-    if (editingCategoryId) {
-      restaurantDataService.updateCategory(editingCategoryId, categoryForm);
-      notify.success('Kategori Güncellendi', `[${categoryForm.name}] kaydedildi.`);
-    } else {
-      restaurantDataService.addCategory(categoryForm);
-      notify.success('Kategori Eklendi', `[${categoryForm.name}] menüye eklendi.`);
-    }
-    setCategoryModalOpen(false);
+  const handleHardwareSave = (updated: HardwareSettingsConfig) => {
+    restaurantDataService.saveHardwareSettings(updated);
+    setHardwareSettings(updated);
   };
 
-  const handleDeleteCategory = (id: string, name: string) => {
-    notify.confirm({
-      title: 'Kategori Silme',
-      message: `[${name}] kategorisi silinsin mi?`,
-      type: 'danger',
-      onConfirm: () => {
-        restaurantDataService.deleteCategory(id);
-        notify.success('Silindi', `[${name}] kategorisi silindi.`);
-      }
-    });
+  const handleReceiptSave = (updated: ReceiptSettingsConfig) => {
+    restaurantDataService.saveReceiptSettings(updated);
+    setReceiptSettings(updated);
   };
 
-  // 4. ÜRÜN İŞLEMLERİ
-  const openNewProductModal = () => {
-    setEditingProductId(null);
-    setProductForm({ name: '', categoryId: categories[0]?.id || '', price: 200, costPrice: 90, preparationMin: 15, isAvailable: true });
-    setProductModalOpen(true);
-  };
-
-  const openEditProductModal = (prod: ProductConfig) => {
-    setEditingProductId(prod.id);
-    setProductForm({ name: prod.name, categoryId: prod.categoryId, price: prod.price, costPrice: prod.costPrice || 0, preparationMin: prod.preparationMin, printerId: prod.printerId, isAvailable: prod.isAvailable ?? true });
-    setProductModalOpen(true);
-  };
-
-  const handleSaveProductSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!productForm.name.trim()) return notify.error('Eksik Alan', 'Ürün adını girin!');
-    if (!productForm.price || productForm.price <= 0) return notify.error('Hatalı Fiyat', 'Geçerli bir fiyat girin!');
-
-    if (editingProductId) {
-      restaurantDataService.updateProduct(editingProductId, productForm);
-      notify.success('Ürün Güncellendi', `[${productForm.name}] kaydedildi.`);
-    } else {
-      restaurantDataService.addProduct(productForm);
-      notify.success('Ürün Eklendi', `[${productForm.name}] menüye eklendi.`);
-    }
-    setProductModalOpen(false);
-  };
-
-  const handleDeleteProduct = (id: string, name: string) => {
-    notify.confirm({
-      title: 'Ürün Silme',
-      message: `[${name}] menüden silinsin mi?`,
-      type: 'danger',
-      onConfirm: () => {
-        restaurantDataService.deleteProduct(id);
-        notify.success('Silindi', `[${name}] menüden silindi.`);
-      }
-    });
-  };
-
-  // 5. GARSON İŞLEMLERİ
-  const openNewWaiterModal = () => {
-    setEditingWaiterId(null);
-    setWaiterForm({ name: '', pin: '', allowedSections: sections.map(s => s.id) });
-    setWaiterModalOpen(true);
-  };
-
-  const openEditWaiterModal = (w: WaiterConfig) => {
-    setEditingWaiterId(w.id);
-    setWaiterForm({ name: w.name, pin: w.pin, allowedSections: w.allowedSections || [] });
-    setWaiterModalOpen(true);
-  };
-
-  const handleSaveWaiterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!waiterForm.name.trim()) return notify.error('Eksik Alan', 'Garson adını girin!');
-    if (!waiterForm.pin || waiterForm.pin.length < 4) return notify.error('PIN Hatası', '4 Haneli PIN girin!');
-
-    if (editingWaiterId) {
-      restaurantDataService.updateWaiter(editingWaiterId, {
-        name: waiterForm.name.trim(),
-        pin: waiterForm.pin.trim(),
-        allowedSections: waiterForm.allowedSections,
-      });
-      notify.success('Garson Güncellendi', `[${waiterForm.name}] kaydedildi.`);
-    } else {
-      restaurantDataService.addWaiter({
-        name: waiterForm.name.trim(),
-        pin: waiterForm.pin.trim(),
-        allowedSections: waiterForm.allowedSections,
-        permissions: { canDiscount: false, canVoidItem: false, canGift: true, canTransferTable: true, canPrintBill: true },
-      });
-      notify.success('Garson Eklendi', `[${waiterForm.name}] için QR kod üretildi.`);
-    }
-
-    setWaiterModalOpen(false);
-  };
-
-  const handleDeleteWaiter = (id: string, name: string) => {
-    notify.confirm({
-      title: 'Garson Silme',
-      message: `[${name}] isimli garson silinsin mi?`,
-      type: 'danger',
-      onConfirm: () => {
-        restaurantDataService.deleteWaiter(id);
-        notify.success('Silindi', `[${name}] garson silindi.`);
-      }
-    });
-  };
-
-  const garsonConnectUrl = selectedWaiter?.qrToken 
-    ? `https://garson.rymedya.com.tr/?id=${selectedWaiter.id}&name=${encodeURIComponent(selectedWaiter.name)}&pin=${selectedWaiter.pin}&token=${selectedWaiter.qrToken}`
-    : 'https://garson.rymedya.com.tr';
+  const tabsConfig: { id: SettingsSubTab; label: string; icon: React.ReactNode; badge?: string | number }[] = [
+    { id: 'PRINTERS', label: 'Termal Yazıcılar', icon: <Printer className="w-4 h-4" />, badge: printers.length },
+    { id: 'HARDWARE', label: 'Donanım & Çevre Birimleri', icon: <Cpu className="w-4 h-4" />, badge: 'Yeni' },
+    { id: 'RECEIPT', label: 'Fiş & Adisyon Şablonu', icon: <FileText className="w-4 h-4" /> },
+    { id: 'SECTIONS', label: 'Salon & Masalar', icon: <Grid className="w-4 h-4" />, badge: sections.length },
+    { id: 'CATEGORIES', label: 'Kategoriler & Mutfak', icon: <Tag className="w-4 h-4" />, badge: categories.length },
+    { id: 'PRODUCTS', label: 'Menü & Ürünler', icon: <UtensilsCrossed className="w-4 h-4" />, badge: products.length },
+    { id: 'PAYMENTS', label: 'Ödeme Yöntemleri', icon: <Wallet className="w-4 h-4" /> },
+    { id: 'BACKUP', label: 'Bulut & Yedekleme', icon: <HardDrive className="w-4 h-4" /> },
+  ];
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans text-slate-100 bg-[#141416] min-h-screen">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1550px] mx-auto min-h-screen">
       
-      {/* ÜST BAŞLIK VE SEKME MENÜSÜ */}
-      <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] flex items-center justify-center font-black text-2xl shadow-lg">
-            <Sliders className="w-7 h-7" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-              <span>Restoran Yapılandırma & Donanım Merkezi</span>
-              <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-black uppercase">YÖNETİM</span>
+      {/* BAŞLIK & HIZLI DONANIM AKSİYON BARI */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#2C2C34] pb-5">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">⚙️</span>
+            <h1 className="text-2xl font-black text-white tracking-tight">
+              Restoran & Donanım Yapılandırma Merkezi
             </h1>
-            <p className="text-xs text-[#C4C4CC] font-medium">USB/Ağ yazıcıları, masalar, kategoriler, menü, garsonlar ve ödemeler.</p>
           </div>
+          <p className="text-xs text-[#C4C4CC] mt-1">
+            Gaziantepli Taha Usta • Termal yazıcılar, para çekmecesi, terazi, müşteri ekranı, salon yerleşimi ve fiş tasarımı.
+          </p>
         </div>
 
-        {/* 7 Ana Ayar Sekmesi */}
-        <div className="flex bg-[#141416] p-1.5 rounded-2xl border border-[#2C2C34] gap-1 overflow-x-auto">
+        {/* Hızlı Test & Donanım Kontrol Butonları */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setActiveTab('printers')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'printers' ? 'bg-[#F5C877] text-slate-950 shadow-md' : 'text-[#C4C4CC] hover:text-white'
-            }`}
+            id="btn-quick-chime-test"
+            onClick={handleQuickChime}
+            className="px-3.5 py-2 bg-[#1C1C20] hover:bg-slate-800 text-[#C4C4CC] hover:text-white border border-[#2C2C34] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+            title="Mutfak zili çal"
           >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Yazıcılar ({printers.length})</span>
+            <Bell className="w-3.5 h-3.5 text-amber-400" />
+            <span>Zil Sesi Testi</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('tables')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'tables' ? 'bg-[#F5C877] text-slate-950 shadow-md' : 'text-[#C4C4CC] hover:text-white'
-            }`}
+            id="btn-quick-drawer-open"
+            onClick={handleQuickDrawerOpen}
+            className="px-3.5 py-2 bg-[#1C1C20] hover:bg-slate-800 text-[#C4C4CC] hover:text-white border border-[#2C2C34] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+            title="Para çekmecesine darbe gönder"
           >
-            <Grid className="w-3.5 h-3.5" />
-            <span>Masalar ({sections.length})</span>
+            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Çekmeceyi Aç</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('categories')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'categories' ? 'bg-[#F5C877] text-slate-950 shadow-md' : 'text-[#C4C4CC] hover:text-white'
-            }`}
+            id="btn-quick-backup"
+            onClick={handleQuickBackup}
+            className="px-3.5 py-2 bg-[#1C1C20] hover:bg-slate-800 text-[#C4C4CC] hover:text-white border border-[#2C2C34] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+            title="Yapılandırmayı JSON olarak indir"
           >
-            <Tag className="w-3.5 h-3.5" />
-            <span>Kategoriler ({categories.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'products' ? 'bg-[#F5C877] text-slate-950 shadow-md' : 'text-[#C4C4CC] hover:text-white'
-            }`}
-          >
-            <UtensilsCrossed className="w-3.5 h-3.5" />
-            <span>Menü ({products.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('waiters')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'waiters' ? 'bg-[#F5C877] text-slate-950 shadow-md' : 'text-[#C4C4CC] hover:text-white'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Garsonlar ({waiters.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('payments')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'payments' ? 'bg-[#F5C877] text-slate-950 shadow-md' : 'text-[#C4C4CC] hover:text-white'
-            }`}
-          >
-            <Wallet className="w-3.5 h-3.5" />
-            <span>Ödemeler</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('receipts')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'receipts' ? 'bg-[#F5C877] text-slate-950 shadow-md' : 'text-[#C4C4CC] hover:text-white'
-            }`}
-          >
-            <Receipt className="w-3.5 h-3.5" />
-            <span>Fiş Şablonu</span>
+            <Download className="w-3.5 h-3.5 text-[#F5C877]" />
+            <span>Hızlı Yedek Al</span>
           </button>
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* 1. YAZICILAR & HİBRİT DONANIM TARAYICI (USB + ETHERNET IP) */}
-      {/* ========================================================================= */}
-      {activeTab === 'printers' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
-            <div>
-              <h2 className="text-sm font-black text-white">Yazıcı Yönetimi (USB Kablo & Ethernet Ağ)</h2>
-              <p className="text-xs text-[#C4C4CC]">Kasaya bağlı Afanda 892E USB yazıcıyı veya ağdaki IP yazıcıları tek tıkla arayıp sisteme bağlayın.</p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleFullHardwareScan}
-                disabled={isScanning}
-                className="px-4 py-2.5 bg-[#141416] hover:bg-slate-800 text-[#FAF7F2] border border-[#383844] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shadow-md"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 text-[#F5C877] ${isScanning ? 'animate-spin' : ''}`} />
-                <span>{isScanning ? 'Donanım Taranıyor...' : '🔍 USB ve Ağ Yazıcılarını Tara'}</span>
-              </button>
-
-              <button
-                onClick={openNewPrinterModal}
-                className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Manuel Yazıcı Ekle</span>
-              </button>
-            </div>
-          </div>
-
-          {/* BULUNAN YAZICILAR PANELİ (HEM USB HEM ETHERNET) */}
-          {(scannedUsbPrinters.length > 0 || scannedNetworkPrinters.length > 0) && (
-            <div className="p-5 bg-[#1C1C20] border-2 border-emerald-500/40 rounded-3xl space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-black">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>Algılanan Cihazlar: {scannedUsbPrinters.length} USB • {scannedNetworkPrinters.length} Ağ Yazıcısı</span>
-                </div>
-              </div>
-
-              {/* 1. USB Yazıcılar */}
-              {scannedUsbPrinters.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] font-black uppercase text-[#C4C4CC] flex items-center gap-1">
-                    <Usb className="w-3.5 h-3.5 text-sky-400" /> Bilgisayara Bağlı USB / Windows Yazıcıları:
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {scannedUsbPrinters.map((up, i) => (
-                      <div key={i} className="p-3.5 bg-[#141416] border border-[#2C2C34] rounded-2xl flex items-center justify-between">
-                        <div>
-                          <div className="font-black text-xs text-white truncate max-w-[160px]">{up.displayName}</div>
-                          <div className="text-[10px] text-sky-400 font-bold">USB Port</div>
-                        </div>
-
-                        <button
-                          onClick={() => {
-                            setEditingPrinterId(null);
-                            setPrinterForm({
-                              name: `Kasa Fiş Yazıcısı (${up.displayName})`,
-                              type: 'USB',
-                              ipAddress: '',
-                              port: 9100,
-                              usbName: up.displayName,
-                              role: 'Adisyon & Hesap Fişi',
-                              paperWidth: 80,
-                              autoCut: true,
-                              beepOnPrint: false,
-                              isBillPrinter: true,
-                              isKitchen: false,
-                            });
-                            setPrinterModalOpen(true);
-                          }}
-                          className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
-                        >
-                          Kasa Yazıcısı Yap
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+      {/* YATAY SEKMELER (NAV TABS) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+        {tabsConfig.map((tab) => {
+          const isActive = activeSubTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              id={`tab-${tab.id.toLowerCase()}`}
+              onClick={() => setActiveSubTab(tab.id)}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 cursor-pointer transition-all shrink-0 select-none ${
+                isActive 
+                  ? 'bg-[#F5C877] text-slate-950 shadow-lg shadow-[#F5C877]/10' 
+                  : 'bg-[#1C1C20] text-[#C4C4CC] hover:text-white hover:bg-slate-800 border border-[#2C2C34]'
+              }`}
+            >
+              <span className={isActive ? 'text-slate-950' : 'text-[#A0A0AA]'}>{tab.icon}</span>
+              <span>{tab.label}</span>
+              {tab.badge !== undefined && (
+                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-black ${
+                  isActive 
+                    ? 'bg-slate-950 text-amber-300' 
+                    : 'bg-[#141416] text-[#C4C4CC] border border-[#2C2C34]'
+                }`}>
+                  {tab.badge}
+                </span>
               )}
-
-              {/* 2. Ağ / IP Yazıcıları */}
-              {scannedNetworkPrinters.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-[#2C2C34]/80">
-                  <span className="text-[10px] font-black uppercase text-[#C4C4CC] flex items-center gap-1">
-                    <Wifi className="w-3.5 h-3.5 text-[#F5C877]" /> Yerel Ağdaki Ethernet Yazıcıları (Port 9100):
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {scannedNetworkPrinters.map((sp, i) => (
-                      <div key={i} className="p-3.5 bg-[#141416] border border-[#2C2C34] rounded-2xl flex items-center justify-between">
-                        <div>
-                          <div className="font-mono font-black text-sm text-white">{sp.ip}:{sp.port}</div>
-                          <div className="text-[10px] text-[#C4C4CC]">{sp.model}</div>
-                        </div>
-
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => {
-                              setEditingPrinterId(null);
-                              setPrinterForm({
-                                name: `Fırın Yazıcısı (${sp.ip.split('.').pop()})`,
-                                type: 'NETWORK',
-                                ipAddress: sp.ip,
-                                port: sp.port,
-                                usbName: '',
-                                role: 'Lahmacun & Pide Fişleri',
-                                paperWidth: 80,
-                                autoCut: true,
-                                beepOnPrint: true,
-                                isBillPrinter: false,
-                                isKitchen: true,
-                              });
-                              setPrinterModalOpen(true);
-                            }}
-                            className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
-                          >
-                            Fırına Ata
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setEditingPrinterId(null);
-                              setPrinterForm({
-                                name: `Kebap Ocağı Yazıcısı (${sp.ip.split('.').pop()})`,
-                                type: 'NETWORK',
-                                ipAddress: sp.ip,
-                                port: sp.port,
-                                usbName: '',
-                                role: 'Kebap & Izgara Fişleri',
-                                paperWidth: 80,
-                                autoCut: true,
-                                beepOnPrint: true,
-                                isBillPrinter: false,
-                                isKitchen: true,
-                              });
-                              setPrinterModalOpen(true);
-                            }}
-                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
-                          >
-                            Ocağa Ata
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* MEVCUT KAYITLI YAZICILAR */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {printers.map((pr) => (
-              <div key={pr.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
-                      pr.isKitchen ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30' : 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
-                    }`}>
-                      {pr.isKitchen ? <Flame className="w-5 h-5" /> : <Printer className="w-5 h-5" />}
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEditPrinterModal(pr)} className="p-1.5 text-[#C4C4CC] hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer">
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDeletePrinter(pr.id, pr.name)} className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <h3 className="font-black text-sm text-white">{pr.name}</h3>
-                  <p className="text-xs text-[#C4C4CC] mt-0.5">{pr.role}</p>
-
-                  <div className="mt-4 p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-1.5 text-xs">
-                    <div className="flex justify-between text-[#C4C4CC]">
-                      <span>Bağlantı Türü:</span>
-                      <strong className="text-white">{pr.type}</strong>
-                    </div>
-                    <div className="flex justify-between text-[#C4C4CC]">
-                      <span>Hedef Adres:</span>
-                      <strong className="font-mono text-amber-300">
-                        {pr.type === 'NETWORK' ? `${pr.ipAddress}:${pr.port}` : pr.usbName || 'USB Port'}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleTestPrint(pr)}
-                  className="w-full py-2.5 bg-[#141416] hover:bg-slate-800 border border-[#383844] text-white text-xs font-black rounded-xl flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5 text-[#F5C877]" />
-                  <span>Test Fişi Bas</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 2. MASALAR & BÖLGELER */}
-      {activeTab === 'tables' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
-            <div>
-              <h2 className="text-sm font-black text-white">Restoran Alanları & Masa Kapasiteleri</h2>
-              <p className="text-xs text-[#C4C4CC]">Masa sayılarını değiştirdiğinizde POS ekranı anında güncellenir.</p>
-            </div>
-
-            <button
-              onClick={() => {
-                setNewSectionName('');
-                setNewSectionTables('8');
-                setNewSectionModalOpen(true);
-              }}
-              className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Yeni Bölüm Ekle</span>
             </button>
-          </div>
+          );
+        })}
+      </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {sections.map((sec, idx) => (
-              <div key={sec.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center font-black">
-                      <Grid className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="font-black text-sm text-white">{sec.name}</div>
-                      <div className="text-[10px] text-[#A0A0AA] font-mono">ID: {sec.id}</div>
-                    </div>
-                  </div>
+      {/* AKTİF SEKME İÇERİĞİ */}
+      <div className="pt-2 animate-fadeIn">
+        {activeSubTab === 'PRINTERS' && (
+          <PrintersTab 
+            printers={printers} 
+            onRefresh={refreshAllData} 
+          />
+        )}
 
-                  <button
-                    onClick={() => handleDeleteSection(sec.id, sec.name)}
-                    className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer"
-                    title="Alanı Sil"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+        {activeSubTab === 'HARDWARE' && (
+          <HardwarePeripheralsTab 
+            hardware={hardwareSettings} 
+            printers={printers} 
+            onSave={handleHardwareSave} 
+          />
+        )}
 
-                <div className="p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#C4C4CC]">Masa Sayısı:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={sec.tableCount}
-                    onChange={(e) => {
-                      const updated = [...sections];
-                      updated[idx].tableCount = Number(e.target.value) || 1;
-                      restaurantDataService.saveSections(updated);
-                    }}
-                    className="w-16 text-center font-black font-mono text-sm text-amber-300 bg-[#1C1C20] border border-[#383844] rounded-xl p-1.5 focus:outline-none focus:border-[#F5C877]"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        {activeSubTab === 'RECEIPT' && (
+          <ReceiptTemplateTab 
+            settings={receiptSettings} 
+            onSave={handleReceiptSave} 
+          />
+        )}
 
-      {/* 3. KATEGORİLER */}
-      {activeTab === 'categories' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
-            <div>
-              <h2 className="text-sm font-black text-white">Menü Kategorileri & Mutfak Yazıcısı Eşleşmeleri</h2>
-              <p className="text-xs text-[#C4C4CC]">Her kategorinin mutfakta hangi yazıcıya gideceğini belirleyin.</p>
-            </div>
+        {activeSubTab === 'SECTIONS' && (
+          <SectionsTablesTab 
+            sections={sections} 
+            onRefresh={refreshAllData} 
+          />
+        )}
 
-            <button
-              onClick={openNewCategoryModal}
-              className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Yeni Kategori Ekle</span>
-            </button>
-          </div>
+        {activeSubTab === 'CATEGORIES' && (
+          <CategoriesTab 
+            categories={categories} 
+            printers={printers} 
+            products={products} 
+            onRefresh={refreshAllData} 
+          />
+        )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {categories.map((cat) => {
-              const targetPrinter = printers.find(p => p.id === cat.printerId);
-              const count = products.filter(p => p.categoryId === cat.id).length;
+        {activeSubTab === 'PRODUCTS' && (
+          <ProductsTab 
+            products={products} 
+            categories={categories} 
+            printers={printers} 
+            onRefresh={refreshAllData} 
+          />
+        )}
 
-              return (
-                <div key={cat.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-4 h-4 rounded-full shadow-xs" style={{ backgroundColor: cat.color }}></span>
-                      <span className="font-black text-sm text-white">{cat.name}</span>
-                    </div>
+        {activeSubTab === 'PAYMENTS' && (
+          <PaymentsTab 
+            paymentMethods={paymentMethods} 
+            onRefresh={refreshAllData} 
+          />
+        )}
 
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEditCategoryModal(cat)} className="p-1 text-[#C4C4CC] hover:text-white rounded-lg cursor-pointer">
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDeleteCategory(cat.id, cat.name)} className="p-1 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-1 text-xs">
-                    <div className="flex justify-between text-[#C4C4CC]">
-                      <span>Mutfak Yazıcısı:</span>
-                      <strong className="text-amber-300">{targetPrinter ? targetPrinter.name : 'Seçilmedi'}</strong>
-                    </div>
-                    <div className="flex justify-between text-[#C4C4CC]">
-                      <span>Kayıtlı Ürün:</span>
-                      <strong className="text-white font-mono">{count} Adet</strong>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 4. MENÜ & ÜRÜNLER */}
-      {activeTab === 'products' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A0A0AA]" />
-              <input
-                type="text"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Menüde ürün ara..."
-                className="pl-10 pr-4 py-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877] w-64"
-              />
-            </div>
-
-            <button
-              onClick={openNewProductModal}
-              className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Yeni Ürün Ekle</span>
-            </button>
-          </div>
-
-          <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-[#2C2C34] text-[#C4C4CC] font-extrabold uppercase">
-                  <th className="pb-3">Ürün Adı</th>
-                  <th className="pb-3">Kategori</th>
-                  <th className="pb-3">Fiyat (₺)</th>
-                  <th className="pb-3 text-right">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-medium">
-                {products
-                  .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
-                  .map((p) => {
-                    const cat = categories.find(c => c.id === p.categoryId);
-                    return (
-                      <tr key={p.id} className="hover:bg-[#141416]/60">
-                        <td className="py-3 font-black text-white">{p.name}</td>
-                        <td className="py-3">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black" style={{ backgroundColor: `${cat?.color}20`, color: cat?.color }}>
-                            {cat?.name || 'Diğer'}
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          <input
-                            type="number"
-                            value={p.price}
-                            onChange={(e) => restaurantDataService.updateProduct(p.id, { price: Number(e.target.value) })}
-                            className="w-24 p-1.5 bg-[#141416] border border-[#383844] rounded-lg text-center font-mono font-black text-amber-300 focus:outline-none"
-                          />
-                        </td>
-                        <td className="py-3 text-right space-x-1">
-                          <button onClick={() => openEditProductModal(p)} className="p-1.5 text-[#C4C4CC] hover:text-white rounded-lg cursor-pointer">
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => handleDeleteProduct(p.id, p.name)} className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* 5. GARSONLAR & CANLI QR */}
-      {activeTab === 'waiters' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
-              <div>
-                <h2 className="text-sm font-black text-white">Kayıtlı Garsonlar</h2>
-                <p className="text-[11px] text-[#C4C4CC]">QR görmek için garson seçin</p>
-              </div>
-              <button
-                onClick={openNewWaiterModal}
-                className="px-3.5 py-2 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Garson Ekle</span>
-              </button>
-            </div>
-
-            <div className="space-y-2.5">
-              {waiters.map((w) => {
-                const isSelected = selectedWaiter?.id === w.id;
-                return (
-                  <div
-                    key={w.id}
-                    onClick={() => setSelectedWaiter(w)}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                      isSelected ? 'bg-[#F5C877]/20 border-[#F5C877] shadow-md' : 'bg-[#141416] border-[#2C2C34] hover:bg-slate-850'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-[#F5C877] text-slate-950 flex items-center justify-center font-black flex-shrink-0">
-                        <Smartphone className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-black text-xs text-white truncate">{w.name}</div>
-                        <div className="text-[10px] text-[#C4C4CC] font-mono">PIN: <strong className="text-amber-300">{w.pin}</strong></div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => openEditWaiterModal(w)} className="p-1.5 text-[#C4C4CC] hover:text-white rounded-lg cursor-pointer">
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDeleteWaiter(w.id, w.name)} className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {selectedWaiter && (
-            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-[#1C1C20] text-white rounded-3xl p-6 border border-[#2C2C34] shadow-2xl flex flex-col items-center justify-between text-center">
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-[#F5C877] text-slate-950 flex items-center justify-center mx-auto mb-2 shadow-lg shadow-amber-500/30">
-                    <QrCode className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-base font-black text-white">{selectedWaiter.name}</h3>
-                  <p className="text-xs text-[#C4C4CC] mt-0.5">Garson telefonundan bu QR kodu 1 kez okutun</p>
-                </div>
-
-                <div className="p-4 bg-[#1C1C20] rounded-3xl shadow-xl my-4">
-                  <QRCodeSVG value={garsonConnectUrl} size={180} level="H" />
-                </div>
-
-                <div className="w-full space-y-2">
-                  <div className="p-2.5 bg-[#141416] rounded-xl text-xs text-amber-300 font-mono flex items-center justify-between border border-[#2C2C34]">
-                    <span>Giriş PIN Kodu:</span>
-                    <strong className="text-sm text-white">{selectedWaiter.pin}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-4">
-                <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
-                  <h3 className="text-sm font-black text-white flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Cihaz ve Yetki Detayı</span>
-                  </h3>
-                  <button onClick={() => openEditWaiterModal(selectedWaiter)} className="px-3 py-1 bg-[#F5C877]/20 text-amber-300 border border-[#F5C877]/30 rounded-lg text-xs font-bold cursor-pointer">
-                    Düzenle
-                  </button>
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div className="p-3 bg-[#141416] rounded-2xl border border-[#2C2C34]">
-                    <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Eşleşen Cihaz</div>
-                    <div className="text-xs font-black text-[#FAF7F2] mt-1">{selectedWaiter.deviceName}</div>
-                  </div>
-                  <div className="p-3 bg-[#141416] rounded-2xl border border-[#2C2C34]">
-                    <div className="text-[10px] font-black uppercase text-[#C4C4CC]">Donanım Kimliği (MAC)</div>
-                    <div className="text-xs font-mono font-black text-amber-300 mt-1 truncate">{selectedWaiter.deviceUuid}</div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    restaurantDataService.updateWaiter(selectedWaiter.id, { deviceUuid: 'Henüz Eşleşmedi', deviceName: 'Eşleşme Bekleniyor', status: 'NOT_PAIRED' });
-                    notify.info('Sıfırlandı', 'Cihaz eşleşmesi sıfırlandı. Yeni QR okutulabilir.');
-                  }}
-                  className="w-full py-2.5 bg-[#141416] hover:bg-slate-800 border border-[#383844] text-[#E4E4E8] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Cihaz Eşleşmesini Sıfırla</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 6. ÖDEME SİSTEMLERİ */}
-      {activeTab === 'payments' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
-            <div>
-              <h2 className="text-sm font-black text-white">Ödeme Platformları & Kart Kanalları</h2>
-              <p className="text-xs text-[#C4C4CC]">Kasada aktif olacak ödeme kanallarını açıp kapatabilir veya yenilerini ekleyebilirsiniz.</p>
-            </div>
-
-            <button
-              onClick={() => {
-                setNewPmName('');
-                setNewPmModalOpen(true);
-              }}
-              className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Yeni Ödeme Kanalı Ekle</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {paymentMethods.map((pm) => (
-              <div key={pm.id} className="bg-[#1C1C20] rounded-3xl p-5 border border-[#2C2C34] shadow-lg flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
-                    pm.isActive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-[#141416] text-[#A0A0AA]'
-                  }`}>
-                    <CreditCard className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-black text-xs text-white">{pm.name}</div>
-                    <div className="text-[10px] text-[#C4C4CC] uppercase font-mono">{pm.type}</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => restaurantDataService.togglePaymentMethod(pm.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black cursor-pointer transition-all ${
-                      pm.isActive ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-800 text-[#A0A0AA]'
-                    }`}
-                  >
-                    {pm.isActive ? 'Aktif' : 'Kapalı'}
-                  </button>
-
-                  {!['pm-cash', 'pm-card', 'pm-cari', 'pm-discount', 'pm-gift'].includes(pm.id) && (
-                    <button
-                      onClick={() => restaurantDataService.deletePaymentMethod(pm.id)}
-                      className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 7. FİŞ ŞABLONU */}
-      {activeTab === 'receipts' && (
-        <div className="max-w-2xl bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-4">
-          <h2 className="text-sm font-black text-white">Termal Fiş Başlık ve Mesaj Şablonu</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="text-[11px] font-bold text-[#C4C4CC]">İşletme Başlığı</label>
-              <input
-                type="text"
-                value={receiptSettings.title}
-                onChange={(e) => setReceiptSettings({ ...receiptSettings, title: e.target.value })}
-                className="w-full p-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-black text-white mt-1 focus:outline-none focus:border-[#F5C877]"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-[#C4C4CC]">İletişim / Sipariş Telefonu</label>
-              <input
-                type="text"
-                value={receiptSettings.phone}
-                onChange={(e) => setReceiptSettings({ ...receiptSettings, phone: e.target.value })}
-                className="w-full p-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-bold text-white mt-1 focus:outline-none focus:border-[#F5C877]"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-[#C4C4CC]">Fiş Altı Teşekkür Mesajı</label>
-              <input
-                type="text"
-                value={receiptSettings.footerMessage}
-                onChange={(e) => setReceiptSettings({ ...receiptSettings, footerMessage: e.target.value })}
-                className="w-full p-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-bold text-white mt-1 focus:outline-none focus:border-[#F5C877]"
-              />
-            </div>
-            <button
-              onClick={() => {
-                restaurantDataService.saveReceiptSettings(receiptSettings);
-                notify.success('Kaydedildi', 'Fiş şablon ayarları başarıyla güncellendi.');
-              }}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl cursor-pointer shadow-lg"
-            >
-              Şablonu Kaydet
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* YENİ ALAN MODALI */}
-      {newSectionModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#141416] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
-            <h3 className="text-base font-black text-white">Yeni Restoran Alanı Ekle</h3>
-            <form onSubmit={handleAddSectionSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Bölüm Adı</label>
-                <input
-                  type="text"
-                  required
-                  value={newSectionName}
-                  onChange={(e) => setNewSectionName(e.target.value)}
-                  placeholder="Örn: Teras Katı / VIP Loca"
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Masa Sayısı</label>
-                <input
-                  type="number"
-                  required
-                  value={newSectionTables}
-                  onChange={(e) => setNewSectionTables(e.target.value)}
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
-                <button type="button" onClick={() => setNewSectionModalOpen(false)} className="px-4 py-2 bg-slate-800 text-[#E4E4E8] rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">+ Alanı Ekle</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* YAZICI MODALI */}
-      {printerModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#141416] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
-            <h3 className="text-base font-black text-white">{editingPrinterId ? 'Yazıcıyı Düzenle' : 'Yeni Termal Yazıcı'}</h3>
-            <form onSubmit={handleSavePrinterSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Yazıcı Adı</label>
-                <input
-                  type="text"
-                  required
-                  value={printerForm.name}
-                  onChange={(e) => setPrinterForm({ ...printerForm, name: e.target.value })}
-                  placeholder="Örn: Fırın Yazıcısı"
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-bold text-[#C4C4CC]">Bağlantı Türü</label>
-                  <select
-                    value={printerForm.type}
-                    onChange={(e) => setPrinterForm({ ...printerForm, type: e.target.value as any })}
-                    className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white"
-                  >
-                    <option value="NETWORK">Ethernet (IP)</option>
-                    <option value="USB">USB Port</option>
-                  </select>
-                </div>
-                {printerForm.type === 'NETWORK' ? (
-                  <div>
-                    <label className="text-xs font-bold text-[#C4C4CC]">Statik IP</label>
-                    <input
-                      type="text"
-                      required
-                      value={printerForm.ipAddress}
-                      onChange={(e) => setPrinterForm({ ...printerForm, ipAddress: e.target.value })}
-                      placeholder="192.168.1.201"
-                      className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-bold text-amber-300"
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-xs font-bold text-[#C4C4CC]">USB Aygıt Adı</label>
-                    <input
-                      type="text"
-                      value={printerForm.usbName}
-                      onChange={(e) => setPrinterForm({ ...printerForm, usbName: e.target.value })}
-                      placeholder="Afanda 892E"
-                      className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white"
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
-                <button type="button" onClick={() => setPrinterModalOpen(false)} className="px-4 py-2 bg-slate-800 text-[#E4E4E8] rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* KATEGORİ MODALI */}
-      {categoryModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#141416] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
-            <h3 className="text-base font-black text-white">{editingCategoryId ? 'Kategoriyi Düzenle' : 'Yeni Kategori'}</h3>
-            <form onSubmit={handleSaveCategorySubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Kategori Adı</label>
-                <input
-                  type="text"
-                  required
-                  value={categoryForm.name}
-                  onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                  placeholder="Örn: Çorbalar & Mezeler"
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Mutfak Yazıcısı</label>
-                <select
-                  value={categoryForm.printerId}
-                  onChange={(e) => setCategoryForm({ ...categoryForm, printerId: e.target.value })}
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white"
-                >
-                  {printers.map((pr) => (
-                    <option key={pr.id} value={pr.id}>{pr.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
-                <button type="button" onClick={() => setCategoryModalOpen(false)} className="px-4 py-2 bg-slate-800 text-[#E4E4E8] rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ÜRÜN MODALI */}
-      {productModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#141416] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
-            <h3 className="text-base font-black text-white">{editingProductId ? 'Ürünü Düzenle' : 'Yeni Menü Ürünü'}</h3>
-            <form onSubmit={handleSaveProductSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Ürün Adı</label>
-                <input
-                  type="text"
-                  required
-                  value={productForm.name}
-                  onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                  placeholder="Örn: Beyti Kebap"
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-bold text-[#C4C4CC]">Satış Fiyatı (₺)</label>
-                  <input
-                    type="number"
-                    required
-                    value={productForm.price}
-                    onChange={(e) => setProductForm({ ...productForm, price: Number(e.target.value) })}
-                    className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-bold text-amber-300"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-[#C4C4CC]">Kategori</label>
-                  <select
-                    value={productForm.categoryId}
-                    onChange={(e) => setProductForm({ ...productForm, categoryId: e.target.value })}
-                    className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
-                <button type="button" onClick={() => setProductModalOpen(false)} className="px-4 py-2 bg-slate-800 text-[#E4E4E8] rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* GARSON MODALI */}
-      {waiterModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#141416] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
-            <h3 className="text-base font-black text-white">{editingWaiterId ? 'Garson Düzenle' : 'Yeni Garson Ekle'}</h3>
-            <form onSubmit={handleSaveWaiterSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Garson Adı Soyadı</label>
-                <input
-                  type="text"
-                  required
-                  value={waiterForm.name}
-                  onChange={(e) => setWaiterForm({ ...waiterForm, name: e.target.value })}
-                  placeholder="Örn: İbrahim Usta"
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">4 Haneli Giriş PIN Kodu</label>
-                <input
-                  type="password"
-                  maxLength={4}
-                  required
-                  value={waiterForm.pin}
-                  onChange={(e) => setWaiterForm({ ...waiterForm, pin: e.target.value })}
-                  placeholder="Örn: 4141"
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-black text-amber-300"
-                />
-              </div>
-              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
-                <button type="button" onClick={() => setWaiterModalOpen(false)} className="px-4 py-2 bg-slate-800 text-[#E4E4E8] rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Kaydet & QR Üret</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ÖDEME KANALI MODALI */}
-      {newPmModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#141416] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
-            <h3 className="text-base font-black text-white">Yeni Ödeme Kanalı Ekle</h3>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!newPmName.trim()) return notify.error('Eksik Alan', 'Ödeme adı girin!');
-              restaurantDataService.addPaymentMethod({ name: newPmName.trim(), type: newPmType, color: '#0284c7', isActive: true });
-              setNewPmName('');
-              setNewPmModalOpen(false);
-              notify.success('Eklendi', 'Yeni ödeme kanalı eklendi.');
-            }} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Ödeme Kanalı Adı</label>
-                <input
-                  type="text"
-                  required
-                  value={newPmName}
-                  onChange={(e) => setNewPmName(e.target.value)}
-                  placeholder="Örn: Paycell / BKM Express"
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-[#C4C4CC]">Türü</label>
-                <select
-                  value={newPmType}
-                  onChange={(e) => setNewPmType(e.target.value as any)}
-                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white"
-                >
-                  <option value="MEAL_CARD">Yemek Kartı</option>
-                  <option value="CARD">Banka / Kredi Kartı</option>
-                  <option value="OTHER">Platform / Diğer</option>
-                </select>
-              </div>
-              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
-                <button type="button" onClick={() => setNewPmModalOpen(false)} className="px-4 py-2 bg-slate-800 text-[#E4E4E8] rounded-xl text-xs font-bold cursor-pointer">Vazgeç</button>
-                <button type="submit" className="px-5 py-2 bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer">Ekle</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        {activeSubTab === 'BACKUP' && (
+          <SystemBackupTab 
+            onRefresh={refreshAllData} 
+          />
+        )}
+      </div>
 
     </div>
   );
