@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { startLocalServer } from './server';
 
@@ -6,10 +6,13 @@ let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: 1920,
+    height: 1080,
     minWidth: 1024,
     minHeight: 700,
+    fullscreen: true,       // Tam ekran açılır
+    frame: false,            // Windows üst barı ve çerçevesi GİZLENİR
+    autoHideMenuBar: true,  // Üst menüyü gizle
     title: 'Gaziantepli Taha Usta - Restoran Otomasyon Sistemi',
     webPreferences: {
       nodeIntegration: true,
@@ -17,7 +20,6 @@ function createWindow() {
     },
   });
 
-  // Geliştirme ortamında Vite yerel portunu dinle
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -29,11 +31,23 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
-  // 1. Kasa Yerel API ve WebSocket Sunucusunu Başlat
-  startLocalServer(4545);
+// PENCERE KONTROL SİNYALLERİ (PROGRAM İÇİ BUTONLARDAN YÖNETİLİR)
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
 
-  // 2. Ana Masaüstü Arayüzünü Aç
+ipcMain.on('window-toggle-fullscreen', () => {
+  if (mainWindow) {
+    mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
+app.whenReady().then(() => {
+  startLocalServer(4545);
   createWindow();
 
   app.on('activate', () => {
