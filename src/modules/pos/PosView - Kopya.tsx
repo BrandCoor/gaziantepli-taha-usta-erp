@@ -56,8 +56,6 @@ const CANCEL_REASONS = [
   'Diğer (Özel Açıklama)'
 ];
 
-const formatMoney = (val: number) => (Number(val) || 0).toFixed(2) + ' ₺';
-
 const KASA_QUICK_TAGS = ['🔥 Önden Gelsin', '🍲 Çorba Arkası', '🍽️ Birlikte Gelsin', '🌶️ Acılı', 'Acısız', '🧅 Soğansız', '🌿 Bol Yeşillik', 'Lavaş Çift', '🥩 Az Pişmiş', 'Çok Pişmiş', '🧊 Buzlu', '☕ Sıcak', 'Tuzsuz', 'Ayrı Tabak', '⚡ Acele / Misafir'];
 
 interface PaymentEntry {
@@ -109,7 +107,6 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [targetTransferTableId, setTargetTransferTableId] = useState('');
-  const [transferSectionFilter, setTransferSectionFilter] = useState<string>('all');
 
   const [itemCancelModal, setItemCancelModal] = useState<{
     open: boolean;
@@ -640,73 +637,8 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
         <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
           <div className="bg-[#1C1C20] rounded-3xl max-w-6xl w-full h-[88vh] shadow-2xl border border-[#2C2C34] flex overflow-hidden">
             
-            {/* SOL TARAF: MENÜ & İLAVE ÜRÜN SEÇİCİ (Geniş ve Ferah Menü) */}
-            <div className="flex-1 flex flex-col h-full bg-[#1C1C20]">
-              <div className="p-4 border-b border-[#2C2C34] space-y-3">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E8E98]" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Menüde ürün ara..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#141416] border border-[#2C2C34] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-white focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 hide-scrollbar">
-                  <button
-                    onClick={() => setActiveCategory('all')}
-                    className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer transition-all ${
-                      activeCategory === 'all' ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#141416] text-[#8E8E98] hover:text-white'
-                    }`}
-                  >
-                    Tüm Menü
-                  </button>
-                  {categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setActiveCategory(cat.id)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer transition-all ${
-                        activeCategory === cat.id ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#141416] text-[#8E8E98] hover:text-white'
-                      }`}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex-1 p-4 overflow-y-auto">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {filteredProducts.map((prod) => (
-                    <button
-                      key={prod.id}
-                      onClick={() => handleAddProduct(prod)}
-                      className="p-3.5 bg-[#141416] hover:bg-[#222228] border border-[#2C2C34] hover:border-[#F5C877] rounded-2xl text-left transition-all group flex flex-col justify-between h-28 cursor-pointer shadow-sm active:scale-95"
-                    >
-                      <div>
-                        <div className="font-black text-xs text-[#FAF7F2] group-hover:text-[#F5C877] line-clamp-2">
-                          {prod.name}
-                        </div>
-                        <div className="text-[10px] text-[#8E8E98] mt-0.5">~{prod.preparationMin} dk</div>
-                      </div>
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#2C2C34]">
-                        <span className="font-black text-sm text-[#F5C877] font-mono">{prod.price} ₺</span>
-                        <div className="w-6 h-6 rounded-lg bg-[#F5C877] text-[#141416] flex items-center justify-center font-black group-hover:scale-110 transition-transform">
-                          <Plus className="w-3.5 h-3.5 text-[#141416]" />
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-          
-
-            {/* SAĞ TARAF: ADİSYON SEPETİ (Geniş & Ferah) */}
-            <div className="w-5/12 lg:w-[450px] bg-[#141416] border-l border-[#2C2C34] flex flex-col h-full flex-shrink-0">
+            {/* SOL TARAF: ADİSYON SEPETİ */}
+            <div className="w-2/5 bg-[#141416] border-r border-[#2C2C34] flex flex-col h-full">
               
               <div className="p-4 bg-[#1C1C20] border-b border-[#2C2C34] space-y-2.5 flex-shrink-0">
                 <div className="flex items-center justify-between">
@@ -880,6 +812,69 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                     <Receipt className="w-4 h-4" />
                     <span>Hesap Kapat</span>
                   </button>
+                </div>
+              </div>
+            </div>
+
+            {/* SAĞ TARAF: MENÜ & İLAVE ÜRÜN SEÇİCİ */}
+            <div className="flex-1 flex flex-col h-full bg-[#1C1C20]">
+              <div className="p-4 border-b border-[#2C2C34] space-y-3">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E8E98]" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Menüde ürün ara..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#141416] border border-[#2C2C34] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-white focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                  <button
+                    onClick={() => setActiveCategory('all')}
+                    className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer transition-all ${
+                      activeCategory === 'all' ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#141416] text-[#8E8E98] hover:text-white'
+                    }`}
+                  >
+                    Tüm Menü
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setActiveCategory(cat.id)}
+                      className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer transition-all ${
+                        activeCategory === cat.id ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#141416] text-[#8E8E98] hover:text-white'
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 p-4 overflow-y-auto">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {filteredProducts.map((prod) => (
+                    <button
+                      key={prod.id}
+                      onClick={() => handleAddProduct(prod)}
+                      className="p-3.5 bg-[#141416] hover:bg-[#222228] border border-[#2C2C34] hover:border-[#F5C877] rounded-2xl text-left transition-all group flex flex-col justify-between h-28 cursor-pointer shadow-sm active:scale-95"
+                    >
+                      <div>
+                        <div className="font-black text-xs text-[#FAF7F2] group-hover:text-[#F5C877] line-clamp-2">
+                          {prod.name}
+                        </div>
+                        <div className="text-[10px] text-[#8E8E98] mt-0.5">~{prod.preparationMin} dk</div>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#2C2C34]">
+                        <span className="font-black text-sm text-[#F5C877] font-mono">{prod.price} ₺</span>
+                        <div className="w-6 h-6 rounded-lg bg-[#F5C877] text-[#141416] flex items-center justify-center font-black group-hover:scale-110 transition-transform">
+                          <Plus className="w-3.5 h-3.5 text-[#141416]" />
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1516,166 +1511,39 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 🚀 GÖRSEL MASA TAŞIMA MODALI (RESTORAN AYARLARI VE TÜM BÖLÜMLERLE UYUMLU) */}
-      {/* ========================================================================= */}
+      {/* MASA TAŞIMA MODALI */}
       {transferModalOpen && selectedTable && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
-          <div className="bg-[#1C1C20] rounded-3xl max-w-4xl w-full max-h-[85vh] p-6 shadow-2xl border border-[#2C2C34] flex flex-col space-y-4">
-            
-            {/* Modal Başlığı */}
-            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] flex items-center justify-center font-black">
-                  <ArrowRightLeft className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    <span>{selectedTable.name} Masasını Taşı</span>
-                    <span className="text-xs text-[#F5C877] font-bold">({selectedTable.order?.totalAmount ? `${Number(selectedTable.order.totalAmount).toFixed(2)} ₺` : 'Açık'})</span>
-                  </h3>
-                  <p className="text-xs text-[#8E8E98]">Taşımak istediğiniz hedef masaya dokunun.</p>
-                </div>
-              </div>
+          <div className="bg-[#1C1C20] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5 text-[#F5C877]" />
+              <span>{selectedTable.name} Masasını Taşı</span>
+            </h3>
 
-              {/* Bölüm Filtre Butonları */}
-              <div className="flex bg-[#141416] p-1 rounded-2xl border border-[#2C2C34] gap-1 overflow-x-auto">
-                <button
-                  type="button"
-                  onClick={() => setTransferSectionFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    transferSectionFilter === 'all' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
-                  }`}
-                >
-                  Tümü
-                </button>
-                {sections.map(sec => (
-                  <button
-                    key={sec.id}
-                    type="button"
-                    onClick={() => setTransferSectionFilter(sec.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                      transferSectionFilter === sec.id ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
-                    }`}
-                  >
-                    {sec.name}
-                  </button>
-                ))}
-              </div>
+            <div>
+              <label className="text-xs font-bold text-[#8E8E98]">Hedef Boş Masayı Seçin:</label>
+              <select
+                value={targetTransferTableId}
+                onChange={(e) => setTargetTransferTableId(e.target.value)}
+                className="w-full mt-1 p-2.5 bg-[#141416] border border-[#2C2C34] rounded-xl text-xs font-bold text-white"
+              >
+                <option value="">Hedef Masa Seçin...</option>
+                {tables
+                  .filter(t => t.id !== selectedTable.id && t.status === 'EMPTY')
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>{t.name} (Boş)</option>
+                  ))}
+              </select>
             </div>
 
-            {/* Masalar Izgarası (Grid) */}
-            <div className="flex-1 overflow-y-auto p-2 bg-[#141416] rounded-2xl border border-[#2C2C34] grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 min-h-[260px] max-h-[420px]">
-              {tables
-                .filter(t => transferSectionFilter === 'all' || t.sectionId === transferSectionFilter)
-                .map(t => {
-                  const isCurrent = t.id === selectedTable.id;
-                  const isSelected = t.id === targetTransferTableId;
-                  const isEmpty = t.status === 'EMPTY';
-                  const isOccupied = t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED';
-                  const secName = sections.find(s => s.id === t.sectionId)?.name || '';
-
-                  let cardStyle = 'bg-[#1C1C20] border-[#2C2C34] hover:border-[#F5C877]/60 cursor-pointer';
-                  if (isCurrent) {
-                    cardStyle = 'bg-[#141416]/50 border-dashed border-[#2C2C34] opacity-30 cursor-not-allowed';
-                  } else if (isSelected) {
-                    cardStyle = 'bg-[#F5C877]/15 border-[#F5C877] ring-2 ring-[#F5C877] shadow-lg shadow-[#F5C877]/20 scale-[1.02]';
-                  } else if (isEmpty) {
-                    cardStyle = 'bg-[#1C1C20] border-emerald-500/30 hover:border-emerald-400 hover:bg-emerald-950/20 cursor-pointer';
-                  } else if (isOccupied) {
-                    cardStyle = 'bg-[#1C1C20] border-rose-500/30 hover:border-rose-400 hover:bg-rose-950/20 cursor-pointer';
-                  }
-
-                  return (
-                    <div
-                      key={t.id}
-                      onClick={() => {
-                        if (!isCurrent) {
-                          setTargetTransferTableId(t.id);
-                        }
-                      }}
-                      className={`p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between min-h-[110px] ${cardStyle}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-[#8E8E98] truncate">{secName}</span>
-                        {isCurrent ? (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">MEVCUT</span>
-                        ) : isEmpty ? (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">BOŞ</span>
-                        ) : (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">DOLU</span>
-                        )}
-                      </div>
-
-                      <div className="my-1">
-                        <div className="font-black text-sm text-white">{t.name}</div>
-                        {isOccupied && t.order && (
-                          <div className="text-[11px] font-mono font-bold text-rose-400 mt-0.5">
-                            {(Number(t.order.totalAmount) || 0).toFixed(2)} ₺
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between text-[10px] font-bold">
-                        {isSelected ? (
-                          <span className="text-[#F5C877] font-black flex items-center gap-1">
-                            ✓ Hedef Seçildi
-                          </span>
-                        ) : isEmpty ? (
-                          <span className="text-emerald-400">Taşımaya Uygun</span>
-                        ) : isOccupied ? (
-                          <span className="text-rose-400">Birleştirilecek</span>
-                        ) : (
-                          <span className="text-[#8E8E98]">{t.capacity} Kişilik</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
+              <button onClick={() => setTransferModalOpen(false)} className="px-4 py-2 bg-[#282830] text-[#8E8E98] rounded-xl text-xs font-bold">Vazgeç</button>
+              <button onClick={handleTransferTable} className="px-5 py-2 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] font-black rounded-xl text-xs shadow-lg">Masayı Taşı</button>
             </div>
-
-            {/* Alt Seçim ve Onay Barı */}
-            <div className="pt-2 border-t border-[#2C2C34] flex items-center justify-between">
-              <div className="text-xs">
-                {targetTransferTableId ? (
-                  <span className="font-bold text-white">
-                    Seçilen Hedef: <strong className="text-[#F5C877] font-black text-sm">{tables.find(t => t.id === targetTransferTableId)?.name}</strong>
-                    {tables.find(t => t.id === targetTransferTableId)?.status !== 'EMPTY' ? (
-                      <span className="text-rose-400 ml-2 font-normal">(Dolu masa seçildi, siparişler birleştirilecek)</span>
-                    ) : (
-                      <span className="text-emerald-400 ml-2 font-normal">(Boş masa, doğrudan aktarılacak)</span>
-                    )}
-                  </span>
-                ) : (
-                  <span className="text-[#8E8E98]">Lütfen taşımak istediğiniz hedef masaya tıklayın.</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTransferModalOpen(false);
-                    setTargetTransferTableId('');
-                  }}
-                  className="px-4 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Vazgeç
-                </button>
-                <button
-                  type="button"
-                  disabled={!targetTransferTableId}
-                  onClick={handleTransferTable}
-                  className="px-6 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed text-[#141416] font-black rounded-xl text-xs shadow-lg transition-all cursor-pointer"
-                >
-                  ✅ Masayı Taşı
-                </button>
-              </div>
-            </div>
-
           </div>
         </div>
       )}
+
       {/* İPTAL MODALI */}
       {itemCancelModal.open && selectedTable && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn font-sans">
