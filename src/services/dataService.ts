@@ -1,4 +1,4 @@
-// Gaziantepli Taha Usta - ERP, Cari & Personel Servisi
+﻿// Gaziantepli Taha Usta - ERP, Cari & Personel Servisi
 
 export interface CustomerTransaction {
   id: string;

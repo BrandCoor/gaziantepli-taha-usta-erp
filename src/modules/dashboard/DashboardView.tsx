@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   UtensilsCrossed, 
@@ -80,12 +80,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans text-slate-100 bg-slate-900 min-h-screen">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans text-slate-100 bg-[#141416] min-h-screen">
       
       {/* ÜST BAŞLIK VE HIZLI AKSİYONLAR */}
-      <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-black text-2xl shadow-lg shadow-amber-500/10">
+          <div className="w-14 h-14 rounded-2xl bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] flex items-center justify-center font-black text-2xl shadow-lg shadow-amber-500/10">
             <LayoutDashboard className="w-7 h-7" />
           </div>
           <div>
@@ -93,7 +93,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span>Gaziantepli Taha Usta — Özet & Kasa Durumu</span>
               <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-black uppercase">CANLI KASA</span>
             </h1>
-            <p className="text-xs text-slate-400 font-medium">Restoran masa ciroları, cari alacaklar ve kasa hareketleri.</p>
+            <p className="text-xs text-[#C4C4CC] font-medium">Restoran masa ciroları, cari alacaklar ve kasa hareketleri.</p>
           </div>
         </div>
 
@@ -101,7 +101,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => onNavigate && onNavigate('pos')}
-            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all"
+            className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all"
           >
             <UtensilsCrossed className="w-4 h-4" />
             <span>Restoran Masaları (POS)</span>
@@ -109,7 +109,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <button
             onClick={() => onNavigate && onNavigate('customers')}
-            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-[#FAF7F2] border border-[#383844] rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
           >
             <Users className="w-4 h-4 text-sky-400" />
             <span>Müşteriler & Cari</span>
@@ -117,7 +117,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <button
             onClick={() => onNavigate && onNavigate('expenses')}
-            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-[#FAF7F2] border border-[#383844] rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
           >
             <Receipt className="w-4 h-4 text-rose-400" />
             <span>Gider Ekle</span>
@@ -129,27 +129,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* KART 1: AÇIK MASALAR CİROSU */}
-        <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-3">
+        <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Açık Masalar Cirosu</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#C4C4CC]">Açık Masalar Cirosu</span>
+            <div className="w-9 h-9 rounded-xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center">
               <UtensilsCrossed className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <div className="text-2xl font-black text-amber-400 tracking-tight font-mono">
+            <div className="text-2xl font-black text-[#F5C877] tracking-tight font-mono">
               {formatMoney(openTablesTurnover)}
             </div>
-            <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-medium">
+            <div className="text-[11px] text-[#C4C4CC] mt-1 flex items-center gap-1 font-medium">
               <span>{occupiedCount} Masada aktif adisyon var</span>
             </div>
           </div>
         </div>
 
         {/* KART 2: DOLU MASA ORANI */}
-        <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-3">
+        <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Masa Doluluk Oranı</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#C4C4CC]">Masa Doluluk Oranı</span>
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
               <Clock className="w-4 h-4" />
             </div>
@@ -158,16 +158,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="text-2xl font-black text-emerald-400 tracking-tight">
               {occupiedCount} / {totalTableCount} Masa
             </div>
-            <div className="text-[11px] text-slate-400 mt-1 font-medium">
+            <div className="text-[11px] text-[#C4C4CC] mt-1 font-medium">
               <span>%{totalTableCount > 0 ? Math.round((occupiedCount / totalTableCount) * 100) : 0} Doluluk Kapasitesi</span>
             </div>
           </div>
         </div>
 
         {/* KART 3: TOPLAM CARİ ALACAKLAR */}
-        <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-3">
+        <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Toplam Cari Alacak</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#C4C4CC]">Toplam Cari Alacak</span>
             <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center">
               <Building2 className="w-4 h-4" />
             </div>
@@ -176,16 +176,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="text-2xl font-black text-sky-400 tracking-tight font-mono">
               {formatMoney(totalCariReceivables)}
             </div>
-            <div className="text-[11px] text-slate-400 mt-1 font-medium">
+            <div className="text-[11px] text-[#C4C4CC] mt-1 font-medium">
               <span>{customers.length} Kayıtlı Cari Müşteri</span>
             </div>
           </div>
         </div>
 
         {/* KART 4: TOPLAM GİDERLER */}
-        <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-3">
+        <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Toplam Giderler</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#C4C4CC]">Toplam Giderler</span>
             <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
               <Receipt className="w-4 h-4" />
             </div>
@@ -194,7 +194,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="text-2xl font-black text-rose-400 tracking-tight font-mono">
               {formatMoney(totalExpensesAmount)}
             </div>
-            <div className="text-[11px] text-slate-400 mt-1 font-medium">
+            <div className="text-[11px] text-[#C4C4CC] mt-1 font-medium">
               <span>{expenses.length} Adet İşletme Gideri</span>
             </div>
           </div>
@@ -206,15 +206,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* SOL SÜTUN: AÇIK MASALARIN CANLI LİSTESİ */}
-        <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
             <div className="flex items-center gap-2">
-              <UtensilsCrossed className="w-4 h-4 text-amber-400" />
+              <UtensilsCrossed className="w-4 h-4 text-[#F5C877]" />
               <h2 className="text-sm font-black text-white">Canlı Açık Masalar & Adisyonlar</h2>
             </div>
             <button
               onClick={() => onNavigate && onNavigate('pos')}
-              className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1"
+              className="text-xs font-bold text-[#F5C877] hover:text-amber-300 flex items-center gap-1"
             >
               <span>Tüm Masalar</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -223,7 +223,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
             {occupiedTables.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-500 bg-slate-900/60 rounded-2xl">
+              <div className="p-8 text-center text-xs text-[#A0A0AA] bg-[#141416]/60 rounded-2xl">
                 Şu anda restoranda açık veya hesap bekleyen masa bulunmuyor.
               </div>
             ) : (
@@ -231,18 +231,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div
                   key={t.id}
                   onClick={() => onNavigate && onNavigate('pos')}
-                  className="p-3.5 bg-slate-900 hover:bg-slate-800/80 border border-slate-800 rounded-2xl flex items-center justify-between cursor-pointer transition-all"
+                  className="p-3.5 bg-[#141416] hover:bg-slate-800/80 border border-[#2C2C34] rounded-2xl flex items-center justify-between cursor-pointer transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`w-3 h-3 rounded-full ${t.status === 'BILL_REQUESTED' ? 'bg-amber-400 animate-pulse' : 'bg-rose-500'}`}></span>
+                    <span className={`w-3 h-3 rounded-full ${t.status === 'BILL_REQUESTED' ? 'bg-[#F5C877] animate-pulse' : 'bg-rose-500'}`}></span>
                     <div>
                       <div className="font-black text-xs text-white flex items-center gap-2">
                         <span>{t.name}</span>
                         {t.status === 'BILL_REQUESTED' && (
-                          <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded text-[9px] font-black">HESAP İSTENDİ</span>
+                          <span className="px-1.5 py-0.5 bg-[#F5C877]/20 text-amber-300 border border-[#F5C877]/30 rounded text-[9px] font-black">HESAP İSTENDİ</span>
                         )}
                       </div>
-                      <div className="text-[11px] text-slate-400 font-medium">
+                      <div className="text-[11px] text-[#C4C4CC] font-medium">
                         Garson: {t.order?.waiterName || 'Taha Usta'} • {(t.order?.items || []).length} Kalem
                       </div>
                     </div>
@@ -252,7 +252,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div className="text-sm font-black text-amber-300 font-mono">
                       {formatMoney(t.order?.totalAmount || 0)}
                     </div>
-                    <div className="text-[10px] text-slate-500 flex items-center justify-end gap-1">
+                    <div className="text-[10px] text-[#A0A0AA] flex items-center justify-end gap-1">
                       <Clock className="w-3 h-3" /> {t.order?.orderTime || '12:00'}
                     </div>
                   </div>
@@ -263,8 +263,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* SAĞ SÜTUN: SON CARİ VE KASA İŞLEMLERİ */}
-        <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
             <div className="flex items-center gap-2">
               <Receipt className="w-4 h-4 text-emerald-400" />
               <h2 className="text-sm font-black text-white">Son Cari & Tahsilat Hareketleri</h2>
@@ -280,7 +280,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
             {transactions.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-500 bg-slate-900/60 rounded-2xl">
+              <div className="p-8 text-center text-xs text-[#A0A0AA] bg-[#141416]/60 rounded-2xl">
                 Henüz kayıtlı cari hareket bulunmuyor.
               </div>
             ) : (
@@ -291,7 +291,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 return (
                   <div
                     key={tx.id}
-                    className="p-3.5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between text-xs"
+                    className="p-3.5 bg-[#141416] border border-[#2C2C34] rounded-2xl flex items-center justify-between text-xs"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black ${
@@ -301,7 +301,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </div>
                       <div>
                         <div className="font-black text-white">{cust?.name || 'Müşteri'}</div>
-                        <div className="text-[11px] text-slate-400 truncate max-w-[200px]">{tx.description || (isDebt ? 'Borç Kaydı' : 'Tahsilat')}</div>
+                        <div className="text-[11px] text-[#C4C4CC] truncate max-w-[200px]">{tx.description || (isDebt ? 'Borç Kaydı' : 'Tahsilat')}</div>
                       </div>
                     </div>
 
@@ -309,7 +309,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <div className={`font-black font-mono ${isDebt ? 'text-rose-400' : 'text-emerald-400'}`}>
                         {isDebt ? `+${formatMoney(tx.amount)}` : `-${formatMoney(tx.amount)}`}
                       </div>
-                      <div className="text-[10px] text-slate-500">{tx.date}</div>
+                      <div className="text-[10px] text-[#A0A0AA]">{tx.date}</div>
                     </div>
                   </div>
                 );

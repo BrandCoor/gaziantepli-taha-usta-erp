@@ -1,4 +1,4 @@
-// Gaziantepli Taha Usta - Restoran Veri Servisi (Eksiksiz Z Raporu & Akıllı Paket Yönlendirme)
+﻿// Gaziantepli Taha Usta - Restoran Veri Servisi (Eksiksiz Z Raporu & Akıllı Paket Yönlendirme)
 
 export interface SectionConfig {
   id: string;
@@ -95,6 +95,35 @@ export interface ZReport {
   note?: string;
 }
 
+
+export interface ReportFilterOptions {
+  startDate?: string;
+  endDate?: string;
+  sectionName?: string;
+  waiterName?: string;
+  paymentType?: string;
+  searchProduct?: string;
+}
+
+export interface DetailedReportResult {
+  grossTotal: number;
+  netTotal: number;
+  discountTotal: number;
+  giftTotal: number;
+  cancelTotal: number;
+  totalOrders: number;
+  avgOrderAmount: number;
+  paymentBreakdown: { [type: string]: number };
+  cariDetails: { [customerName: string]: number };
+  mealCardsBreakdown: { [cardName: string]: number };
+  onlinePlatformsBreakdown: { [platformName: string]: number };
+  sectionBreakdown: { [sectionName: string]: { orderCount: number; total: number } };
+  waiterBreakdown: { [waiterName: string]: { orderCount: number; total: number } };
+  categoryBreakdown: { [catName: string]: { quantity: number; total: number } };
+  productSales: { [prod: string]: { quantity: number; total: number; category?: string } };
+  vatBreakdown: { rate: number; baseAmount: number; vatAmount: number; total: number }[];
+  orders: CompletedOrderArchive[];
+}
 export interface CallLogItem {
   id: string;
   phone: string;
@@ -577,7 +606,10 @@ class RestaurantDataService {
       sectionName: table.sectionId,
       waiterName: table.order.waiterName,
       orderTime: table.order.orderTime,
-      closedTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            orderDate: new Date().toISOString().split('T')[0],
+      closedDate: new Date().toISOString().split('T')[0],
+      closedAt: new Date().toISOString(),
+      closedTime: new Date().toLocaleString('tr-TR'),
       totalAmount: table.order.totalAmount,
       items: table.order.items,
       payments: payments.length > 0 ? payments : [{ id: 'p1', type: method, amount: table.order.totalAmount, time: new Date().toLocaleTimeString('tr-TR') }],
@@ -709,6 +741,172 @@ class RestaurantDataService {
   }
 
   // ÖDEME YÖNTEMLERİ CRUD
+  
+  // DETAYLI VE İSTEĞE GÖRE FİLTRELENEBİLİR Z/X RAPORLAMA MOTORU
+  // DETAYLI VE İSTEĞE GÖRE FİLTRELENEBİLİR Z/X RAPORLAMA MOTORU (Z RAPORU ALINSA DAHİ TÜM ARŞİVİ GETİRİR)
+  // DETAYLI VE İSTEĞE GÖRE FİLTRELENEBİLİR Z/X RAPORLAMA MOTORU (Z ALINMIŞ TÜM GEÇMİŞİ VE ESKİ KAYITLARI EKSİKSİZ GETİRİR)
+  public getFilteredReport(filters: ReportFilterOptions = {}): DetailedReportResult {
+    const allCompleted: CompletedOrderArchive[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.COMPLETED_ORDERS) || '[]');
+    const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+
+    // Tarih Çözücü: Hem yeni kayıtları, hem ID içindeki zaman damgasını (arch-1725...), hem de Z raporu tarihlerini YYYY-MM-DD yapar
+    const extractOrderDate = (o: CompletedOrderArchive): string => {
+      // 1. Doğrudan tarih alanı varsa
+      const raw = (o as any).closedDate || (o as any).orderDate || (o as any).closedAt || '';
+      if (raw && raw.includes('-') && raw.split('-')[0].length === 4) {
+        return raw.split('T')[0].split(' ')[0];
+      }
+      if (raw && raw.includes('.')) {
+        const p = raw.split(' ')[0].split('.');
+        if (p.length === 3) return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+      }
+
+      // 2. ID içindeki timestamp'ten çöz (Örn: arch-1725374829100)
+      if (o.id && o.id.startsWith('arch-')) {
+        const ts = parseInt(o.id.replace('arch-', ''), 10);
+        if (!isNaN(ts) && ts > 1000000000) {
+          const d = new Date(ts);
+          return d.toISOString().split('T')[0];
+        }
+      }
+
+      // 3. Varsayılan bugün
+      return new Date().toISOString().split('T')[0];
+    };
+
+    let filtered = allCompleted;
+
+    // 1. Tarih Filtresi
+    if (filters.startDate || filters.endDate) {
+      const start = filters.startDate || '1970-01-01';
+      const end = filters.endDate || '2099-12-31';
+
+      filtered = filtered.filter(o => {
+        const orderDate = extractOrderDate(o);
+        return orderDate >= start && orderDate <= end;
+      });
+    }
+
+    // 2. Bölge Filtresi (Salon, Bahçe, Paket Servis vb.)
+    if (filters.sectionName && filters.sectionName !== 'ALL') {
+      filtered = filtered.filter(o => {
+        const sec = (o.sectionName || '').toLowerCase();
+        const tab = (o.tableName || '').toLowerCase();
+        const target = filters.sectionName!.toLowerCase();
+        return sec.includes(target) || tab.includes(target);
+      });
+    }
+
+    // 3. Garson / Kasiyer Filtresi
+    if (filters.waiterName && filters.waiterName !== 'ALL') {
+      filtered = filtered.filter(o => (o.waiterName || '').toLowerCase() === filters.waiterName!.toLowerCase());
+    }
+
+    // 4. Ödeme Yöntemi Filtresi
+    if (filters.paymentType && filters.paymentType !== 'ALL') {
+      filtered = filtered.filter(o => (o.payments || []).some(p => (p.type || '').toLowerCase().includes(filters.paymentType!.toLowerCase())));
+    }
+
+    let grossTotal = 0;
+    let discountTotal = 0;
+    let giftTotal = 0;
+    const paymentBreakdown: { [type: string]: number } = {};
+    const cariDetails: { [customerName: string]: number } = {};
+    const mealCardsBreakdown: { [cardName: string]: number } = {};
+    const onlinePlatformsBreakdown: { [platformName: string]: number } = {};
+    const sectionBreakdown: { [sec: string]: { orderCount: number; total: number } } = {};
+    const waiterBreakdown: { [waiter: string]: { orderCount: number; total: number } } = {};
+    const categoryBreakdown: { [cat: string]: { quantity: number; total: number } } = {};
+    const productSales: { [prod: string]: { quantity: number; total: number; category?: string } } = {};
+
+    filtered.forEach(ord => {
+      const ordTotal = Number(ord.totalAmount) || 0;
+      grossTotal += ordTotal;
+
+      // Bölge istatistiği
+      const secName = ord.sectionName || 'Salon';
+      if (!sectionBreakdown[secName]) sectionBreakdown[secName] = { orderCount: 0, total: 0 };
+      sectionBreakdown[secName].orderCount += 1;
+      sectionBreakdown[secName].total += ordTotal;
+
+      // Garson istatistiği
+      const wName = ord.waiterName || 'Kasa';
+      if (!waiterBreakdown[wName]) waiterBreakdown[wName] = { orderCount: 0, total: 0 };
+      waiterBreakdown[wName].orderCount += 1;
+      waiterBreakdown[wName].total += ordTotal;
+
+      // Ödemeler
+      (ord.payments || []).forEach(p => {
+        const pType = p.type || 'Nakit';
+        const pAmount = Number(p.amount) || 0;
+
+        if (pType.includes('İndirim') || pType.includes('İskonto')) {
+          discountTotal += pAmount;
+        } else if (pType.includes('İkram')) {
+          giftTotal += pAmount;
+        } else if (pType.includes('Cari')) {
+          paymentBreakdown['Cari (Veresiye)'] = (paymentBreakdown['Cari (Veresiye)'] || 0) + pAmount;
+          const custName = p.customerName || pType.replace('Cari (', '').replace(')', '').trim();
+          cariDetails[custName] = (cariDetails[custName] || 0) + pAmount;
+        } else if (['Sodexo', 'Multinet', 'Ticket', 'Setcard', 'Metropol Card', 'Token Flex'].some(k => pType.includes(k))) {
+          paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
+          mealCardsBreakdown[pType] = (mealCardsBreakdown[pType] || 0) + pAmount;
+        } else if (['Trendyol', 'Getir', 'Yemeksepeti'].some(k => pType.includes(k))) {
+          paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
+          onlinePlatformsBreakdown[pType] = (onlinePlatformsBreakdown[pType] || 0) + pAmount;
+        } else {
+          paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
+        }
+      });
+
+      // Ürünler
+      (ord.items || []).forEach(item => {
+        const cat = item.categoryName || 'Kebap & Izgara';
+        if (!categoryBreakdown[cat]) categoryBreakdown[cat] = { quantity: 0, total: 0 };
+        categoryBreakdown[cat].quantity += Number(item.quantity) || 1;
+        categoryBreakdown[cat].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+
+        if (!productSales[item.productName]) {
+          productSales[item.productName] = { quantity: 0, total: 0, category: cat };
+        }
+        productSales[item.productName].quantity += Number(item.quantity) || 1;
+        productSales[item.productName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+      });
+    });
+
+    // İptaller
+    const cancelTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
+    const netTotal = Math.max(0, grossTotal - discountTotal);
+    const avgOrderAmount = filtered.length > 0 ? (netTotal / filtered.length) : 0;
+
+    // KDV Dağılımı (%10 Restoran Standart KDV)
+    const vat10Base = netTotal / 1.10;
+    const vat10Amount = netTotal - vat10Base;
+    const vatBreakdown = [
+      { rate: 10, baseAmount: vat10Base, vatAmount: vat10Amount, total: netTotal }
+    ];
+
+    return {
+      grossTotal,
+      netTotal,
+      discountTotal,
+      giftTotal,
+      cancelTotal,
+      totalOrders: filtered.length,
+      avgOrderAmount,
+      paymentBreakdown,
+      cariDetails,
+      mealCardsBreakdown,
+      onlinePlatformsBreakdown,
+      sectionBreakdown,
+      waiterBreakdown,
+      categoryBreakdown,
+      productSales,
+      vatBreakdown,
+      orders: filtered,
+    };
+  }
+
   public getPaymentMethods(): PaymentMethodConfig[] {
     const data = localStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS);
     return data ? JSON.parse(data) : [];

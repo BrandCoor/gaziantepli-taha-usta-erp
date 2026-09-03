@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Sidebar, ActiveTab } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { PosView } from './modules/pos/PosView';
 import { DeliveryView } from './modules/delivery/DeliveryView';
+import { OnlineOrdersView } from './modules/online-orders/OnlineOrdersView';
 import { RestaurantSettingsView } from './modules/restaurant-settings/RestaurantSettingsView';
 import { DashboardView } from './modules/dashboard/DashboardView';
 import { CustomerListView } from './modules/customers/CustomerListView';
@@ -24,19 +25,25 @@ export default function App() {
   const [expenses, setExpenses] = useState(dataService.getExpenses());
 
   const refreshAll = () => {
-    setCustomers(dataService.getCustomers());
-    setEmployees(dataService.getEmployees());
-    setExpenses(dataService.getExpenses());
+    setCustomers([...dataService.getCustomers()]);
+    setEmployees([...dataService.getEmployees()]);
+    setExpenses([...dataService.getExpenses()]);
   };
 
+  useEffect(() => {
+    refreshAll();
+    const unsub = dataService.subscribe(refreshAll);
+    return () => unsub();
+  }, []);
+
   return (
-    <div className="flex h-screen w-screen bg-slate-900 overflow-hidden font-sans text-slate-100 antialiased">
+    <div className="flex h-screen w-screen bg-[#141416] overflow-hidden font-sans text-[#FAF7F2] antialiased">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <Header onLockApp={() => setIsAuthenticated(false)} />
 
-        <main className="flex-1 overflow-y-auto bg-slate-900 min-w-0">
+        <main className="flex-1 overflow-y-auto bg-[#141416] min-w-0">
           {activeTab === 'pos' && (
             <PosView autoOpenTableId={targetPosTableId} onClearAutoOpen={() => setTargetPosTableId(null)} />
           )}
@@ -46,6 +53,7 @@ export default function App() {
               setActiveTab('pos');
             }} />
           )}
+          {activeTab === 'online-orders' && <OnlineOrdersView />}
           {activeTab === 'restaurant-settings' && <RestaurantSettingsView />}
           {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
           {activeTab === 'customers' && <CustomerListView customers={customers} onRefresh={refreshAll} onOpenTxModal={() => {}} />}
@@ -57,7 +65,6 @@ export default function App() {
         </main>
       </div>
 
-      {/* TÜM SİSTEMDE ÇALIŞAN ÖZEL LÜKS BİLDİRİM & ONAY MODALI */}
       <GlobalModal />
     </div>
   );

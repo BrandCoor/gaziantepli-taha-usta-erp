@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { Lock, ArrowRight, ShieldCheck, AlertCircle, Sparkles, UtensilsCrossed } from 'lucide-react';
 import { dataService, User } from '../../services/dataService';
 
@@ -43,22 +43,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="h-screen w-screen bg-slate-950 flex flex-col items-center justify-between p-6 select-none relative overflow-hidden font-sans">
+    <div className="h-screen w-screen bg-[#1C1C20] flex flex-col items-center justify-between p-6 select-none relative overflow-hidden font-sans">
       {/* Arka Plan Dekoratif Işıltı Efektleri */}
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-[#F5C877]/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-[#F5C877] text-[#141416]/10 rounded-full blur-3xl pointer-events-none"></div>
 
       {/* Üst Logo ve Başlık */}
       <div className="w-full text-center pt-8 z-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full text-[11px] font-black text-amber-400 uppercase tracking-widest mb-3">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#F5C877]/10 border border-[#F5C877]/20 rounded-full text-[11px] font-black text-[#F5C877] uppercase tracking-widest mb-3">
           <Sparkles className="w-3.5 h-3.5" /> Özel İşletme Paneli
         </div>
       </div>
 
       {/* Giriş Kartı */}
-      <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl z-10 animate-fadeIn">
+      <div className="w-full max-w-md bg-[#141416]/90 border border-[#2C2C34] rounded-3xl p-8 shadow-2xl backdrop-blur-xl z-10 animate-fadeIn">
         {/* Yuvarlak Kurumsal Logo */}
-        <div className="w-20 h-20 mx-auto rounded-full overflow-hidden border-2 border-amber-500/50 shadow-xl bg-black flex items-center justify-center mb-4 p-0.5">
+        <div className="w-20 h-20 mx-auto rounded-full overflow-hidden border-2 border-[#F5C877]/50 shadow-xl bg-black flex items-center justify-center mb-4 p-0.5">
           {company.logoBase64 ? (
             <img src={company.logoBase64} alt={company.companyName} className="w-full h-full object-fill rounded-full" />
           ) : (
@@ -68,12 +68,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
         <div className="text-center mb-6">
           <h2 className="text-xl font-black text-white tracking-tight">{company.companyName}</h2>
-          <p className="text-xs text-slate-400 mt-1">Cari, Finans & Personel Yönetim Sistemi</p>
+          <p className="text-xs text-[#C4C4CC] mt-1">Cari, Finans & Personel Yönetim Sistemi</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">Giriş Yapacak Kullanıcı</label>
+            <label className="block text-xs font-bold text-[#E4E4E8] mb-1.5">Giriş Yapacak Kullanıcı</label>
             <select
               value={selectedUserId}
               onChange={(e) => {
@@ -81,7 +81,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 setError('');
                 setTimeout(() => passwordInputRef.current?.focus(), 50);
               }}
-              className="w-full px-4 py-3 bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-2xl text-xs font-bold text-white focus:outline-none transition-colors cursor-pointer"
+              className="w-full px-4 py-3 bg-[#1C1C20] border border-[#383844] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-white focus:outline-none transition-colors cursor-pointer"
             >
               {users.map(u => (
                 <option key={u.id} value={u.id}>
@@ -92,7 +92,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">Kullanıcı Giriş Şifresi</label>
+            <label className="block text-xs font-bold text-[#E4E4E8] mb-1.5">Kullanıcı Giriş Şifresi</label>
             <div className="relative">
               <input
                 ref={passwordInputRef}
@@ -104,11 +104,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   if (error) setError('');
                 }}
                 placeholder="Şifrenizi girin..."
-                className={`w-full px-4 py-3 bg-slate-950 border rounded-2xl text-xs font-mono text-white focus:outline-none transition-colors select-text cursor-text ${
-                  error ? 'border-rose-500 bg-rose-950/20 text-rose-300' : 'border-slate-700 focus:border-amber-500'
+                className={`w-full px-4 py-3 bg-[#1C1C20] border rounded-2xl text-xs font-mono text-white focus:outline-none transition-colors select-text cursor-text ${
+                  error ? 'border-rose-500 bg-rose-950/20 text-rose-300' : 'border-[#383844] focus:border-[#F5C877]'
                 }`}
               />
-              <Lock className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <Lock className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-[#A0A0AA] pointer-events-none" />
             </div>
 
             {error && (
@@ -121,7 +121,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
           <button
             type="submit"
-            className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-black rounded-2xl text-xs shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer mt-2"
+            className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-[#F5C877] hover:to-[#D4A351] text-white font-black rounded-2xl text-xs shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer mt-2"
           >
             <span>Sisteme Giriş Yap</span>
             <ArrowRight className="w-4 h-4" />
@@ -130,10 +130,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       </div>
 
       {/* Alt Geliştirici & Lisans İmzası */}
-      <div className="text-center pb-4 text-[11px] text-slate-500 font-medium z-10">
+      <div className="text-center pb-4 text-[11px] text-[#A0A0AA] font-medium z-10">
         <span>Özel Tasarım & Yazılım Mimarisi: </span>
-        <strong className="text-blue-400 font-black tracking-wider">RYMedya</strong>
-        <span className="text-slate-600"> • © 2026</span>
+        <strong className="text-[#F5C877] font-black tracking-wider">RYMedya</strong>
+        <span className="text-[#A0A0AA]"> • © 2026</span>
       </div>
     </div>
   );

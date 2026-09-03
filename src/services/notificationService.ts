@@ -1,10 +1,11 @@
-// Gaziantepli Taha Usta - Özel Lüks Bildirim & Modal Servisi
+﻿export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 export interface ToastItem {
   id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
+  type: ToastType;
   title: string;
   message: string;
+  duration?: number;
 }
 
 export interface ConfirmDialogOptions {
@@ -22,15 +23,17 @@ type Listener = () => void;
 class NotificationService {
   private toasts: ToastItem[] = [];
   private activeConfirm: ConfirmDialogOptions | null = null;
-  private listeners: Set<Listener> = new Set();
+  private listeners: Listener[] = [];
 
-  public subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  public subscribe(fn: Listener) {
+    this.listeners.push(fn);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== fn);
+    };
   }
 
-  private notify() {
-    this.listeners.forEach((l) => l());
+  private notifyListeners() {
+    this.listeners.forEach(fn => fn());
   }
 
   public getToasts(): ToastItem[] {
@@ -41,44 +44,48 @@ class NotificationService {
     return this.activeConfirm;
   }
 
-  // ŞIK TOAST BİLDİRİMİ
-  public showToast(title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success', duration: number = 3500) {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    const newToast: ToastItem = { id, type, title, message };
-    this.toasts.push(newToast);
-    this.notify();
+  public showToast(type: ToastType, title: string, message: string, duration: number = 3500) {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    const toast: ToastItem = { id, type, title, message, duration };
+    this.toasts.push(toast);
+    this.notifyListeners();
 
-    setTimeout(() => {
-      this.removeToast(id);
-    }, duration);
+    if (duration > 0) {
+      setTimeout(() => {
+        this.removeToast(id);
+      }, duration);
+    }
+  }
+
+  public success(title: string, message: string) {
+    this.showToast('success', title, message);
+  }
+
+  public error(title: string, message: string) {
+    this.showToast('error', title, message, 4500);
+  }
+
+  public warning(title: string, message: string) {
+    this.showToast('warning', title, message, 4000);
+  }
+
+  public info(title: string, message: string) {
+    this.showToast('info', title, message);
   }
 
   public removeToast(id: string) {
     this.toasts = this.toasts.filter(t => t.id !== id);
-    this.notify();
+    this.notifyListeners();
   }
 
-  // ÖZEL ONAY MODALI (CONFIRM YERİNE)
   public confirm(options: ConfirmDialogOptions) {
     this.activeConfirm = options;
-    this.notify();
+    this.notifyListeners();
   }
 
   public closeConfirm() {
     this.activeConfirm = null;
-    this.notify();
-  }
-
-  public success(title: string, message: string) {
-    this.showToast(title, message, 'success');
-  }
-
-  public error(title: string, message: string) {
-    this.showToast(title, message, 'error');
-  }
-
-  public warning(title: string, message: string) {
-    this.showToast(title, message, 'warning');
+    this.notifyListeners();
   }
 }
 
