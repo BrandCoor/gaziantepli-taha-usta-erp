@@ -30,18 +30,16 @@ export const Commands = {
   BEEP: `${ESC}B\x02\x02`,
   CUT_PAPER: `${GS}V\x41\x03`,
   LINE: '--------------------------------\n',
+  DOUBLE_LINE: '================================\n',
 };
 
-// SADE & NET MUTFAK FİŞİ (AŞÇI DOSTU)
+// 1. MUTFAK FİŞİ
 export function generateKitchenReceipt(data: any): Buffer {
   let text = '';
-  text += Commands.INIT;
-  text += Commands.BEEP;
-  text += Commands.ALIGN_CENTER;
+  text += Commands.INIT + Commands.BEEP + Commands.ALIGN_CENTER;
   text += Commands.DOUBLE_SIZE + Commands.BOLD_ON;
   text += `${formatTurkishText(data.ticketTitle || 'MUTFAK FISI')}\n`;
-  text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
-  text += Commands.LINE;
+  text += Commands.NORMAL_SIZE + Commands.BOLD_OFF + Commands.LINE;
 
   text += Commands.ALIGN_LEFT;
   text += Commands.DOUBLE_HEIGHT + Commands.BOLD_ON;
@@ -61,31 +59,25 @@ export function generateKitchenReceipt(data: any): Buffer {
   }
 
   if (data.orderNote) {
-    text += Commands.LINE;
-    text += Commands.BOLD_ON;
+    text += Commands.LINE + Commands.BOLD_ON;
     text += `MASA NOTU: ${formatTurkishText(data.orderNote)}\n`;
     text += Commands.BOLD_OFF;
   }
 
-  text += Commands.LINE;
-  text += '\n\n\n';
-  text += Commands.CUT_PAPER;
-
+  text += Commands.LINE + '\n\n\n' + Commands.CUT_PAPER;
   return Buffer.from(text, 'binary');
 }
 
-// SADE & NET HESAP / ADİSYON FİŞİ
+// 2. HESAP FİŞİ
 export function generateBillReceipt(data: any): Buffer {
   let text = '';
-  text += Commands.INIT;
-  text += Commands.ALIGN_CENTER;
+  text += Commands.INIT + Commands.ALIGN_CENTER;
   text += Commands.DOUBLE_SIZE + Commands.BOLD_ON;
   text += `${formatTurkishText(data.restaurantName || 'GAZIANTEPLI TAHA USTA')}\n`;
   text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
   text += `Masa: ${formatTurkishText(data.tableName)}  |  Saat: ${data.orderTime}\n`;
-  text += Commands.LINE;
+  text += Commands.LINE + Commands.ALIGN_LEFT;
 
-  text += Commands.ALIGN_LEFT;
   for (const item of data.items) {
     const name = formatTurkishText(item.name || item.productName).padEnd(18).substring(0, 18);
     const qty = String(item.quantity).padStart(2);
@@ -93,17 +85,61 @@ export function generateBillReceipt(data: any): Buffer {
     text += `${name} ${qty}x ${total} TL\n`;
   }
 
-  text += Commands.LINE;
-  text += Commands.ALIGN_RIGHT;
+  text += Commands.LINE + Commands.ALIGN_RIGHT;
   text += Commands.DOUBLE_HEIGHT + Commands.BOLD_ON;
   text += `TOPLAM: ${(Number(data.totalAmount) || 0).toFixed(2)} TL\n`;
   text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
+  text += Commands.ALIGN_CENTER + Commands.LINE;
+  text += 'AFIYET OLSUN - YINE BEKLERIZ\n\n\n' + Commands.CUT_PAPER;
+  return Buffer.from(text, 'binary');
+}
 
-  text += Commands.ALIGN_CENTER;
+// 3. SADELEŞTİRİLMİŞ Z RAPORU TERMAL FİŞİ
+export function generateZReportReceipt(data: any): Buffer {
+  let text = '';
+  text += Commands.INIT + Commands.ALIGN_CENTER;
+  text += Commands.DOUBLE_SIZE + Commands.BOLD_ON;
+  text += `GUN SONU Z RAPORU\n`;
+  text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
+  text += `${formatTurkishText(data.restaurantName || 'GAZIANTEPLI TAHA USTA')}\n`;
+  text += Commands.DOUBLE_LINE;
+
+  text += Commands.ALIGN_LEFT;
+  text += `Z NO      : #${String(data.zNo).padStart(4, '0')}\n`;
+  text += `TARIH/SAAT: ${data.closedAt}\n`;
+  text += `KAPANIS YP: ${formatTurkishText(data.closedBy)}\n`;
+  text += `ADISYON SY: ${data.totalOrders} Adet Masa\n`;
   text += Commands.LINE;
-  text += 'AFIYET OLSUN - YINE BEKLERIZ\n';
-  text += '\n\n\n';
-  text += Commands.CUT_PAPER;
 
+  text += Commands.BOLD_ON + 'TAHSILAT DAGILIMI:\n' + Commands.BOLD_OFF;
+  for (const [type, amount] of Object.entries(data.paymentBreakdown || {})) {
+    const tName = formatTurkishText(type).padEnd(20).substring(0, 20);
+    const tAmount = (Number(amount) || 0).toFixed(2).padStart(10);
+    text += `${tName} ${tAmount} TL\n`;
+  }
+  text += Commands.LINE;
+
+  if (data.discountTotal > 0) text += `ISKONTO/INDIRIM : -${Number(data.discountTotal).toFixed(2)} TL\n`;
+  if (data.giftTotal > 0)     text += `IKRAM TUTARI    :  ${Number(data.giftTotal).toFixed(2)} TL\n`;
+  if (data.cancelTotal > 0)   text += `IPTAL EDILENLER :  ${Number(data.cancelTotal).toFixed(2)} TL\n`;
+
+  text += Commands.LINE + Commands.ALIGN_RIGHT;
+  text += Commands.DOUBLE_HEIGHT + Commands.BOLD_ON;
+  text += `NET CIRO: ${(Number(data.netTotal) || 0).toFixed(2)} TL\n`;
+  text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
+  text += Commands.DOUBLE_LINE;
+
+  text += Commands.ALIGN_LEFT;
+  text += Commands.BOLD_ON + 'URUN BAZLI SATIS ADETLERI:\n' + Commands.BOLD_OFF;
+  for (const [pName, pStat] of Object.entries(data.productSales || {})) {
+    const name = formatTurkishText(pName).padEnd(20).substring(0, 20);
+    const qty = String((pStat as any).quantity).padStart(3);
+    const total = (Number((pStat as any).total) || 0).toFixed(2).padStart(8);
+    text += `${name} ${qty}x ${total} TL\n`;
+  }
+
+  text += Commands.DOUBLE_LINE;
+  text += Commands.ALIGN_CENTER;
+  text += 'GUN SONU TAMAMLANDI\n\n\n' + Commands.CUT_PAPER;
   return Buffer.from(text, 'binary');
 }

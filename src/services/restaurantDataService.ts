@@ -1,4 +1,4 @@
-// Gaziantepli Taha Usta - Restoran Veri Servisi (Personel Takibi & Sadeleştirilmiş Fiş)
+// Gaziantepli Taha Usta - Restoran Veri Servisi (Eksiksiz Z Raporu & Akıllı Paket Yönlendirme)
 
 export interface SectionConfig {
   id: string;
@@ -34,10 +34,19 @@ export interface OrderItemState {
   quantity: number;
   targetPrinter: string;
   note?: string;
-  addedBy?: string; // Siparişi / İlaveyi Giren Garson veya Kasa
-  addedAt?: string; // Giriş Saati (Örn: 14:35)
+  addedBy?: string;
+  addedAt?: string;
   isGift?: boolean;
   status: 'PENDING' | 'SENT_TO_KITCHEN';
+}
+
+export interface PaymentRecord {
+  id: string;
+  type: string;
+  amount: number;
+  customerId?: string;
+  customerName?: string;
+  time: string;
 }
 
 export interface ActiveOrder {
@@ -49,6 +58,52 @@ export interface ActiveOrder {
   orderNote?: string;
   customerInfo?: CustomerDeliveryInfo;
   items: OrderItemState[];
+  payments?: PaymentRecord[];
+}
+
+export interface CompletedOrderArchive {
+  id: string;
+  orderNumber: number;
+  tableName: string;
+  sectionName: string;
+  waiterName: string;
+  orderTime: string;
+  closedTime: string;
+  totalAmount: number;
+  items: OrderItemState[];
+  payments: PaymentRecord[];
+  zReportId?: string;
+}
+
+export interface ZReport {
+  id: string;
+  zNo: number;
+  openedAt: string;
+  closedAt: string;
+  closedBy: string;
+  grossTotal: number;
+  netTotal: number;
+  totalOrders: number;
+  paymentBreakdown: { [paymentType: string]: number };
+  cariDetails: { [customerName: string]: number };
+  mealCardsBreakdown: { [cardName: string]: number };
+  onlinePlatformsBreakdown: { [platformName: string]: number };
+  discountTotal: number;
+  giftTotal: number;
+  cancelTotal: number;
+  productSales: { [productName: string]: { quantity: number; total: number } };
+  note?: string;
+}
+
+export interface CallLogItem {
+  id: string;
+  phone: string;
+  customerId?: string;
+  customerName: string;
+  address?: string;
+  time: string;
+  date: string;
+  isRegistered: boolean;
 }
 
 export interface PaymentMethodConfig {
@@ -128,6 +183,10 @@ const STORAGE_KEYS = {
   TABLES: 'gtu_pos_tables',
   PAYMENT_METHODS: 'gtu_pos_payment_methods',
   RECEIPT_SETTINGS: 'gtu_pos_receipt_settings',
+  COMPLETED_ORDERS: 'gtu_pos_completed_orders',
+  Z_REPORTS: 'gtu_pos_z_reports',
+  CANCEL_LOGS: 'gtu_pos_cancel_logs',
+  CALL_LOGS: 'gtu_pos_call_logs',
 };
 
 const API_SYNC_URL = 'https://api.rymedya.com.tr/index.php';
@@ -162,7 +221,7 @@ const DEFAULT_PRODUCTS: ProductConfig[] = [
 const DEFAULT_SECTIONS: SectionConfig[] = [
   { id: 'sec-salon', name: 'Ana Salon', tableCount: 12, capacityPerTable: 4 },
   { id: 'sec-bahce', name: 'Bahçe', tableCount: 10, capacityPerTable: 6 },
-  { id: 'sec-paket', name: 'Paket Servis', tableCount: 5, capacityPerTable: 1 },
+  { id: 'sec-paket', name: 'Paket Servis', tableCount: 8, capacityPerTable: 1 },
 ];
 
 const DEFAULT_WAITERS: WaiterConfig[] = [
@@ -192,6 +251,7 @@ type ChangeListener = () => void;
 
 class RestaurantDataService {
   private listeners: Set<ChangeListener> = new Set();
+  private pendingActivePosTableId: string | null = null;
 
   constructor() {
     setTimeout(() => this.pushStateToCloud(), 1000);
@@ -206,6 +266,47 @@ class RestaurantDataService {
   private notify() {
     this.listeners.forEach((l) => l());
     this.pushStateToCloud();
+  }
+
+  public setPendingPosTableToOpen(tableId: string) {
+    this.pendingActivePosTableId = tableId;
+  }
+
+  public getAndClearPendingPosTable(): string | null {
+    const id = this.pendingActivePosTableId;
+    this.pendingActivePosTableId = null;
+    return id;
+  }
+
+  public getRecentCalls(): CallLogItem[] {
+    const data = localStorage.getItem(STORAGE_KEYS.CALL_LOGS);
+    return data ? JSON.parse(data) : [
+      { id: 'call-1', phone: '0532 123 45 67', customerName: 'Ahmet Demir', address: 'Şehitkamil / Gaziantep', time: '14:20', date: 'Bugün', isRegistered: true },
+      { id: 'call-2', phone: '0535 987 65 43', customerName: 'Bilinmeyen Numara', address: '', time: '13:45', date: 'Bugün', isRegistered: false },
+    ];
+  }
+
+  public saveRecentCalls(calls: CallLogItem[]) {
+    localStorage.setItem(STORAGE_KEYS.CALL_LOGS, JSON.stringify(calls));
+    this.notify();
+  }
+
+  public addCallLog(phone: string, customerInfo?: { id?: string; name?: string; address?: string }): CallLogItem {
+    const calls = this.getRecentCalls();
+    const isReg = Boolean(customerInfo?.id);
+    const newCall: CallLogItem = {
+      id: `call-${Date.now()}`,
+      phone: phone,
+      customerId: customerInfo?.id,
+      customerName: customerInfo?.name || 'Kayıtsız Numara',
+      address: customerInfo?.address || '',
+      time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+      date: 'Bugün',
+      isRegistered: isReg,
+    };
+    const updated = [newCall, ...calls.filter(c => c.phone !== phone)].slice(0, 20);
+    this.saveRecentCalls(updated);
+    return newCall;
   }
 
   public async pushStateToCloud() {
@@ -261,7 +362,6 @@ class RestaurantDataService {
     const existingItems = table.order?.items || [];
     const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-    // Gelen yeni ürünlere ekleyen garsonun adını ve saatini damgala
     const newItems: OrderItemState[] = (incoming.items || []).map((i: any) => ({
       ...i,
       id: `item-${Date.now()}-${Math.random()}`,
@@ -371,9 +471,24 @@ class RestaurantDataService {
     if (tableIndex === -1) return;
 
     if (items.length === 0) {
-      tables[tableIndex].status = 'EMPTY';
-      tables[tableIndex].order = undefined;
-      tables[tableIndex].customerInfo = undefined;
+      if (customerInfo) {
+        tables[tableIndex].customerInfo = customerInfo;
+        tables[tableIndex].status = 'OCCUPIED';
+        tables[tableIndex].order = {
+          id: `ord-${Date.now()}`,
+          orderNumber: Math.floor(100 + Math.random() * 900),
+          totalAmount: 0,
+          orderTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+          waiterName: waiterName,
+          orderNote: orderNote,
+          customerInfo: customerInfo,
+          items: [],
+        };
+      } else {
+        tables[tableIndex].status = 'EMPTY';
+        tables[tableIndex].order = undefined;
+        tables[tableIndex].customerInfo = undefined;
+      }
     } else {
       const totalAmount = items.reduce((sum, item) => sum + (item.isGift ? 0 : (Number(item.price) || 0) * (Number(item.quantity) || 1)), 0);
       const existingOrder = tables[tableIndex].order;
@@ -415,6 +530,18 @@ class RestaurantDataService {
     const targetItem = items[itemIndex];
     if (!targetItem) return;
 
+    const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+    cancelLogs.push({
+      id: `cancel-${Date.now()}`,
+      tableName: table.name,
+      productName: targetItem.productName,
+      quantity: cancelQty,
+      amount: (targetItem.price || 0) * cancelQty,
+      reason: reason,
+      cancelledAt: new Date().toISOString(),
+    });
+    localStorage.setItem(STORAGE_KEYS.CANCEL_LOGS, JSON.stringify(cancelLogs));
+
     if (targetItem.quantity <= cancelQty) {
       items.splice(itemIndex, 1);
     } else {
@@ -437,10 +564,25 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public completeTablePayment(tableId: string, method: string) {
+  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []) {
     const tables = this.getTables();
     const table = tables.find((t) => t.id === tableId);
-    if (!table) return;
+    if (!table || !table.order) return;
+
+    const completedOrders: CompletedOrderArchive[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.COMPLETED_ORDERS) || '[]');
+    completedOrders.push({
+      id: `arch-${Date.now()}`,
+      orderNumber: table.order.orderNumber,
+      tableName: table.name,
+      sectionName: table.sectionId,
+      waiterName: table.order.waiterName,
+      orderTime: table.order.orderTime,
+      closedTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+      totalAmount: table.order.totalAmount,
+      items: table.order.items,
+      payments: payments.length > 0 ? payments : [{ id: 'p1', type: method, amount: table.order.totalAmount, time: new Date().toLocaleTimeString('tr-TR') }],
+    });
+    localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(completedOrders));
 
     table.status = 'EMPTY';
     table.order = undefined;
@@ -448,6 +590,122 @@ class RestaurantDataService {
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
+  }
+
+  public getCompletedOrdersCurrentSession(): CompletedOrderArchive[] {
+    const all: CompletedOrderArchive[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.COMPLETED_ORDERS) || '[]');
+    return all.filter(o => !o.zReportId);
+  }
+
+  // DETAYLI GÜN İÇİ X VE GÜN SONU Z HESAPLAMA MOTORU
+  public getCurrentXReport() {
+    const orders = this.getCompletedOrdersCurrentSession();
+    const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+
+    let grossTotal = 0;
+    let discountTotal = 0;
+    let giftTotal = 0;
+    const paymentBreakdown: { [type: string]: number } = {};
+    const cariDetails: { [customerName: string]: number } = {};
+    const mealCardsBreakdown: { [cardName: string]: number } = {};
+    const onlinePlatformsBreakdown: { [platformName: string]: number } = {};
+    const productSales: { [prod: string]: { quantity: number; total: number } } = {};
+
+    orders.forEach(ord => {
+      grossTotal += Number(ord.totalAmount) || 0;
+
+      (ord.payments || []).forEach(p => {
+        const pType = p.type || 'Nakit';
+        const pAmount = Number(p.amount) || 0;
+
+        if (pType.includes('İndirim') || pType.includes('İskonto')) {
+          discountTotal += pAmount;
+        } else if (pType.includes('İkram')) {
+          giftTotal += pAmount;
+        } else if (pType.includes('Cari')) {
+          paymentBreakdown['Cari (Veresiye)'] = (paymentBreakdown['Cari (Veresiye)'] || 0) + pAmount;
+          const custName = p.customerName || pType.replace('Cari (', '').replace(')', '').trim();
+          cariDetails[custName] = (cariDetails[custName] || 0) + pAmount;
+        } else if (['Sodexo', 'Multinet', 'Ticket', 'Setcard', 'Metropol Card', 'Token Flex'].some(k => pType.includes(k))) {
+          paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
+          mealCardsBreakdown[pType] = (mealCardsBreakdown[pType] || 0) + pAmount;
+        } else if (['Trendyol', 'Getir', 'Yemeksepeti'].some(k => pType.includes(k))) {
+          paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
+          onlinePlatformsBreakdown[pType] = (onlinePlatformsBreakdown[pType] || 0) + pAmount;
+        } else {
+          paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
+        }
+      });
+
+      (ord.items || []).forEach(item => {
+        if (!productSales[item.productName]) {
+          productSales[item.productName] = { quantity: 0, total: 0 };
+        }
+        productSales[item.productName].quantity += Number(item.quantity) || 1;
+        productSales[item.productName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+      });
+    });
+
+    const cancelTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
+
+    return {
+      grossTotal,
+      netTotal: grossTotal - discountTotal,
+      totalOrders: orders.length,
+      paymentBreakdown,
+      cariDetails,
+      mealCardsBreakdown,
+      onlinePlatformsBreakdown,
+      discountTotal,
+      giftTotal,
+      cancelTotal,
+      productSales,
+      orders,
+    };
+  }
+
+  public closeDailyZReport(note: string = '', closedBy: string = 'Taha Usta'): ZReport {
+    const xData = this.getCurrentXReport();
+    const zReports: ZReport[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.Z_REPORTS) || '[]');
+    const nextZNo = zReports.length + 1;
+
+    const zReport: ZReport = {
+      id: `z-${Date.now()}`,
+      zNo: nextZNo,
+      openedAt: xData.orders[0]?.orderTime || '09:00',
+      closedAt: new Date().toLocaleString('tr-TR'),
+      closedBy: closedBy,
+      grossTotal: xData.grossTotal,
+      netTotal: xData.netTotal,
+      totalOrders: xData.totalOrders,
+      paymentBreakdown: xData.paymentBreakdown,
+      cariDetails: xData.cariDetails,
+      mealCardsBreakdown: xData.mealCardsBreakdown,
+      onlinePlatformsBreakdown: xData.onlinePlatformsBreakdown,
+      discountTotal: xData.discountTotal,
+      giftTotal: xData.giftTotal,
+      cancelTotal: xData.cancelTotal,
+      productSales: xData.productSales,
+      note: note,
+    };
+
+    zReports.push(zReport);
+    localStorage.setItem(STORAGE_KEYS.Z_REPORTS, JSON.stringify(zReports));
+
+    const allCompleted: CompletedOrderArchive[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.COMPLETED_ORDERS) || '[]');
+    allCompleted.forEach(o => {
+      if (!o.zReportId) o.zReportId = zReport.id;
+    });
+    localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(allCompleted));
+
+    localStorage.removeItem(STORAGE_KEYS.CANCEL_LOGS);
+    this.notify();
+    return zReport;
+  }
+
+  public getZReportsHistory(): ZReport[] {
+    const data = localStorage.getItem(STORAGE_KEYS.Z_REPORTS);
+    return data ? JSON.parse(data) : [];
   }
 
   // ÖDEME YÖNTEMLERİ CRUD

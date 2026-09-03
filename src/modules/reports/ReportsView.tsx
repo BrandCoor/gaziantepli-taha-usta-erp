@@ -1,426 +1,449 @@
-import React, { useState } from 'react';
-import { FileSpreadsheet, Users, UserCheck, Filter, Printer, Calendar, Clock, Receipt, Truck, Download } from 'lucide-react';
-import { dataService, Customer, Employee, Expense, Supplier } from '../../services/dataService';
-import { exportService, DateRange } from '../../services/exportService';
-import { formatCurrency, formatDate } from '../../utils/formatters';
-
-type ReportTab = 'CUSTOMERS' | 'SUPPLIERS' | 'EXPENSES' | 'EMPLOYEES';
+import React, { useState, useEffect } from 'react';
+import { 
+  BarChart2, 
+  Printer, 
+  Clock, 
+  Coins, 
+  CreditCard, 
+  Building2, 
+  Receipt, 
+  CheckCircle2, 
+  Archive, 
+  Lock,
+  Tag,
+  Gift,
+  Bike,
+  FileText
+} from 'lucide-react';
+import { restaurantDataService, ZReport } from '../../services/restaurantDataService';
 
 export const ReportsView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<ReportTab>('CUSTOMERS');
-  
-  // Filtreler
-  const [customerFilter, setCustomerFilter] = useState<'ALL' | 'ONLY_DEBT'>('ALL');
-  const [supplierFilter, setSupplierFilter] = useState<'ALL' | 'ONLY_DEBT'>('ALL');
-  const [employeeFilter, setEmployeeFilter] = useState<'ALL' | 'ONLY_PENDING'>('ALL');
-  const [expenseFilter, setExpenseFilter] = useState<string>('ALL');
+  const [activeTab, setActiveTab] = useState<'current_x' | 'close_z' | 'history'>('current_x');
 
-  // Tarih Filtresi
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [activePreset, setActivePreset] = useState<'ALL' | 'THIS_MONTH' | 'LAST_MONTH' | 'THIS_YEAR'>('ALL');
+  const [xReport, setXReport] = useState(restaurantDataService.getCurrentXReport());
+  const [zHistory, setZHistory] = useState<ZReport[]>(restaurantDataService.getZReportsHistory());
+  const [zNoteInput, setZNoteInput] = useState<string>('');
+  const [selectedZHistoryDetail, setSelectedZHistoryDetail] = useState<ZReport | null>(null);
 
-  const customers = dataService.getCustomers();
-  const suppliers = dataService.getSuppliers();
-  const expenses = dataService.getExpenses();
-  const employees = dataService.getEmployees();
-
-  const applyPreset = (preset: 'ALL' | 'THIS_MONTH' | 'LAST_MONTH' | 'THIS_YEAR') => {
-    setActivePreset(preset);
-    const now = new Date();
-    
-    if (preset === 'ALL') {
-      setStartDate('');
-      setEndDate('');
-    } else if (preset === 'THIS_MONTH') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setStartDate(start.toISOString().split('T')[0]);
-      setEndDate(end.toISOString().split('T')[0]);
-    } else if (preset === 'LAST_MONTH') {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0);
-      setStartDate(start.toISOString().split('T')[0]);
-      setEndDate(end.toISOString().split('T')[0]);
-    } else if (preset === 'THIS_YEAR') {
-      const start = new Date(now.getFullYear(), 0, 1);
-      const end = new Date(now.getFullYear(), 11, 31);
-      setStartDate(start.toISOString().split('T')[0]);
-      setEndDate(end.toISOString().split('T')[0]);
-    }
+  const refreshReports = () => {
+    setXReport(restaurantDataService.getCurrentXReport());
+    setZHistory(restaurantDataService.getZReportsHistory());
   };
 
-  // 1. Filtrelenmiş Müşteriler
-  const filteredCustomers = customers.filter(c => {
-    if (customerFilter === 'ONLY_DEBT' && c.balance <= 0) return false;
-    if (startDate && c.createdAt < startDate) return false;
-    if (endDate && c.createdAt > endDate) return false;
-    return true;
-  });
-  const customerTotal = filteredCustomers.reduce((acc, c) => acc + c.balance, 0);
+  useEffect(() => {
+    refreshReports();
+    const unsub = restaurantDataService.subscribe(refreshReports);
+    return () => unsub();
+  }, []);
 
-  // 2. Filtrelenmiş Toptancılar
-  const filteredSuppliers = suppliers.filter(s => {
-    if (supplierFilter === 'ONLY_DEBT' && s.balance <= 0) return false;
-    if (startDate && s.createdAt < startDate) return false;
-    if (endDate && s.createdAt > endDate) return false;
-    return true;
-  });
-  const supplierTotal = filteredSuppliers.reduce((acc, s) => acc + s.balance, 0);
+  const formatMoney = (val: number) => {
+    return (Number(val) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+  };
 
-  // 3. Filtrelenmiş Giderler
-  const filteredExpenses = expenses.filter(exp => {
-    if (expenseFilter !== 'ALL' && exp.category !== expenseFilter) return false;
-    if (startDate && exp.date < startDate) return false;
-    if (endDate && exp.date > endDate) return false;
-    return true;
-  });
-  const expenseTotal = filteredExpenses.reduce((acc, exp) => acc + exp.amount, 0);
+  const handleExecuteZReportClose = (e: React.FormEvent) => {
+    e.preventDefault();
 
-  // 4. Filtrelenmiş Personeller
-  const filteredEmployees = employees.filter(e => {
-    if (employeeFilter === 'ONLY_PENDING' && e.balance <= 0) return false;
-    if (startDate && e.startDate < startDate) return false;
-    if (endDate && e.startDate > endDate) return false;
-    return true;
-  });
-  const employeeTotal = filteredEmployees.reduce((acc, e) => acc + e.balance, 0);
+    const confirmed = confirm(
+      `⚠️ GÜN SONU Z RAPORU KAPANIS ONAYI\n\n` +
+      `Bugünkü Toplam Ciro: ${formatMoney(xReport.grossTotal)}\n` +
+      `Kapatılan Adisyon Sayısı: ${xReport.totalOrders} Adet\n\n` +
+      `Günü kapatmak ve Z Raporunu Kasa Yazıcısından basmak istiyor musunuz?`
+    );
 
-  const dateRangeParam: DateRange | undefined = (startDate && endDate) ? { startDate, endDate } : undefined;
+    if (!confirmed) return;
+
+    const zReport = restaurantDataService.closeDailyZReport(zNoteInput, 'Taha Usta');
+    alert(`✅ Z Raporu (#${zReport.zNo}) oluşturuldu ve Kasa Yazıcısından Z fişi basıldı!`);
+
+    setZNoteInput('');
+    setActiveTab('history');
+  };
+
+  const handlePrintZReceipt = (z: ZReport) => {
+    alert(
+      `🖨️ [KASA TERMAL YAZICISI (USB) - Z NO #${z.zNo}]:\n\n` +
+      `Tarih: ${z.closedAt}\n` +
+      `Kapatan: ${z.closedBy}\n` +
+      `Net Ciro: ${formatMoney(z.netTotal)}\n\n` +
+      `Termal Z Fişi Başarıyla Basıldı!`
+    );
+  };
 
   return (
-    <div className="p-10 space-y-8 max-w-[1700px] mx-auto">
-      {/* Üst Başlık */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">Raporlar & Dışa Aktarma</h2>
-          <p className="text-xs text-slate-500">Müşteriler, toptancılar, giderler ve personel maaş dökümlerini resmi formatta alın</p>
+    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans text-slate-100 bg-slate-900 min-h-screen">
+      
+      {/* ÜST BAŞLIK VE SEKME BUTONLARI */}
+      <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-black text-2xl shadow-lg">
+            <BarChart2 className="w-7 h-7" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+              <span>Gün Sonu Z Raporu & Kasa Dökümleri</span>
+              <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full text-[10px] font-black uppercase">TÜM ÖDEME KANALLARI</span>
+            </h1>
+            <p className="text-xs text-slate-400 font-medium">Nakit, POS, Cari isim dökümü, Sodexo, Multinet, Ticket, Setcard ve Online platformlar.</p>
+          </div>
         </div>
 
-        {/* 4 MODÜLLÜ RAPOR SEÇİM SEKMELERİ */}
-        <div className="flex flex-wrap items-center gap-2 bg-slate-200/80 p-1.5 rounded-2xl border border-slate-300">
+        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 gap-1 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('CUSTOMERS')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'CUSTOMERS'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                : 'text-slate-700 hover:bg-slate-300/60'
+            onClick={() => setActiveTab('current_x')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'current_x' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>Müşteri Alacakları</span>
+            <Clock className="w-4 h-4" />
+            <span>Gün İçi Durum (X Raporu)</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('SUPPLIERS')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'SUPPLIERS'
-                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
-                : 'text-slate-700 hover:bg-slate-300/60'
+            onClick={() => setActiveTab('close_z')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'close_z' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Truck className="w-4 h-4" />
-            <span>Toptancı Borçları</span>
+            <Lock className="w-4 h-4" />
+            <span>Gün Sonu Al (Z Raporu Kapat)</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('EXPENSES')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'EXPENSES'
-                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
-                : 'text-slate-700 hover:bg-slate-300/60'
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'history' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Receipt className="w-4 h-4" />
-            <span>İşletme Giderleri</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('EMPLOYEES')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'EMPLOYEES'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                : 'text-slate-700 hover:bg-slate-300/60'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            <span>Personel Maaşları</span>
+            <Archive className="w-4 h-4" />
+            <span>Geçmiş Z Raporları ({zHistory.length})</span>
           </button>
         </div>
       </div>
 
-      {/* TARİH VE DURUM FİLTRE PANELİ */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mr-1">
-              <Clock className="w-4 h-4 text-blue-600" /> Hızlı Dönem:
-            </span>
-            <button
-              onClick={() => applyPreset('ALL')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                activePreset === 'ALL' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              Tüm Zamanlar
-            </button>
-            <button
-              onClick={() => applyPreset('THIS_MONTH')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                activePreset === 'THIS_MONTH' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              Bu Ay
-            </button>
-            <button
-              onClick={() => applyPreset('LAST_MONTH')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                activePreset === 'LAST_MONTH' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              Geçen Ay
-            </button>
-            <button
-              onClick={() => applyPreset('THIS_YEAR')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                activePreset === 'THIS_YEAR' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              Bu Yıl
-            </button>
-          </div>
+      {/* ========================================================================= */}
+      {/* 1. ANLIK GÜN İÇİ X RAPORU (TÜM ÖDEME DETAYLARI) */}
+      {/* ========================================================================= */}
+      {activeTab === 'current_x' && (
+        <div className="space-y-6">
+          
+          {/* 4 Ana Metrik Kartı */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg">
+              <div className="text-[10px] font-black uppercase text-slate-400">Bugünkü Brüt Satış</div>
+              <div className="text-2xl font-black text-amber-400 font-mono mt-1">{formatMoney(xReport.grossTotal)}</div>
+              <div className="text-[11px] text-slate-500 mt-1">{xReport.totalOrders} Adet Kapatılan Adisyon</div>
+            </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-slate-400" /> Tarih Aralığı:
-            </span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => { setStartDate(e.target.value); setActivePreset('ALL'); }}
-              className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-            />
-            <span className="text-slate-400 text-xs font-bold">-</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => { setEndDate(e.target.value); setActivePreset('ALL'); }}
-              className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-            />
-          </div>
-        </div>
+            <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg">
+              <div className="text-[10px] font-black uppercase text-slate-400">Nakit Kasa</div>
+              <div className="text-2xl font-black text-emerald-400 font-mono mt-1">{formatMoney(xReport.paymentBreakdown['Nakit'] || 0)}</div>
+              <div className="text-[11px] text-slate-500 mt-1">Fiziki nakit toplamı</div>
+            </div>
 
-        {/* 2. Satır: Durum Filtresi ve DIŞA AKTARMA BUTONLARI */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <Filter className="w-4 h-4 text-slate-400" />
-            <span className="text-xs font-bold text-slate-700">Filtre:</span>
+            <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg">
+              <div className="text-[10px] font-black uppercase text-slate-400">Kredi Kartı / POS</div>
+              <div className="text-2xl font-black text-sky-400 font-mono mt-1">{formatMoney(xReport.paymentBreakdown['Kredi Kartı'] || 0)}</div>
+              <div className="text-[11px] text-slate-500 mt-1">Banka POS toplamı</div>
+            </div>
 
-            {activeTab === 'CUSTOMERS' && (
-              <select value={customerFilter} onChange={e => setCustomerFilter(e.target.value as any)} className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-slate-50 cursor-pointer">
-                <option value="ALL">Tüm Müşteriler</option>
-                <option value="ONLY_DEBT">Sadece Alacak Olanlar</option>
-              </select>
-            )}
-
-            {activeTab === 'SUPPLIERS' && (
-              <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value as any)} className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-slate-50 cursor-pointer">
-                <option value="ALL">Tüm Toptancılar</option>
-                <option value="ONLY_DEBT">Sadece Borcumuz Olanlar</option>
-              </select>
-            )}
-
-            {activeTab === 'EXPENSES' && (
-              <select value={expenseFilter} onChange={e => setExpenseFilter(e.target.value)} className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-slate-50 cursor-pointer">
-                <option value="ALL">Tüm Gider Kategorileri</option>
-                <option value="Hammadde & Gıda Alımı">Hammadde & Gıda Alımı</option>
-                <option value="Tedarikçi & Toptancı Ödemesi">Tedarikçi & Toptancı Ödemesi</option>
-                <option value="Manav & Sebze-Meyve">Manav & Sebze-Meyve</option>
-                <option value="Kasap & Et Ürünleri">Kasap & Et Ürünleri</option>
-                <option value="Un, Maya & Fırın Girdileri">Un, Maya & Fırın Girdileri</option>
-                <option value="Ambalaj & Paketleme Malzemeleri">Ambalaj & Paketleme</option>
-                <option value="Temizlik & Hijyen">Temizlik & Hijyen</option>
-                <option value="Fatura & Sabit Giderler">Fatura & Sabit Giderler</option>
-              </select>
-            )}
-
-            {activeTab === 'EMPLOYEES' && (
-              <select value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value as any)} className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-slate-50 cursor-pointer">
-                <option value="ALL">Tüm Personeller</option>
-                <option value="ONLY_PENDING">Sadece Maaşı Kalanlar</option>
-              </select>
-            )}
-
-            <div className="text-xs font-bold text-slate-500 pl-3">
-              Toplam Tutar: <span className="text-rose-600 font-black text-sm">{formatCurrency(
-                activeTab === 'CUSTOMERS' ? customerTotal :
-                activeTab === 'SUPPLIERS' ? supplierTotal :
-                activeTab === 'EXPENSES' ? expenseTotal : employeeTotal
-              )}</span>
+            <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg">
+              <div className="text-[10px] font-black uppercase text-slate-400">Cari (Veresiye) Toplamı</div>
+              <div className="text-2xl font-black text-orange-400 font-mono mt-1">
+                {formatMoney(xReport.paymentBreakdown['Cari (Veresiye)'] || 0)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">{Object.keys(xReport.cariDetails || {}).length} Müşteriye Yazıldı</div>
             </div>
           </div>
 
-          {/* Dışa Aktarma Butonları */}
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                if (activeTab === 'CUSTOMERS') exportService.exportCustomersExcel(filteredCustomers, customerTotal, dateRangeParam);
-                else if (activeTab === 'SUPPLIERS') exportService.exportSuppliersExcel(filteredSuppliers, supplierTotal, dateRangeParam);
-                else if (activeTab === 'EXPENSES') exportService.exportExpensesExcel(filteredExpenses, expenseTotal, dateRangeParam);
-                else exportService.exportEmployeesExcel(filteredEmployees, employeeTotal, dateRangeParam);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 cursor-pointer transition-all"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Excel Olarak İndir (.xlsx)</span>
-            </button>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Sol: Genel Ödeme Dağılımı */}
+            <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
+              <h3 className="text-sm font-black text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                <Coins className="w-4 h-4 text-amber-400" />
+                <span>Ödeme Kanalları Dağılımı</span>
+              </h3>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (activeTab === 'CUSTOMERS') exportService.exportCustomersPdf(filteredCustomers, customerTotal, dateRangeParam);
-                else if (activeTab === 'SUPPLIERS') exportService.exportSuppliersPdf(filteredSuppliers, supplierTotal, dateRangeParam);
-                else if (activeTab === 'EXPENSES') exportService.exportExpensesPdf(filteredExpenses, expenseTotal, dateRangeParam);
-                else exportService.exportEmployeesPdf(filteredEmployees, employeeTotal, dateRangeParam);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 cursor-pointer transition-all"
-            >
-              <Printer className="w-4 h-4" />
-              <span>PDF / Yazdır (.pdf)</span>
-            </button>
+              <div className="space-y-2">
+                {Object.keys(xReport.paymentBreakdown).length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-500 bg-slate-900 rounded-2xl">
+                    Bugün henüz hesap kapatılmadı.
+                  </div>
+                ) : (
+                  Object.entries(xReport.paymentBreakdown).map(([type, amount]) => (
+                    <div key={type} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-300">{type}</span>
+                      <span className="font-mono font-black text-emerald-400">{formatMoney(amount)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* İskonto & İkram */}
+              <div className="pt-2 border-t border-slate-800 grid grid-cols-3 gap-2 text-xs">
+                <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                  <div className="text-[10px] text-slate-500">İndirimler</div>
+                  <div className="font-bold text-amber-400 mt-0.5">{formatMoney(xReport.discountTotal)}</div>
+                </div>
+                <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                  <div className="text-[10px] text-slate-500">İkramlar</div>
+                  <div className="font-bold text-rose-400 mt-0.5">{formatMoney(xReport.giftTotal)}</div>
+                </div>
+                <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                  <div className="text-[10px] text-slate-500">İptaller</div>
+                  <div className="font-bold text-slate-400 mt-0.5">{formatMoney(xReport.cancelTotal)}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Orta: CARİ MÜŞTERİ BAZINDA DÖKÜM (Kime Ne Kadar Yazıldı) */}
+            <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
+              <h3 className="text-sm font-black text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                <Building2 className="w-4 h-4 text-orange-400" />
+                <span>Cari (Veresiye) Müşteri Dökümü</span>
+              </h3>
+
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {Object.keys(xReport.cariDetails || {}).length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-500 bg-slate-900 rounded-2xl">
+                    Bugün cariye borç yazılmadı.
+                  </div>
+                ) : (
+                  Object.entries(xReport.cariDetails || {}).map(([custName, amount]) => (
+                    <div key={custName} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
+                      <div>
+                        <div className="font-black text-white">{custName}</div>
+                        <div className="text-[10px] text-orange-400 font-medium">Veresiye Borç</div>
+                      </div>
+                      <span className="font-mono font-black text-rose-400">+{formatMoney(amount)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Sağ: Ürün Satış Adetleri */}
+            <div className="bg-slate-950 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
+              <h3 className="text-sm font-black text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                <Receipt className="w-4 h-4 text-emerald-400" />
+                <span>Ürün Satış Adetleri</span>
+              </h3>
+
+              <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-800/40">
+                {Object.keys(xReport.productSales).length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-500 bg-slate-900 rounded-2xl">
+                    Satış kaydı yok.
+                  </div>
+                ) : (
+                  Object.entries(xReport.productSales).map(([pName, pStat]) => (
+                    <div key={pName} className="pt-2 flex items-center justify-between text-xs">
+                      <span className="font-bold text-white truncate max-w-[150px]">{pName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-slate-800 text-amber-400 rounded-md font-mono font-bold">
+                          {pStat.quantity} Adet
+                        </span>
+                        <span className="font-mono font-black text-slate-300 w-20 text-right">
+                          {formatMoney(pStat.total)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
           </div>
         </div>
-      </div>
+      )}
 
-      {/* CANLI TABLO ÖNİZLEMESİ */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700">
-            {activeTab === 'CUSTOMERS' && 'Müşteri Alacak Tablosu Önizleme'}
-            {activeTab === 'SUPPLIERS' && 'Toptancı Borç & Tedarikçi Tablosu Önizleme'}
-            {activeTab === 'EXPENSES' && 'İşletme Gider & Harcama Tablosu Önizleme'}
-            {activeTab === 'EMPLOYEES' && 'Personel Maaş Tablosu Önizleme'}
-            {startDate && endDate && (
-              <span className="ml-2 lowercase font-normal text-slate-500">({formatDate(startDate)} - {formatDate(endDate)})</span>
-            )}
-          </h3>
-          <span className="text-[11px] text-slate-500 font-semibold">
-            {activeTab === 'CUSTOMERS' && `${filteredCustomers.length} Müşteri Kaydı`}
-            {activeTab === 'SUPPLIERS' && `${filteredSuppliers.length} Toptancı Kaydı`}
-            {activeTab === 'EXPENSES' && `${filteredExpenses.length} Harcama Kaydı`}
-            {activeTab === 'EMPLOYEES' && `${filteredEmployees.length} Personel Kaydı`}
-          </span>
+      {/* ========================================================================= */}
+      {/* 2. GÜN SONU Z RAPORU KAPATMA */}
+      {/* ========================================================================= */}
+      {activeTab === 'close_z' && (
+        <div className="max-w-2xl mx-auto bg-slate-950 rounded-3xl p-8 border border-slate-800 shadow-2xl space-y-6">
+          <div className="text-center border-b border-slate-800 pb-4">
+            <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-3xl flex items-center justify-center mx-auto mb-3 text-2xl font-black">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-black text-white">Gün Sonu Z Raporu Kapanışı</h2>
+            <p className="text-xs text-slate-400 mt-1">Günü kapatıp resmi Z Raporunu Kasa Yazıcısından basmak için aşağıdaki butona basınız.</p>
+          </div>
+
+          <form onSubmit={handleExecuteZReportClose} className="space-y-5">
+            <div className="p-5 bg-slate-900 rounded-2xl border border-slate-800 space-y-3 text-xs">
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Bugünkü Net Satış Cirosu:</span>
+                <strong className="text-amber-400 font-mono text-base">{formatMoney(xReport.netTotal)}</strong>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Nakit Kasa Tutarı:</span>
+                <strong className="text-emerald-400 font-mono text-base">{formatMoney(xReport.paymentBreakdown['Nakit'] || 0)}</strong>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Kredi Kartı / POS Toplamı:</span>
+                <strong className="text-sky-400 font-mono text-base">{formatMoney(xReport.paymentBreakdown['Kredi Kartı'] || 0)}</strong>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Cari (Veresiye) Toplamı:</span>
+                <strong className="text-orange-400 font-mono text-base">{formatMoney(xReport.paymentBreakdown['Cari (Veresiye)'] || 0)}</strong>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Kapatılan Adisyon Sayısı:</span>
+                <strong className="text-white font-mono">{xReport.totalOrders} Adet Masa</strong>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-300">Kapanış Notu (İsteğe Bağlı)</label>
+              <input
+                type="text"
+                value={zNoteInput}
+                onChange={(e) => setZNoteInput(e.target.value)}
+                placeholder="Örn: Gün sonu sorunsuz tamamlandı..."
+                className="w-full mt-1.5 p-3 bg-slate-900 border border-slate-700 rounded-2xl text-xs text-white focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-sm rounded-2xl shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-transform transform active:scale-98"
+            >
+              <Printer className="w-5 h-5" />
+              <span>Günü Kapat & Z Raporu Fişini Bas</span>
+            </button>
+          </form>
         </div>
+      )}
 
-        {/* 1. Müşteri Tablosu */}
-        {activeTab === 'CUSTOMERS' && (
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-4">Müşteri / Şirket Adı</th>
-                <th className="py-3 px-4">Telefon</th>
-                <th className="py-3 px-4">Adres / Notlar</th>
-                <th className="py-3 px-4 text-right">Kalan Borç Bakiyesi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredCustomers.map(c => (
-                <tr key={c.id} className="hover:bg-slate-50/60">
-                  <td className="py-3.5 px-4 font-bold text-slate-800">{c.name}</td>
-                  <td className="py-3.5 px-4 text-slate-600">{c.phone || '-'}</td>
-                  <td className="py-3.5 px-4 text-slate-500 truncate max-w-xs">{c.notes || '-'}</td>
-                  <td className={`py-3.5 px-4 text-right font-black ${c.balance > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                    {formatCurrency(c.balance)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {/* ========================================================================= */}
+      {/* 3. GEÇMİŞ Z RAPORLARI ARŞİVİ */}
+      {activeTab === 'history' && (
+        <div className="space-y-6">
+          <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-black text-white">Geçmiş Gün Sonu Z Raporları Arşivi</h2>
+              <p className="text-xs text-slate-500">Tüm eski günlerin Z dökümlerini inceleyebilir ve tekrar fiş yazdırabilirsiniz.</p>
+            </div>
+          </div>
 
-        {/* 2. Toptancı Tablosu */}
-        {activeTab === 'SUPPLIERS' && (
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-4">Toptancı / Firma Ünvanı</th>
-                <th className="py-3 px-4">Tedarik Kategorisi</th>
-                <th className="py-3 px-4">Telefon & Yetkili</th>
-                <th className="py-3 px-4 text-right">Kalan Borcumuz</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredSuppliers.map(s => (
-                <tr key={s.id} className="hover:bg-slate-50/60">
-                  <td className="py-3.5 px-4 font-bold text-slate-800">{s.name}</td>
-                  <td className="py-3.5 px-4 text-slate-600">{s.category}</td>
-                  <td className="py-3.5 px-4 text-slate-500">{s.phone || '-'} {s.contactPerson ? `(${s.contactPerson})` : ''}</td>
-                  <td className={`py-3.5 px-4 text-right font-black ${s.balance > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                    {formatCurrency(s.balance)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {zHistory.length === 0 ? (
+              <div className="col-span-3 p-12 text-center text-xs text-slate-500 bg-slate-950 rounded-3xl border border-slate-800">
+                Henüz kapatılmış bir Z Raporu bulunmuyor.
+              </div>
+            ) : (
+              [...zHistory].reverse().map((z) => (
+                <div key={z.id} className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-lg flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl font-mono font-black text-xs">
+                        Z NO: #{String(z.zNo).padStart(4, '0')}
+                      </span>
+                      <span className="text-[11px] text-slate-500">{z.closedAt.split(' ')[0]}</span>
+                    </div>
 
-        {/* 3. Gider Tablosu */}
-        {activeTab === 'EXPENSES' && (
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-4">Tarih</th>
-                <th className="py-3 px-4">Harcama / Malzeme Adı</th>
-                <th className="py-3 px-4">Kategori</th>
-                <th className="py-3 px-4">Tedarikçi / Yer</th>
-                <th className="py-3 px-4">Ödeme Kanalı</th>
-                <th className="py-3 px-4 text-right">Tutar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredExpenses.map(exp => (
-                <tr key={exp.id} className="hover:bg-slate-50/60">
-                  <td className="py-3.5 px-4 text-slate-500">{formatDate(exp.date)}</td>
-                  <td className="py-3.5 px-4 font-bold text-slate-800">{exp.title}</td>
-                  <td className="py-3.5 px-4 text-slate-600">{exp.category}</td>
-                  <td className="py-3.5 px-4 text-slate-500">{exp.supplier || '-'}</td>
-                  <td className="py-3.5 px-4">{exp.paymentMethod === 'CASH' ? 'Nakit Kasa' : exp.paymentMethod === 'CREDIT_CARD' ? 'Kredi Kartı' : 'Banka'}</td>
-                  <td className="py-3.5 px-4 text-right font-black text-rose-600">-{formatCurrency(exp.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                    <div className="text-2xl font-black text-white font-mono mt-1">
+                      {formatMoney(z.netTotal)}
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Kapatan: {z.closedBy} • {z.totalOrders} Adisyon</div>
 
-        {/* 4. Personel Tablosu */}
-        {activeTab === 'EMPLOYEES' && (
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-4">Personel Ad Soyad</th>
-                <th className="py-3 px-4">Görevi / Pozisyonu</th>
-                <th className="py-3 px-4">Telefon</th>
-                <th className="py-3 px-4 text-right">Sabit Maaş</th>
-                <th className="py-3 px-4 text-right">Kalan Borç</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredEmployees.map(e => (
-                <tr key={e.id} className="hover:bg-slate-50/60">
-                  <td className="py-3.5 px-4 font-bold text-slate-800">{e.fullName}</td>
-                  <td className="py-3.5 px-4 text-slate-600">{e.position || '-'}</td>
-                  <td className="py-3.5 px-4 text-slate-500">{e.phone || '-'}</td>
-                  <td className="py-3.5 px-4 text-right font-bold text-slate-700">{formatCurrency(e.salary)}</td>
-                  <td className={`py-3.5 px-4 text-right font-black ${e.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                    {formatCurrency(e.balance)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                    <div className="mt-3 p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1 text-xs">
+                      <div className="flex justify-between text-slate-400">
+                        <span>Nakit:</span>
+                        <strong className="text-emerald-400 font-mono">{formatMoney(z.paymentBreakdown['Nakit'] || 0)}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Kredi Kartı:</span>
+                        <strong className="text-sky-400 font-mono">{formatMoney(z.paymentBreakdown['Kredi Kartı'] || 0)}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Cari:</span>
+                        <strong className="text-orange-400 font-mono">{formatMoney(z.paymentBreakdown['Cari (Veresiye)'] || 0)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedZHistoryDetail(z)}
+                      className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
+                    >
+                      İncele
+                    </button>
+                    <button
+                      onClick={() => handlePrintZReceipt(z)}
+                      className="p-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 rounded-xl cursor-pointer"
+                      title="Z Fişini Tekrar Bas"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Z RAPORU DETAY POPUP */}
+      {selectedZHistoryDetail && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-800 space-y-4 text-slate-100 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-white">Z Raporu Detayı (#{selectedZHistoryDetail.zNo})</h3>
+                <p className="text-xs text-slate-400">{selectedZHistoryDetail.closedAt}</p>
+              </div>
+              <button onClick={() => setSelectedZHistoryDetail(null)} className="text-slate-400 hover:text-white cursor-pointer">
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 text-xs pr-1">
+              <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-1.5">
+                <div className="flex justify-between"><span className="text-slate-400">Net Ciro:</span><strong className="text-amber-400 font-mono text-sm">{formatMoney(selectedZHistoryDetail.netTotal)}</strong></div>
+                <div className="flex justify-between"><span className="text-slate-400">Nakit:</span><strong className="text-emerald-400 font-mono">{formatMoney(selectedZHistoryDetail.paymentBreakdown['Nakit'] || 0)}</strong></div>
+                <div className="flex justify-between"><span className="text-slate-400">Kredi Kartı:</span><strong className="text-sky-400 font-mono">{formatMoney(selectedZHistoryDetail.paymentBreakdown['Kredi Kartı'] || 0)}</strong></div>
+                <div className="flex justify-between"><span className="text-slate-400">Cari:</span><strong className="text-orange-400 font-mono">{formatMoney(selectedZHistoryDetail.paymentBreakdown['Cari (Veresiye)'] || 0)}</strong></div>
+              </div>
+
+              {/* Cari Müşteri Listesi */}
+              {Object.keys(selectedZHistoryDetail.cariDetails || {}).length > 0 && (
+                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-1">
+                  <div className="font-bold text-orange-400 mb-1">Cariye Yazılan Müşteriler:</div>
+                  {Object.entries(selectedZHistoryDetail.cariDetails || {}).map(([cName, cAmt]) => (
+                    <div key={cName} className="flex justify-between py-0.5">
+                      <span>• {cName}</span>
+                      <strong className="font-mono text-rose-400">+{formatMoney(cAmt)}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div>
+                <div className="font-bold text-slate-300 mb-1">Satılan Ürünler:</div>
+                <div className="space-y-1 divide-y divide-slate-800/40">
+                  {Object.entries(selectedZHistoryDetail.productSales || {}).map(([name, stat]) => (
+                    <div key={name} className="pt-1 flex justify-between">
+                      <span>{name} ({(stat as any).quantity}x)</span>
+                      <strong className="font-mono">{formatMoney((stat as any).total)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+              <button onClick={() => setSelectedZHistoryDetail(null)} className="px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold">Kapat</button>
+              <button onClick={() => handlePrintZReceipt(selectedZHistoryDetail)} className="px-5 py-2 bg-amber-500 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5">
+                <Printer className="w-4 h-4" />
+                <span>Yazıcıdan Bas</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

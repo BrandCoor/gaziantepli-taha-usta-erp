@@ -16,6 +16,8 @@ import { dataService } from './services/dataService';
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
+  const [targetPosTableId, setTargetPosTableId] = useState<string | null>(null);
+
   const [customers, setCustomers] = useState(dataService.getCustomers());
   const [employees, setEmployees] = useState(dataService.getEmployees());
   const [expenses, setExpenses] = useState(dataService.getExpenses());
@@ -43,10 +45,17 @@ export default function App() {
         />
 
         <main className="flex-1 overflow-y-auto bg-slate-50/60 min-w-0">
-          {activeTab === 'pos' && <PosView />}
-          {activeTab === 'delivery' && <DeliveryView />}
+          {activeTab === 'pos' && (
+            <PosView autoOpenTableId={targetPosTableId} onClearAutoOpen={() => setTargetPosTableId(null)} />
+          )}
+          {activeTab === 'delivery' && (
+            <DeliveryView onStartOrder={(tableId) => {
+              setTargetPosTableId(tableId);
+              setActiveTab('pos');
+            }} />
+          )}
           {activeTab === 'restaurant-settings' && <RestaurantSettingsView />}
-          {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} onQuickDebt={() => {}} onQuickCollection={() => {}} onQuickExpense={() => {}} onQuickEmployeePayment={() => {}} />}
+          {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
           {activeTab === 'customers' && <CustomerListView customers={customers} onRefresh={refreshAll} onOpenTxModal={() => {}} />}
           {activeTab === 'expenses' && <ExpenseListView expenses={expenses} suppliers={[]} onRefresh={refreshAll} onOpenAddExpenseModal={() => {}} />}
           {activeTab === 'employees' && <EmployeeListView employees={employees} onRefresh={refreshAll} onOpenPaymentModal={() => {}} />}

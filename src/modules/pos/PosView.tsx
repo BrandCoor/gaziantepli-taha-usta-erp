@@ -58,7 +58,12 @@ interface PaymentEntry {
   customerName?: string;
 }
 
-export const PosView: React.FC = () => {
+interface PosViewProps {
+  autoOpenTableId?: string | null;
+  onClearAutoOpen?: () => void;
+}
+
+export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOpen }) => {
   const [sections, setSections] = useState<SectionConfig[]>(restaurantDataService.getSections() || []);
   const [tables, setTables] = useState<TableState[]>(restaurantDataService.getTables() || []);
   const [categories, setCategories] = useState<CategoryConfig[]>(restaurantDataService.getCategories() || []);
@@ -112,6 +117,20 @@ export const PosView: React.FC = () => {
     selectedReason: CANCEL_REASONS[0],
     customNote: ''
   });
+
+  // CALLER ID'DEN GELEN OTOMATİK PAKET MASASINI ANINDA AÇ
+  useEffect(() => {
+    const tableIdToOpen = autoOpenTableId || restaurantDataService.getAndClearPendingPosTable();
+    if (tableIdToOpen) {
+      const freshTables = restaurantDataService.getTables();
+      const targetTbl = freshTables.find(t => t.id === tableIdToOpen);
+      if (targetTbl) {
+        setSelectedSectionId(targetTbl.sectionId);
+        handleSelectTable(targetTbl);
+      }
+      if (onClearAutoOpen) onClearAutoOpen();
+    }
+  }, [autoOpenTableId]);
 
   useEffect(() => {
     const unsub = restaurantDataService.subscribe(() => {
@@ -253,6 +272,10 @@ export const PosView: React.FC = () => {
     if (ocakItems.length > 0) printMsg += `🍖 [OCAK]: ${ocakItems.map(i => `${i.quantity}x ${i.productName}${i.note ? ` (${i.note})` : ''}`).join(', ')}\n`;
     if (generalOrderNote) printMsg += `📝 Not: ${generalOrderNote}\n`;
 
+    if (selectedTable.customerInfo) {
+      printMsg += `\n🛵 [KASA YAZICISI]: Kurye Adres Fişi Basıldı!\nMüşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}`;
+    }
+
     alert(printMsg);
 
     const updatedItems: OrderItemState[] = orderItems.map(i => ({ ...i, status: 'SENT_TO_KITCHEN' }));
@@ -283,7 +306,6 @@ export const PosView: React.FC = () => {
     }
   };
 
-  // PARÇALI HESAPLAMA
   const currentTotal = (orderItems || []).reduce((sum, i) => sum + (i.isGift ? 0 : (Number(i.price) || 0) * (Number(i.quantity) || 1)), 0);
   const paidTotal = (paymentEntries || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const remainingTotal = Math.max(0, currentTotal - paidTotal);
@@ -373,16 +395,11 @@ export const PosView: React.FC = () => {
     if (amount <= 0.01) return;
 
     const confirmed = confirm(
-      `⚠️ CARİ (VERESİYE) SEÇİMİ\n\n` +
-      `Müşteri: ${customer.name}\n` +
-      `Mevcut Bakiye: ${customer.balance.toFixed(2)} ₺\n\n` +
-      `Hesap kapatıldığında ${amount.toFixed(2)} ₺ tutar [${customer.name}] carisine BORÇ olarak işlenecektir.\n\n` +
-      `Devam etmek istiyor musunuz?`
+      `⚠️ CARİ (VERESİYE) SEÇİMİ\n\nMüşteri: ${customer.name}\nMevcut Bakiye: ${customer.balance.toFixed(2)} ₺\n\nBu adisyonun ${amount.toFixed(2)} ₺ tutarı [${customer.name}] carisine BORÇ olarak işlenecektir.\n\nDevam etmek istiyor musunuz?`
     );
 
     if (!confirmed) return;
 
-    // Ödeme tablosuna Cari kaydı ekle (Borçlandırma Hesap Kapatılınca Kesinleşir)
     const newEntry: PaymentEntry = {
       id: `pay-cari-${Date.now()}`,
       type: `Cari (${customer.name})`,
@@ -400,7 +417,6 @@ export const PosView: React.FC = () => {
     setCariModalOpen(false);
   };
 
-  // HESAP KAPATMA VE CARİ BORÇLANDIRMA İŞLEMİ
   const handleFinalizeBill = (printReceipt: boolean) => {
     if (!selectedTable) return;
 
@@ -409,7 +425,6 @@ export const PosView: React.FC = () => {
       return;
     }
 
-    // 1. CARİ ÖDEMELERİ MÜŞTERİNİN HESABINA BORÇ (DEBT) OLARAK İŞLE
     const cariPayments = paymentEntries.filter(p => Boolean(p.customerId));
     let cariNotice = '';
 
@@ -426,10 +441,7 @@ export const PosView: React.FC = () => {
       }
     });
 
-    // 2. MASAYI SIFIRLA VE KAPAT
-    restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı');
-
-    // 3. MÜŞTERİ LİSTESİNİ ANINDA YENİLE
+    restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı', paymentEntries);
     setCustomers(dataService.getCustomers());
 
     let successMsg = `✅ ${selectedTable.name} hesabı başarıyla kapatıldı.`;
@@ -569,7 +581,7 @@ export const PosView: React.FC = () => {
                 ) : (
                   <div className="mt-3 pt-2 border-t border-slate-700/40 flex items-center justify-between text-[11px] font-bold text-emerald-400">
                     <span>Masa Boş</span>
-                    <span className="text-xs">+ Sipariş</span>
+                    <span className="text-xs font-bold">+ Sipariş</span>
                   </div>
                 )}
               </div>
@@ -591,6 +603,17 @@ export const PosView: React.FC = () => {
                   <div>
                     <h2 className="text-lg font-black text-white">{selectedTable.name}</h2>
                     <p className="text-xs text-amber-400 font-medium">Garson: {selectedTable.order?.waiterName || 'Taha Usta'}</p>
+                    
+                    {selectedTable.customerInfo && (
+                      <div className="mt-1.5 p-2 bg-orange-950/60 border border-orange-700/60 rounded-xl text-[11px] text-orange-200">
+                        <div className="font-bold flex items-center gap-1">
+                          <span>🛵 Müşteri:</span>
+                          <span className="text-white">{selectedTable.customerInfo.name}</span>
+                          <span className="font-mono text-amber-300">({selectedTable.customerInfo.phone})</span>
+                        </div>
+                        <div className="text-[10px] text-slate-300 truncate mt-0.5">📍 {selectedTable.customerInfo.address}</div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -1114,7 +1137,6 @@ export const PosView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* HESAP KAPATMA AKSİYONLARI */}
                 <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800">
                   <button
                     onClick={() => handleFinalizeBill(false)}
@@ -1151,7 +1173,7 @@ export const PosView: React.FC = () => {
         </div>
       )}
 
-      {/* CARİ (VERESİYE) MÜŞTERİ SEÇİM POPUP */}
+      {/* CARİ POPUP */}
       {cariModalOpen && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
           <div className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-800 space-y-4 text-slate-100">
