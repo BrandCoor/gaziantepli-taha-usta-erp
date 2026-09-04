@@ -77,6 +77,9 @@ export interface Employee {
   phone?: string;
   position?: string;
   salary: number;
+  salaryPaymentDay?: number; // Her ayın hangi günü (Örn: 1, 5, 15)
+  dailyWorkHours?: number;   // Normal günlük çalışma saati (Örn: 8)
+  overtimeMultiplier?: number; // Mesai katsayısı (Örn: 1.5)
   iban?: string;
   balance: number;
   isActive: boolean;
@@ -125,13 +128,16 @@ export interface CompanySettings {
   address?: string;
   dailyWorkHours?: number;
   overtimeMultiplier?: number;
+  defaultSalaryPaymentDay?: number;
 }
 
 export interface PendingSalaryAccrual {
   employeeId: string;
   employeeName: string;
   salary: number;
+  salaryPaymentDay: number;
   dueDate: string;
+  periodName: string;
 }
 
 const STORAGE_KEYS = {
@@ -821,9 +827,77 @@ class DataService {
     return { success: true, count };
   }
 
-  public getPendingSalaryAccruals(): PendingSalaryAccrual[] { return []; }
-  public approveSalaryAccrual(item: PendingSalaryAccrual) {}
-  public approveAllSalaryAccruals(items: PendingSalaryAccrual[]) {}
+  // MAAŞ ÖDEME GÜNÜ VE TAHAKKUK KONTROLÜ
+  public getPendingSalaryAccruals(): PendingSalaryAccrual[] {
+    const employees = this.getEmployees().filter(e => e.isActive !== false && (Number(e.salary) || 0) > 0);
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentDay = now.getDate(); // Ayın bugünkü günü
+    const currentYearMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    const periodName = now.toLocaleString('tr-TR', { month: 'long', year: 'numeric' });
+
+    const company = this.getCompanySettings();
+    const defaultPayDay = company.defaultSalaryPaymentDay || 1;
+
+    const pending: PendingSalaryAccrual[] = [];
+    const allPayments = this.getEmployeePayments();
+
+    employees.forEach(emp => {
+      const payDay = emp.salaryPaymentDay || defaultPayDay;
+      
+      // Personelin bu ayki maaşı zaten tahakkuk ettirilmiş mi kontrol et
+      const alreadyAccruedThisMonth = allPayments.some(p => 
+        p.employeeId === emp.id && 
+        p.type === 'SALARY_ACCRUAL' && 
+        (p.date?.startsWith(currentYearMonth) || p.description?.includes(periodName))
+      );
+
+      // SADECE MAAŞ GÜNÜ GELMİŞ VEYA GEÇMİŞ OLANLAR (currentDay >= payDay)
+      const isDue = currentDay >= payDay;
+
+      if (isDue && !alreadyAccruedThisMonth) {
+        const safeDay = Math.min(payDay, 28);
+        const dueDate = `${currentYearMonth}-${String(safeDay).padStart(2, '0')}`;
+        pending.push({
+          employeeId: emp.id,
+          employeeName: emp.fullName,
+          salary: Number(emp.salary) || 0,
+          salaryPaymentDay: payDay,
+          dueDate,
+          periodName
+        });
+      }
+    });
+
+    return pending;
+  }
+
+  public approveSalaryAccrual(item: PendingSalaryAccrual, accrualDate?: string): boolean {
+    const employees = this.getEmployees();
+    const emp = employees.find(e => e.id === item.employeeId);
+    if (!emp) return false;
+
+    const dateToUse = accrualDate || new Date().toISOString().split('T')[0];
+    this.addEmployeePayment(item.employeeId, {
+      type: 'SALARY_ACCRUAL',
+      amount: item.salary,
+      paymentMethod: 'BANK',
+      date: dateToUse,
+      description: `${item.periodName} Maaş Hakedişi Tahakkuku (Maaş Günü: Ayın ${item.salaryPaymentDay}'i)`
+    });
+
+    return true;
+  }
+
+  public approveAllSalaryAccruals(items: PendingSalaryAccrual[], accrualDate?: string): { success: boolean; count: number } {
+    let count = 0;
+    items.forEach(item => {
+      const ok = this.approveSalaryAccrual(item, accrualDate);
+      if (ok) count++;
+    });
+    return { success: count > 0, count };
+  }
 
   // 5. KULLANICILAR & AYARLAR
   public getUsers(): User[] {

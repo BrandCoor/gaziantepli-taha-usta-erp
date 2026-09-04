@@ -94,6 +94,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   const [formPhone, setFormPhone] = useState('');
   const [formPosition, setFormPosition] = useState('Garson');
   const [formSalary, setFormSalary] = useState('');
+  const [formSalaryPaymentDay, setFormSalaryPaymentDay] = useState<number>(1);
+  const [formDailyWorkHours, setFormDailyWorkHours] = useState<number>(8);
   const [formIban, setFormIban] = useState('');
   const [formStartDate, setFormStartDate] = useState('');
 
@@ -141,6 +143,11 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   const overtimePayments = useMemo(() => {
     return allPayments.filter(p => p.type === 'OVERTIME_ACCRUAL');
   }, [allPayments]);
+
+  // Maaş Tahakkuku Bekleyen Personeller
+  const pendingSalaryAccruals = useMemo(() => {
+    return dataService.getPendingSalaryAccruals();
+  }, [employees, allPayments]);
 
   // Filtrelenmiş Mesailer
   const filteredOvertimes = useMemo(() => {
@@ -213,6 +220,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
     setFormPhone('');
     setFormPosition('Garson');
     setFormSalary('');
+    setFormSalaryPaymentDay(1);
+    setFormDailyWorkHours(8);
     setFormIban('');
     setFormStartDate(new Date().toISOString().split('T')[0]);
     setIsEmployeeModalOpen(true);
@@ -224,6 +233,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
     setFormPhone(emp.phone || '');
     setFormPosition(emp.position || 'Garson');
     setFormSalary(emp.salary.toString());
+    setFormSalaryPaymentDay(emp.salaryPaymentDay ?? 1);
+    setFormDailyWorkHours(emp.dailyWorkHours ?? 8);
     setFormIban(emp.iban || '');
     setFormStartDate(emp.startDate || '');
     setIsEmployeeModalOpen(true);
@@ -260,6 +271,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         phone: formPhone.trim(),
         position: formPosition.trim(),
         salary: salaryNum,
+        salaryPaymentDay: Number(formSalaryPaymentDay) || 1,
+        dailyWorkHours: Number(formDailyWorkHours) || 8,
         iban: formIban.trim(),
         startDate: formStartDate || undefined,
       });
@@ -287,6 +300,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         phone: formPhone.trim(),
         position: formPosition.trim(),
         salary: salaryNum,
+        salaryPaymentDay: Number(formSalaryPaymentDay) || 1,
+        dailyWorkHours: Number(formDailyWorkHours) || 8,
         iban: formIban.trim(),
         startDate: formStartDate || new Date().toISOString().split('T')[0],
         isActive: true,
@@ -577,6 +592,37 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'staff' && (
         <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] overflow-hidden shadow-sm space-y-4 p-4 sm:p-6">
+          {/* Maaş Tahakkuku Bildirim Kartı */}
+          {pendingSalaryAccruals.length > 0 && (
+            <div className="p-4 bg-gradient-to-r from-purple-950/50 via-purple-900/30 to-indigo-950/40 border-2 border-purple-500/40 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-black text-white flex items-center gap-2">
+                    <span>Maaş Tahakkuk Günü Geldi: {pendingSalaryAccruals.length} Personel Bekliyor</span>
+                    <span className="px-2 py-0.5 rounded-full bg-purple-500/25 text-purple-300 text-[10px] font-bold font-mono">
+                      Toplam: {pendingSalaryAccruals.reduce((s, p) => s + p.salary, 0).toLocaleString('tr-TR')} ₺
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#C4C4CC] mt-0.5">
+                    Maaş ödeme günü gelen personellerin aylık maaşını hakediş bakiyelerine tek tıkla işleyebilir veya tek tek onaylayabilirsiniz.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setIsBatchSalaryModalOpen(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:brightness-110 text-white text-xs font-black rounded-xl shadow-lg cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Toplu Tahakkuk Yap</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Filtre ve Arama Çubuğu */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="relative w-full sm:w-80">
@@ -624,6 +670,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {sortField === 'position' ? (sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-400" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400" />) : <ArrowUpDown className="w-3.5 h-3.5 opacity-40" />}
                     </div>
                   </th>
+                  <th className="p-3.5 font-black">Maaş Günü & Durum</th>
                   <th className="p-3.5 font-black">İletişim & IBAN</th>
                   <th onClick={() => toggleSort('salary')} className="p-3.5 font-black text-right cursor-pointer hover:text-white">
                     <div className="flex items-center justify-end gap-1.5">
@@ -631,28 +678,43 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {sortField === 'salary' ? (sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-400" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400" />) : <ArrowUpDown className="w-3.5 h-3.5 opacity-40" />}
                     </div>
                   </th>
-                  <th className="p-3.5 font-black text-right">Saatlik Ücret (8s/gün)</th>
+                  <th className="p-3.5 font-black text-right">Saatlik Ücret</th>
                   <th onClick={() => toggleSort('balance')} className="p-3.5 font-black text-right cursor-pointer hover:text-white">
                     <div className="flex items-center justify-end gap-1.5">
                       <span>Kalan Hakediş / Borç</span>
                       {sortField === 'balance' ? (sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-400" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400" />) : <ArrowUpDown className="w-3.5 h-3.5 opacity-40" />}
                     </div>
                   </th>
-                  <th className="p-3.5 font-black text-center w-48">Hızlı Aksiyonlar</th>
+                  <th className="p-3.5 font-black text-center w-52">Hızlı Aksiyonlar</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#202028]">
                 {processedEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-[#8E8E98]">
+                    <td colSpan={8} className="p-8 text-center text-[#8E8E98]">
                       Arama kriterlerine uygun personel kaydı bulunamadı.
                     </td>
                   </tr>
                 ) : (
                   processedEmployees.map((emp) => {
                     const hasBalance = Math.abs(Number(emp.balance) || 0) > 0.01;
-                    const hourlyRate = Math.round(((emp.salary || 0) / (8 * 26)) * 100) / 100;
+                    const dailyHours = emp.dailyWorkHours || 8;
+                    const hourlyRate = Math.round(((emp.salary || 0) / (dailyHours * 26)) * 100) / 100;
                     const isWaiter = (emp.position || '').toLowerCase().includes('garson');
+                    const pendingAccrual = pendingSalaryAccruals.find(p => p.employeeId === emp.id);
+
+                    const currentDay = new Date().getDate();
+                    const currentYear = new Date().getFullYear();
+                    const currentMonth = new Date().getMonth() + 1;
+                    const currentYearMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+                    const currentPeriodName = new Date().toLocaleString('tr-TR', { month: 'long', year: 'numeric' });
+                    const payDay = emp.salaryPaymentDay || 1;
+                    const isPaymentDue = currentDay >= payDay;
+                    const alreadyAccruedThisMonth = allPayments.some(p => 
+                      p.employeeId === emp.id && 
+                      p.type === 'SALARY_ACCRUAL' && 
+                      (p.date?.startsWith(currentYearMonth) || p.description?.includes(currentPeriodName))
+                    );
 
                     return (
                       <tr key={emp.id} className="hover:bg-[#18181F] transition-colors">
@@ -685,6 +747,32 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                           </span>
                         </td>
 
+                        {/* Maaş Günü & Tahakkuk Durumu */}
+                        <td className="p-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 font-bold text-white text-xs">
+                            <Clock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Ayın {payDay}'i</span>
+                          </div>
+                          <div className="text-[10px] mt-0.5 font-bold">
+                            {alreadyAccruedThisMonth ? (
+                              <span className="text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Tahakkuk Yapıldı
+                              </span>
+                            ) : isPaymentDue ? (
+                              <span className="text-amber-400 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                                Tahakkuk Bekliyor
+                              </span>
+                            ) : (
+                              <span className="text-[#8E8E98] flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-[#6C6C76]" />
+                                Günü Gelmedi ({payDay - currentDay} gün var)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
                         {/* İletişim */}
                         <td className="p-3.5 text-[#8E8E98]">
                           <div className="font-mono text-white text-xs">{emp.phone || '-'}</div>
@@ -702,7 +790,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
                         {/* Standart Saatlik Ücret */}
                         <td className="p-3.5 text-right font-mono text-amber-300 text-xs">
-                          {hourlyRate.toFixed(2)} ₺/s
+                          <div>{hourlyRate.toFixed(2)} ₺/s</div>
+                          <div className="text-[10px] text-[#8E8E98] font-sans">({dailyHours}s / 26 gün)</div>
                         </td>
 
                         {/* Kalan Hakediş / Borç */}
@@ -717,7 +806,25 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
                         {/* İşlemler */}
                         <td className="p-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            {/* Maaş Tahakkuku Butonu (Eğer bu ay henüz tahakkuk edilmediyse) */}
+                            {pendingAccrual && (
+                              <button
+                                onClick={() => {
+                                  const isSuccess = dataService.approveSalaryAccrual(pendingAccrual);
+                                  if (isSuccess) {
+                                    notify.success('Maaş Tahakkuk Edildi', `${emp.fullName} için ${pendingAccrual.salary.toLocaleString('tr-TR')} ₺ maaş hakedişe işlendi.`);
+                                    handleRefreshAll();
+                                  }
+                                }}
+                                className="px-2 py-1 bg-purple-500/25 hover:bg-purple-500/40 text-purple-300 rounded-lg text-[10px] font-black transition-colors cursor-pointer flex items-center gap-1 border border-purple-500/30"
+                                title="Bu personelin bu ayki maaşını hakedişe aktar"
+                              >
+                                <Sparkles className="w-3 h-3 text-purple-400" />
+                                <span>Tahakkuk</span>
+                              </button>
+                            )}
+
                             {/* + Mesai Ekle */}
                             <button
                               onClick={() => handleOpenOvertime(emp.id)}
@@ -1180,6 +1287,37 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                     onChange={(e) => setFormSalary(e.target.value)}
                     placeholder="25000.00"
                     className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-rose-400 focus:border-[#F5C877] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E98]">Maaş Ödeme Günü (1-31)</label>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-xs text-[#8E8E98] font-bold">Ayın</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      required
+                      value={formSalaryPaymentDay}
+                      onChange={(e) => setFormSalaryPaymentDay(Math.min(31, Math.max(1, parseInt(e.target.value) || 1)))}
+                      className="w-full p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-amber-300 focus:border-[#F5C877] focus:outline-none"
+                    />
+                    <span className="text-xs text-[#8E8E98] font-bold">. günü</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E98]">Günlük Çalışma (Saat)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="16"
+                    value={formDailyWorkHours}
+                    onChange={(e) => setFormDailyWorkHours(Math.max(1, parseInt(e.target.value) || 8))}
+                    className="w-full mt-1 p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl text-xs font-mono font-bold text-white focus:border-[#F5C877] focus:outline-none"
                   />
                 </div>
               </div>

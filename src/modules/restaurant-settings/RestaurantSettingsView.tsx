@@ -35,12 +35,17 @@ import { ReceiptTemplateTab } from './components/ReceiptTemplateTab';
 import { SectionsTablesTab } from './components/SectionsTablesTab';
 import { CategoriesTab } from './components/CategoriesTab';
 import { ProductsTab } from './components/ProductsTab';
+import { WaitersTab } from './components/WaitersTab';
 import { PaymentsTab } from './components/PaymentsTab';
 import { SystemBackupTab } from './components/SystemBackupTab';
+import { PlatformApiSettingsTab } from './components/PlatformApiSettingsTab';
+import { Bike } from 'lucide-react';
 
 type SettingsSubTab = 
   | 'PRINTERS' 
+  | 'PLATFORMS'
   | 'HARDWARE' 
+  | 'WAITERS'
   | 'RECEIPT' 
   | 'SECTIONS' 
   | 'CATEGORIES' 
@@ -88,8 +93,10 @@ export const RestaurantSettingsView: React.FC = () => {
   };
 
   const handleQuickChime = () => {
-    restaurantDataService.playAudioAlert('kitchen');
-    notify.info('Ses Testi', 'Mutfak çağrı çanı (Ding-Dong) çalındı.');
+    restaurantDataService.playAudioAlert();
+    const hw = restaurantDataService.getHardwareSettings();
+    const toneLabel = hw.soundAlerts.ringtoneType === 'phone' ? 'Telefon Zil Sesi' : (hw.soundAlerts.ringtoneType === 'kitchen' ? 'Mutfak Çanı' : 'Restoran Zili');
+    notify.info('Zil Sesi Test Edildi', `${toneLabel} ${hw.soundAlerts.repeatCount || 2} kez çalındı.`);
   };
 
   const handleQuickBackup = () => {
@@ -118,8 +125,10 @@ export const RestaurantSettingsView: React.FC = () => {
   };
 
   const tabsConfig: { id: SettingsSubTab; label: string; icon: React.ReactNode; badge?: string | number }[] = [
+    { id: 'PLATFORMS', label: 'Yemek Platformları (API)', icon: <Bike className="w-4 h-4 text-orange-400" />, badge: 'Trendyol/Getir/YS' },
     { id: 'PRINTERS', label: 'Termal Yazıcılar', icon: <Printer className="w-4 h-4" />, badge: printers.length },
     { id: 'HARDWARE', label: 'Donanım & Çevre Birimleri', icon: <Cpu className="w-4 h-4" />, badge: 'Yeni' },
+    { id: 'WAITERS', label: 'Garson Terminalleri & QR', icon: <Smartphone className="w-4 h-4" />, badge: waiters.length },
     { id: 'RECEIPT', label: 'Fiş & Adisyon Şablonu', icon: <FileText className="w-4 h-4" /> },
     { id: 'SECTIONS', label: 'Salon & Masalar', icon: <Grid className="w-4 h-4" />, badge: sections.length },
     { id: 'CATEGORIES', label: 'Kategoriler & Mutfak', icon: <Tag className="w-4 h-4" />, badge: categories.length },
@@ -154,7 +163,7 @@ export const RestaurantSettingsView: React.FC = () => {
             title="Mutfak zili çal"
           >
             <Bell className="w-3.5 h-3.5 text-amber-400" />
-            <span>Zil Sesi Testi</span>
+            <span>Zil Sesini Çal</span>
           </button>
 
           <button
@@ -212,6 +221,12 @@ export const RestaurantSettingsView: React.FC = () => {
 
       {/* AKTİF SEKME İÇERİĞİ */}
       <div className="pt-2 animate-fadeIn">
+        {activeSubTab === 'PLATFORMS' && (
+          <PlatformApiSettingsTab 
+            onSaveSuccess={refreshAllData}
+          />
+        )}
+
         {activeSubTab === 'PRINTERS' && (
           <PrintersTab 
             printers={printers} 
@@ -224,6 +239,14 @@ export const RestaurantSettingsView: React.FC = () => {
             hardware={hardwareSettings} 
             printers={printers} 
             onSave={handleHardwareSave} 
+          />
+        )}
+
+        {activeSubTab === 'WAITERS' && (
+          <WaitersTab 
+            waiters={waiters} 
+            sections={sections} 
+            onRefresh={refreshAllData} 
           />
         )}
 

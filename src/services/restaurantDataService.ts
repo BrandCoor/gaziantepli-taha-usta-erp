@@ -310,11 +310,55 @@ export interface HardwareSettingsConfig {
   soundAlerts: {
     enabled: boolean;
     volume: number; // 10 to 100
+    ringtoneType: 'phone' | 'kitchen' | 'register' | 'melody' | 'alert';
+    repeatCount: number; // 1 to 5
     newOrderSound: boolean;
     kitchenAlertSound: boolean;
     deliveryOrderSound: boolean;
     paymentSuccessSound: boolean;
   };
+}
+
+export interface TrendyolYemekConfig {
+  enabled: boolean;
+  isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
+  supplierId: string;
+  apiKey: string;
+  secretKey: string;
+  email: string;
+  autoPrintReceipt: boolean;
+  preparationTimeMinutes: number;
+  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Restoran Kuryesi veya Trendyol GO Kuryesi
+}
+
+export interface GetirYemekConfig {
+  enabled: boolean;
+  isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
+  restaurantName: string;
+  secretKey: string;
+  restaurantId: string;
+  autoPrintReceipt: boolean;
+  preparationTimeMinutes: number;
+  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Restoran Getirsin veya Getir Getirsin
+}
+
+export interface YemekSepetiConfig {
+  enabled: boolean;
+  isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
+  username: string;
+  password: string;
+  restaurantId: string;
+  autoPrintReceipt: boolean;
+  preparationTimeMinutes: number;
+  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Kendi Kuryemle veya Yemeksepeti Vale
+}
+
+export interface FoodPlatformsConfig {
+  trendyol: TrendyolYemekConfig;
+  getir: GetirYemekConfig;
+  yemeksepeti: YemekSepetiConfig;
+  continuousAlarmUntilAction: boolean; // Onay veya iptal edilene kadar zil öter
+  autoAcceptOrders: boolean;
 }
 
 const STORAGE_KEYS = {
@@ -331,6 +375,44 @@ const STORAGE_KEYS = {
   Z_REPORTS: 'gtu_pos_z_reports',
   CANCEL_LOGS: 'gtu_pos_cancel_logs',
   CALL_LOGS: 'gtu_pos_call_logs',
+  FOOD_PLATFORMS: 'gtu_pos_food_platforms',
+  ONLINE_ORDERS: 'gtu_online_orders',
+};
+
+export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
+  trendyol: {
+    enabled: true,
+    isOpen: true,
+    supplierId: '770463',
+    apiKey: 'Es32CcLQUCJs51lAPgJ8',
+    secretKey: 'xbuy0pocdpcUOfGd8kNS9',
+    email: 'mehmettahagumus@icloud.com',
+    autoPrintReceipt: true,
+    preparationTimeMinutes: 25,
+    deliveryModel: 'RESTAURANT',
+  },
+  getir: {
+    enabled: true,
+    isOpen: true,
+    restaurantName: 'Gaziantepli Taha Usta (Eğitim Mah.)',
+    secretKey: '85309848fd36282068984f02259f91c2873d2bc6',
+    restaurantId: 'GETIR-27-01',
+    autoPrintReceipt: true,
+    preparationTimeMinutes: 25,
+    deliveryModel: 'RESTAURANT',
+  },
+  yemeksepeti: {
+    enabled: true,
+    isOpen: true,
+    username: 'mehmettahagumus@icloud.com',
+    password: 'Gaziantepli27taha',
+    restaurantId: 'YS-TAHA-27',
+    autoPrintReceipt: true,
+    preparationTimeMinutes: 25,
+    deliveryModel: 'RESTAURANT',
+  },
+  continuousAlarmUntilAction: true,
+  autoAcceptOrders: false,
 };
 
 const API_SYNC_URL = 'https://api.rymedya.com.tr/index.php';
@@ -423,6 +505,8 @@ export const DEFAULT_HARDWARE_SETTINGS: HardwareSettingsConfig = {
   soundAlerts: {
     enabled: true,
     volume: 80,
+    ringtoneType: 'phone',
+    repeatCount: 2,
     newOrderSound: true,
     kitchenAlertSound: true,
     deliveryOrderSound: true,
@@ -1834,7 +1918,7 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public playAudioAlert(type: 'kitchen' | 'register' | 'alert' | 'beep') {
+  public playAudioAlert(type?: 'kitchen' | 'phone' | 'register' | 'melody' | 'alert' | 'beep', overrideRepeat?: number) {
     const hw = this.getHardwareSettings();
     if (!hw.soundAlerts.enabled) return;
 
@@ -1842,55 +1926,122 @@ class RestaurantDataService {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
       const ctx = new AudioContextClass();
-      const gain = ctx.createGain();
-      const vol = Math.max(0.01, Math.min(1, (hw.soundAlerts.volume || 80) / 100));
-      gain.gain.setValueAtTime(vol * 0.4, ctx.currentTime);
-      gain.connect(ctx.destination);
-
-      if (type === 'kitchen') {
-        // High 2-tone restaurant chime (Ding-Dong)
-        const osc1 = ctx.createOscillator();
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-        osc1.connect(gain);
-        osc1.start(ctx.currentTime);
-        osc1.stop(ctx.currentTime + 0.25);
-
-        const osc2 = ctx.createOscillator();
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(880, ctx.currentTime + 0.2); // A5
-        osc2.connect(gain);
-        osc2.start(ctx.currentTime + 0.2);
-        osc2.stop(ctx.currentTime + 0.6);
-      } else if (type === 'register') {
-        // Ka-ching register sound
-        const osc = ctx.createOscillator();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(987.77, ctx.currentTime); // B5
-        osc.frequency.exponentialRampToValueAtTime(1318.51, ctx.currentTime + 0.15); // E6
-        osc.connect(gain);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.35);
-      } else if (type === 'alert') {
-        // Urgent 2-pulse alert
-        [0, 0.18].forEach((timeOffset) => {
-          const osc = ctx.createOscillator();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(750, ctx.currentTime + timeOffset);
-          osc.connect(gain);
-          osc.start(ctx.currentTime + timeOffset);
-          osc.stop(ctx.currentTime + timeOffset + 0.12);
-        });
-      } else {
-        // Simple subtle POS touch click
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1046.5, ctx.currentTime); // C6
-        osc.connect(gain);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.08);
+      if (ctx.state === 'suspended') {
+        ctx.resume();
       }
-    } catch (e) {}
+
+      const activeType = type || hw.soundAlerts.ringtoneType || 'phone';
+      const maxRepeats = overrideRepeat !== undefined 
+        ? Math.max(1, overrideRepeat) 
+        : (activeType === 'beep' ? 1 : Math.max(1, hw.soundAlerts.repeatCount || 2));
+      const masterVol = Math.max(0.02, Math.min(1, (hw.soundAlerts.volume || 80) / 100)) * 0.35;
+
+      const scheduleSingleTone = (startTime: number, tone: typeof activeType): number => {
+        const gain = ctx.createGain();
+        gain.connect(ctx.destination);
+
+        if (tone === 'phone') {
+          // Gerçekçi Çift Tonlu Klasik Sabit Hat / Cep Telefonu Zil Sesi (440Hz + 480Hz)
+          // 1. Çalma (0.35 sn)
+          const playBurst = (offset: number) => {
+            const burstGain = ctx.createGain();
+            burstGain.connect(gain);
+            burstGain.gain.setValueAtTime(masterVol * 0.9, startTime + offset);
+            burstGain.gain.exponentialRampToValueAtTime(0.001, startTime + offset + 0.34);
+
+            const osc1 = ctx.createOscillator();
+            const osc2 = ctx.createOscillator();
+            osc1.type = 'sine';
+            osc2.type = 'sine';
+            osc1.frequency.setValueAtTime(440, startTime + offset); // A4
+            osc2.frequency.setValueAtTime(480, startTime + offset); // Telephony B4 harmonic
+
+            osc1.connect(burstGain);
+            osc2.connect(burstGain);
+            osc1.start(startTime + offset);
+            osc2.start(startTime + offset);
+            osc1.stop(startTime + offset + 0.35);
+            osc2.stop(startTime + offset + 0.35);
+          };
+
+          playBurst(0.0);
+          playBurst(0.45);
+          return 1.4; // 1 döngü süresi: 0.35s + 0.10s ara + 0.35s + 0.60s bekleme
+        } else if (tone === 'kitchen') {
+          // Mutfak Restoran Çanı (Ding-Dong)
+          gain.gain.setValueAtTime(masterVol, startTime);
+
+          const osc1 = ctx.createOscillator();
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(587.33, startTime); // D5
+          osc1.connect(gain);
+          osc1.start(startTime);
+          osc1.stop(startTime + 0.25);
+
+          const osc2 = ctx.createOscillator();
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(880, startTime + 0.2); // A5
+          osc2.connect(gain);
+          osc2.start(startTime + 0.2);
+          osc2.stop(startTime + 0.65);
+          return 0.85;
+        } else if (tone === 'register') {
+          // Kasa Çekmecesi & Tahsilat Ka-ching
+          gain.gain.setValueAtTime(masterVol, startTime);
+          const osc = ctx.createOscillator();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(987.77, startTime); // B5
+          osc.frequency.exponentialRampToValueAtTime(1318.51, startTime + 0.15); // E6
+          osc.connect(gain);
+          osc.start(startTime);
+          osc.stop(startTime + 0.35);
+          return 0.55;
+        } else if (tone === 'melody') {
+          // Melodik Restoran Uyarısı (C5 - E5 - G5 - C6)
+          gain.gain.setValueAtTime(masterVol, startTime);
+          const notes = [523.25, 659.25, 783.99, 1046.50];
+          notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, startTime + idx * 0.1);
+            osc.connect(gain);
+            osc.start(startTime + idx * 0.1);
+            osc.stop(startTime + idx * 0.1 + 0.18);
+          });
+          return 0.75;
+        } else if (tone === 'alert') {
+          // Acil Dikkat Uyarısı
+          gain.gain.setValueAtTime(masterVol, startTime);
+          [0, 0.18].forEach((timeOffset) => {
+            const osc = ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(750, startTime + timeOffset);
+            osc.connect(gain);
+            osc.start(startTime + timeOffset);
+            osc.stop(startTime + timeOffset + 0.12);
+          });
+          return 0.5;
+        } else {
+          // Sade Dokunmatik Bip / Tık
+          gain.gain.setValueAtTime(masterVol, startTime);
+          const osc = ctx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1046.5, startTime); // C6
+          osc.connect(gain);
+          osc.start(startTime);
+          osc.stop(startTime + 0.08);
+          return 0.15;
+        }
+      };
+
+      let nextStartTime = ctx.currentTime;
+      for (let i = 0; i < maxRepeats; i++) {
+        const duration = scheduleSingleTone(nextStartTime, activeType);
+        nextStartTime += duration;
+      }
+    } catch (e) {
+      console.warn('Audio alert error:', e);
+    }
   }
 
   public async openCashDrawer(): Promise<{ success: boolean; message: string }> {
@@ -1918,6 +2069,110 @@ class RestaurantDataService {
       // Çekmece sinyali simülasyonu
       return { success: true, message: 'Para çekmecesi açılma sinyali (ESC p 0 25 250) yazıcı portuna iletildi.' };
     }
+  }
+
+  public getFoodPlatformsConfig(): FoodPlatformsConfig {
+    const data = localStorage.getItem(STORAGE_KEYS.FOOD_PLATFORMS);
+    if (!data) return DEFAULT_FOOD_PLATFORMS;
+    try {
+      return { ...DEFAULT_FOOD_PLATFORMS, ...JSON.parse(data) };
+    } catch {
+      return DEFAULT_FOOD_PLATFORMS;
+    }
+  }
+
+  public saveFoodPlatformsConfig(config: FoodPlatformsConfig) {
+    localStorage.setItem(STORAGE_KEYS.FOOD_PLATFORMS, JSON.stringify(config));
+    this.notify();
+  }
+
+  public async setPlatformStoreStatus(platform: 'ALL' | 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI', isOpen: boolean): Promise<boolean> {
+    const current = this.getFoodPlatformsConfig();
+    const updated: FoodPlatformsConfig = {
+      ...current,
+      trendyol: { ...current.trendyol },
+      getir: { ...current.getir },
+      yemeksepeti: { ...current.yemeksepeti },
+    };
+
+    if (platform === 'ALL' || platform === 'TRENDYOL') {
+      updated.trendyol.isOpen = isOpen;
+    }
+    if (platform === 'ALL' || platform === 'GETIR') {
+      updated.getir.isOpen = isOpen;
+    }
+    if (platform === 'ALL' || platform === 'YEMEKSEPETI') {
+      updated.yemeksepeti.isOpen = isOpen;
+    }
+
+    this.saveFoodPlatformsConfig(updated);
+
+    try {
+      await fetch(`${API_SYNC_URL}?action=update_platform_store_status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform,
+          isOpen,
+          updatedBy: 'Kasa POS'
+        })
+      });
+      return true;
+    } catch (e) {
+      console.warn('Platform status sync error:', e);
+      return false;
+    }
+  }
+
+  public async fetchPlatformStoreStatus(): Promise<any> {
+    try {
+      const res = await fetch(`${API_SYNC_URL}?action=get_platform_store_status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.platformStoreStatus) {
+          const current = this.getFoodPlatformsConfig();
+          const updated: FoodPlatformsConfig = {
+            ...current,
+            trendyol: { ...current.trendyol },
+            getir: { ...current.getir },
+            yemeksepeti: { ...current.yemeksepeti },
+          };
+          if (data.platformStoreStatus.TRENDYOL) {
+            updated.trendyol.isOpen = Boolean(data.platformStoreStatus.TRENDYOL.isOpen);
+          }
+          if (data.platformStoreStatus.GETIR) {
+            updated.getir.isOpen = Boolean(data.platformStoreStatus.GETIR.isOpen);
+          }
+          if (data.platformStoreStatus.YEMEKSEPETI) {
+            updated.yemeksepeti.isOpen = Boolean(data.platformStoreStatus.YEMEKSEPETI.isOpen);
+          }
+          this.saveFoodPlatformsConfig(updated);
+          return data.platformStoreStatus;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  private continuousAlarmInterval: any = null;
+
+  public startContinuousAlarm(type: 'phone' | 'alert' | 'melody' = 'phone') {
+    if (this.continuousAlarmInterval) return;
+    this.playAudioAlert(type, 1);
+    this.continuousAlarmInterval = setInterval(() => {
+      this.playAudioAlert(type, 1);
+    }, 3200);
+  }
+
+  public stopContinuousAlarm() {
+    if (this.continuousAlarmInterval) {
+      clearInterval(this.continuousAlarmInterval);
+      this.continuousAlarmInterval = null;
+    }
+  }
+
+  public isContinuousAlarmRunning(): boolean {
+    return this.continuousAlarmInterval !== null;
   }
 
   public exportRestaurantBackup(): string {

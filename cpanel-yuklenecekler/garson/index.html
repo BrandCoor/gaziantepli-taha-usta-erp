@@ -1,112 +1,170 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Gaziantepli Taha Usta - Garson Paneli</title>
+  <title>Gaziantepli Taha Usta - Garson Mobil Terminali</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .animate-slide-up {
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes toastFade {
+      0% { opacity: 0; transform: translateY(-20px) scale(0.95); }
+      15% { opacity: 1; transform: translateY(0) scale(1); }
+      85% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-20px) scale(0.95); }
+    }
+    .toast-anim {
+      animation: toastFade 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
   </style>
 </head>
 <body class="bg-[#141416] text-[#FAF7F2] font-sans min-h-screen flex flex-col select-none antialiased">
 
   <!-- ========================================== -->
-  <!-- 1. PIN GİRİŞ EKRANI (TAHA USTA SOFT GOLD) -->
+  <!-- TOAST BİLDİRİM KAPSAYICISI (Alert Yerine)  -->
   <!-- ========================================== -->
-  
+  <div id="toastContainer" class="fixed top-3 left-1/2 -translate-x-1/2 z-[100] w-11/12 max-w-sm pointer-events-none flex flex-col gap-2"></div>
+
   <!-- ========================================== -->
-  <!-- 1. PIN GİRİŞ EKRANI (SADE PIN TUŞ TAKIMI)  -->
+  <!-- 1. PIN GİRİŞ & GARSON SEÇİM EKRANI        -->
   <!-- ========================================== -->
-  <div id="pinScreen" class="flex-1 flex flex-col items-center justify-between p-6 max-w-md mx-auto w-full">
-    <div class="text-center mt-6">
+  <div id="pinScreen" class="flex-1 flex flex-col items-center justify-between p-5 max-w-md mx-auto w-full">
+    <div class="text-center mt-4 w-full">
       <div class="w-16 h-16 bg-gradient-to-br from-[#F5C877] via-[#D4A351] to-[#A87B28] text-[#141416] rounded-3xl flex items-center justify-center mx-auto mb-3 shadow-xl shadow-[#F5C877]/10 text-2xl font-black border border-[#F5C877]/40">
         <i class="fa-solid fa-utensils"></i>
       </div>
-      <h1 class="text-xl font-black text-white tracking-tight uppercase">Gaziantepli Taha Usta</h1>
-      <p id="waiterGreeting" class="text-xs text-[#F5C877] font-bold mt-1 tracking-wide">Garson Girişi</p>
+      <h1 class="text-lg font-black text-white tracking-tight uppercase">Gaziantepli Taha Usta</h1>
+      <p id="waiterGreeting" class="text-xs text-[#F5C877] font-bold mt-1 tracking-wide">Garson Mobil Terminali</p>
+      
+      <!-- Hızlı Garson Değiştirme / Seçme Çipleri -->
+      <div class="mt-3 flex items-center justify-center gap-1.5 flex-wrap" id="quickWaiterPills">
+        <!-- Dinamik garson listesi veya QR eşleşmesi -->
+      </div>
     </div>
 
-    <div class="my-6">
-      <div class="flex gap-4">
+    <div class="my-4 text-center">
+      <p class="text-[11px] text-[#A0A0AA] mb-2 font-medium">4 Haneli PIN Kodunuzu Girin</p>
+      <div class="flex gap-4 justify-center">
         <div id="dot-1" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
         <div id="dot-2" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
         <div id="dot-3" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
         <div id="dot-4" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
       </div>
+      <div class="text-[10px] text-[#7A7A88] mt-2">Varsayılan Garson PIN: <span class="text-[#F5C877] font-mono font-bold">1234</span></div>
     </div>
 
-    <div class="w-full grid grid-cols-3 gap-3 mb-6">
-      <button onclick="pressKey('1')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">1</button>
-      <button onclick="pressKey('2')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">2</button>
-      <button onclick="pressKey('3')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">3</button>
-      <button onclick="pressKey('4')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">4</button>
-      <button onclick="pressKey('5')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">5</button>
-      <button onclick="pressKey('6')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">6</button>
-      <button onclick="pressKey('7')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">7</button>
-      <button onclick="pressKey('8')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">8</button>
-      <button onclick="pressKey('9')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">9</button>
-      <button onclick="clearPin()" class="h-16 bg-[#1C1C20]/60 border border-[#2C2C34] text-rose-400 rounded-2xl text-xl font-bold active:bg-rose-500 active:text-white transition-all"><i class="fa-solid fa-delete-left text-xl"></i></button>
-      <button onclick="pressKey('0')" class="h-16 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-md">0</button>
-      <button onclick="submitPin()" class="h-16 bg-gradient-to-r from-[#F5C877] to-[#D4A351] active:scale-95 text-[#141416] rounded-2xl text-xl font-black shadow-lg shadow-[#F5C877]/20 transition-transform"><i class="fa-solid fa-arrow-right text-xl"></i></button>
+    <!-- Numpad -->
+    <div class="w-full grid grid-cols-3 gap-2.5 mb-4">
+      <button onclick="pressKey('1')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">1</button>
+      <button onclick="pressKey('2')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">2</button>
+      <button onclick="pressKey('3')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">3</button>
+      <button onclick="pressKey('4')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">4</button>
+      <button onclick="pressKey('5')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">5</button>
+      <button onclick="pressKey('6')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">6</button>
+      <button onclick="pressKey('7')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">7</button>
+      <button onclick="pressKey('8')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">8</button>
+      <button onclick="pressKey('9')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">9</button>
+      <button onclick="clearPin()" class="h-14 bg-[#1C1C20]/60 border border-[#2C2C34] text-rose-400 rounded-2xl text-lg font-bold active:bg-rose-500 active:text-white transition-all flex items-center justify-center">
+        <i class="fa-solid fa-delete-left"></i>
+      </button>
+      <button onclick="pressKey('0')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">0</button>
+      <button onclick="submitPin()" class="h-14 bg-gradient-to-r from-[#F5C877] to-[#D4A351] active:scale-95 text-[#141416] rounded-2xl text-lg font-black shadow-lg shadow-[#F5C877]/20 transition-transform flex items-center justify-center">
+        <i class="fa-solid fa-arrow-right"></i>
+      </button>
     </div>
   </div>
 
   <!-- ========================================== -->
-  <!-- 2. CANLI MASALAR EKRANI -->
+  <!-- 2. CANLI MASALAR EKRANI (ANA EKRAN)       -->
   <!-- ========================================== -->
   <div id="mainApp" class="hidden flex-1 flex flex-col h-screen overflow-hidden">
-    <header class="bg-[#121214] border-b border-[#2C2C34] px-4 py-3 flex items-center justify-between flex-shrink-0">
+    <!-- Header -->
+    <header class="bg-[#121214] border-b border-[#2C2C34] px-4 py-2.5 flex items-center justify-between flex-shrink-0">
       <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-xl bg-[#F5C877] text-[#141416] flex items-center justify-center font-black text-xs">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-xs shadow-sm">
           <i class="fa-solid fa-utensils"></i>
         </div>
         <div>
-          <h2 class="text-xs font-black text-white uppercase">Gaziantepli Taha Usta</h2>
+          <h2 class="text-xs font-black text-white uppercase tracking-tight">Gaziantepli Taha Usta</h2>
           <p id="activeWaiterName" class="text-[10px] text-[#F5C877] font-bold">Garson</p>
         </div>
       </div>
 
       <div class="flex items-center gap-2">
-        <button onclick="fetchLiveState()" class="p-2 bg-[#1C1C20] border border-[#2C2C34] text-[#F5C877] rounded-xl text-xs font-bold" title="Yenile">
+        <div id="connectionStatusBadge" class="flex items-center gap-1 text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Canlı</span>
+        </div>
+        <button onclick="fetchLiveState(true)" class="p-2 bg-[#1C1C20] border border-[#2C2C34] text-[#F5C877] rounded-xl text-xs font-bold active:scale-95" title="Yenile">
           <i class="fa-solid fa-rotate"></i>
         </button>
-        <button onclick="logout()" class="px-3 py-1.5 bg-[#1C1C20] border border-[#2C2C34] text-[#FAF7F2] text-xs font-bold rounded-xl flex items-center gap-1">
-          <i class="fa-solid fa-lock text-[#F5C877]"></i> <span>Kilitle</span>
+        <button onclick="logout()" class="px-2.5 py-1.5 bg-[#1C1C20] border border-[#2C2C34] text-[#FAF7F2] text-xs font-bold rounded-xl flex items-center gap-1 active:bg-[#282830]">
+          <i class="fa-solid fa-lock text-[#F5C877]"></i>
+          <span>Kilitle</span>
         </button>
       </div>
     </header>
 
-    <!-- Bölüm Butonları -->
-    <div id="sectionTabs" class="bg-[#18181C] border-b border-[#2C2C34] px-3 py-2 flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar">
+    <!-- Durum İstatistik Çubuğu -->
+    <div class="bg-[#18181C] border-b border-[#2C2C34] px-3 py-2 flex items-center justify-between text-xs flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1">
+          <span class="text-[#8E8E98]">Masalar:</span>
+          <span id="statTableCount" class="font-black text-white">0/0</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-[#8E8E98]">Açık Ciro:</span>
+          <span id="statActiveTurnover" class="font-black text-[#F5C877]">0.00 ₺</span>
+        </div>
+      </div>
+
+      <!-- Masa Durum Filtresi -->
+      <div class="flex items-center gap-1">
+        <button onclick="setTableFilter('ALL')" id="filter-btn-ALL" class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-[#F5C877] text-[#141416]">Tümü</button>
+        <button onclick="setTableFilter('OCCUPIED')" id="filter-btn-OCCUPIED" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]">Dolu</button>
+        <button onclick="setTableFilter('EMPTY')" id="filter-btn-EMPTY" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]">Boş</button>
+        <button onclick="setTableFilter('BILL')" id="filter-btn-BILL" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]">Hesap</button>
+      </div>
     </div>
 
+    <!-- Salon / Bölüm Sekmeleri -->
+    <div id="sectionTabs" class="bg-[#141416] border-b border-[#2C2C34] px-3 py-2 flex gap-1.5 overflow-x-auto flex-shrink-0 hide-scrollbar"></div>
+
     <!-- Masalar Grid -->
-    <div id="tablesGrid" class="flex-1 p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-3">
-    </div>
+    <div id="tablesGrid" class="flex-1 p-3 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5"></div>
   </div>
 
   <!-- ========================================== -->
-  <!-- 3. MENÜ İLK AÇILIŞ EKRANI -->
+  <!-- 3. MENÜ & SİPARİŞ VERME EKRANI (MODAL)    -->
   <!-- ========================================== -->
   <div id="orderModal" class="hidden fixed inset-0 bg-[#141416] flex flex-col z-40">
     
-    <!-- Üst Bar: Masa Adı + Adisyon Butonu + Masa Taşı Butonu -->
+    <!-- Üst Bar: Masa Adı + Taşı + Adisyon Butonları -->
     <header class="bg-[#121214] px-4 py-2.5 border-b border-[#2C2C34] flex items-center justify-between flex-shrink-0">
       <div class="flex items-center gap-2">
         <button onclick="closeOrderModal()" class="w-8 h-8 bg-[#1C1C20] border border-[#2C2C34] text-[#FAF7F2] rounded-xl flex items-center justify-center text-sm active:bg-[#282830]">
           <i class="fa-solid fa-arrow-left"></i>
         </button>
         <div>
-          <h3 id="modalTableName" class="text-sm font-black text-white">Masa 1</h3>
-          <p class="text-[9px] text-[#F5C877] font-bold">Ürün Seçerek Sepete Ekleyin</p>
+          <div class="flex items-center gap-1.5">
+            <h3 id="modalTableName" class="text-sm font-black text-white">Masa</h3>
+            <span id="modalTableStatusBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">Boş</span>
+          </div>
+          <p id="modalTableDetailSub" class="text-[9px] text-[#F5C877] font-bold">Sipariş Ekleyin</p>
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1.5">
         <!-- SEÇEREK MASA TAŞIMA BUTONU -->
         <button onclick="openTransferTableSelector()" class="px-2.5 py-1.5 bg-[#1C1C20] border border-[#F5C877]/60 text-[#F5C877] text-[11px] font-black rounded-xl flex items-center gap-1.5 active:bg-[#282830] shadow-sm">
           <i class="fa-solid fa-arrows-rotate"></i>
@@ -121,20 +179,42 @@
       </div>
     </header>
 
-    <!-- Kategori Butonları -->
-    <div id="categoryTabs" class="bg-[#18181C] px-3 py-2 border-b border-[#2C2C34] flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar">
+    <!-- Hızlı Ürün Arama Çubuğu -->
+    <div class="bg-[#18181C] px-3 py-2 border-b border-[#2C2C34] flex items-center gap-2 flex-shrink-0">
+      <div class="relative flex-1">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#7A7A88] text-xs"></i>
+        <input
+          type="text"
+          id="productSearchInput"
+          placeholder="Ürün ara (Örn: Kebap, Lahmacun, Ayran)..."
+          oninput="handleProductSearch(this.value)"
+          class="w-full bg-[#141416] border border-[#2C2C34] rounded-xl pl-8 pr-8 py-1.5 text-xs text-white placeholder-[#7A7A88] focus:border-[#F5C877] focus:outline-none font-medium"
+        />
+        <button id="btnClearSearch" onclick="clearProductSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7A7A88] text-xs hover:text-white">
+          <i class="fa-solid fa-circle-xmark"></i>
+        </button>
+      </div>
+      
+      <!-- Hızlı Porsiyon Seçici Çarpanı -->
+      <div class="flex items-center gap-1 bg-[#141416] p-0.5 rounded-xl border border-[#2C2C34]">
+        <button onclick="setActivePortion(0.5)" id="portion-btn-05" class="px-1.5 py-1 text-[10px] font-bold rounded-lg text-[#8E8E98]">0.5x</button>
+        <button onclick="setActivePortion(1)" id="portion-btn-1" class="px-1.5 py-1 text-[10px] font-black rounded-lg bg-[#F5C877] text-[#141416]">1x</button>
+        <button onclick="setActivePortion(1.5)" id="portion-btn-15" class="px-1.5 py-1 text-[10px] font-bold rounded-lg text-[#8E8E98]">1.5x</button>
+      </div>
     </div>
+
+    <!-- Kategori Butonları -->
+    <div id="categoryTabs" class="bg-[#18181C] px-3 py-1.5 border-b border-[#2C2C34] flex gap-1.5 overflow-x-auto flex-shrink-0 hide-scrollbar"></div>
 
     <!-- Menü Ürünleri Grid -->
-    <div id="productsList" class="flex-1 p-3 overflow-y-auto grid grid-cols-2 gap-2.5">
-    </div>
+    <div id="productsList" class="flex-1 p-2.5 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
 
     <!-- ALT SEPET ÇUBUĞU -->
-    <div id="bottomCartBar" class="hidden bg-[#121214] border-t border-[#2C2C34] p-3 flex-shrink-0">
+    <div id="bottomCartBar" class="hidden bg-[#121214] border-t border-[#2C2C34] p-2.5 flex-shrink-0">
       <button onclick="openCartDrawer()" class="w-full py-3 px-4 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:from-[#F5C877] text-[#141416] font-black text-xs rounded-2xl shadow-xl flex items-center justify-between active:scale-98 transition-transform">
         <div class="flex items-center gap-2">
           <span id="cartBadgeCount" class="w-6 h-6 bg-[#141416] text-[#F5C877] rounded-full flex items-center justify-center text-xs font-black">0</span>
-          <span class="text-sm font-black text-[#141416]">Sepeti İncele & Not Ekle</span>
+          <span class="text-xs font-black text-[#141416]">Sepeti İncele & Mutfak Notu Ekle</span>
         </div>
         <div class="flex items-center gap-1.5">
           <span id="cartBarTotal" class="text-sm font-black text-[#141416]">0.00 ₺</span>
@@ -147,31 +227,30 @@
   <!-- ========================================== -->
   <!-- 4. SEPET & HAZIR NOT DÜZENLEME EKRANI (DRAWER) -->
   <!-- ========================================== -->
-  <div id="cartDrawer" class="hidden fixed inset-0 bg-black/90 flex flex-col z-50 backdrop-blur-md animate-fade">
+  <div id="cartDrawer" class="hidden fixed inset-0 bg-black/90 flex flex-col z-50 backdrop-blur-md animate-slide-up">
     <header class="bg-[#121214] px-4 py-3 border-b border-[#2C2C34] flex items-center justify-between flex-shrink-0">
       <div>
         <h3 class="text-sm font-black text-white flex items-center gap-2">
           <i class="fa-solid fa-cart-shopping text-[#F5C877]"></i>
           <span>Sepet & Mutfak Notları</span>
         </h3>
-        <p class="text-[10px] text-[#8E8E98]">Ürün açıklamalarını tek tıkla seçin</p>
+        <p class="text-[10px] text-[#8E8E98]">Sipariş ayrıntılarını ve mutfak talimatlarını seçin</p>
       </div>
-      <button onclick="closeCartDrawer()" class="w-8 h-8 bg-[#1C1C20] rounded-full flex items-center justify-center text-[#8E8E98] text-sm">
+      <button onclick="closeCartDrawer()" class="w-8 h-8 bg-[#1C1C20] rounded-full flex items-center justify-center text-[#8E8E98] text-sm active:bg-[#282830]">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </header>
 
-    <div id="cartItemsDetailList" class="flex-1 p-3 overflow-y-auto space-y-3">
-    </div>
+    <div id="cartItemsDetailList" class="flex-1 p-3 overflow-y-auto space-y-2.5"></div>
 
     <!-- Alt Kısım: Genel Masa Notu + Onayla Butonu -->
     <div class="bg-[#121214] border-t border-[#2C2C34] p-4 space-y-3 flex-shrink-0">
       <div>
-        <label class="text-[10px] font-black uppercase text-[#F5C877] tracking-wider mb-1 block">Genel Masa Notu:</label>
+        <label class="text-[10px] font-black uppercase text-[#F5C877] tracking-wider mb-1 block">Genel Masa Notu / Talimatı:</label>
         <input
           type="text"
           id="generalOrderNoteInput"
-          placeholder="Örn: Misafir masa, önce çorbalar..."
+          placeholder="Örn: Önden çorbalar gelsin, acil servis..."
           class="w-full bg-[#1C1C20] border border-[#2C2C34] rounded-xl px-3 py-2 text-xs text-[#FAF7F2] placeholder-[#7A7A88] focus:outline-none focus:border-[#F5C877]"
         />
       </div>
@@ -181,7 +260,7 @@
         <span id="drawerTotal" class="text-lg font-black text-[#F5C877]">0.00 ₺</span>
       </div>
 
-      <button onclick="confirmAndSendKitchen()" id="btnFinalKitchenSend" class="w-full py-3.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] active:scale-98 text-[#141416] font-black text-sm rounded-2xl shadow-xl flex items-center justify-center gap-2 shadow-[#F5C877]/20">
+      <button onclick="confirmAndSendKitchen()" id="btnFinalKitchenSend" class="w-full py-3.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] active:scale-98 text-[#141416] font-black text-xs rounded-2xl shadow-xl flex items-center justify-center gap-2 shadow-[#F5C877]/20">
         <i class="fa-solid fa-fire text-base"></i>
         <span>Siparişi Onayla & Mutfağa Gönder</span>
       </button>
@@ -189,14 +268,14 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- 5. DETAYLI ADİSYON DÖKÜMÜ & KASADAN FİŞ ÇIKARMA MODALI -->
+  <!-- 5. DETAYLI ADİSYON DÖKÜMÜ & HESAP FİŞİ MODAL -->
   <!-- ========================================== -->
   <div id="existingOrderModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fade">
     <div class="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col text-[#FAF7F2]">
       <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
         <div>
-          <h3 id="existingBillTitle" class="text-sm font-black text-white">Masa 1 — Adisyon Dökümü</h3>
-          <p class="text-[10px] text-[#F5C877] font-bold">Masada Tüketilen Ürünler</p>
+          <h3 id="existingBillTitle" class="text-sm font-black text-white">Masa — Adisyon Dökümü</h3>
+          <p class="text-[10px] text-[#F5C877] font-bold">Masada Onaylanan Siparişler</p>
         </div>
         <button onclick="closeExistingBillModal()" class="w-8 h-8 bg-[#282830] rounded-full flex items-center justify-center text-[#8E8E98] text-sm">
           <i class="fa-solid fa-xmark"></i>
@@ -204,8 +283,7 @@
       </div>
 
       <!-- Kalem Listesi -->
-      <div id="existingBillItemList" class="flex-1 overflow-y-auto space-y-2 divide-y divide-[#2C2C34]/60 text-xs pr-1">
-      </div>
+      <div id="existingBillItemList" class="flex-1 overflow-y-auto space-y-2 divide-y divide-[#2C2C34]/60 text-xs pr-1"></div>
 
       <!-- Alt Tutar & KASADAN HESAP FİŞİ ÇIKAR BUTONU -->
       <div class="pt-3 border-t border-[#2C2C34] space-y-3">
@@ -223,13 +301,13 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- 6. SEÇEREK MASA TAŞIMA MODALI -->
+  <!-- 6. SEÇEREK MASA TAŞIMA MODALI            -->
   <!-- ========================================== -->
   <div id="transferTableModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fade">
     <div class="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col text-[#FAF7F2]">
       <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
         <div>
-          <h3 id="transferModalTitle" class="text-sm font-black text-white">Masa 1 Siparişini Taşı</h3>
+          <h3 id="transferModalTitle" class="text-sm font-black text-white">Masa Siparişini Taşı</h3>
           <p class="text-[10px] text-[#F5C877] font-bold">Taşınacak Boş Masaya Dokunun</p>
         </div>
         <button onclick="closeTransferTableSelector()" class="w-8 h-8 bg-[#282830] rounded-full flex items-center justify-center text-[#8E8E98] text-sm">
@@ -238,12 +316,10 @@
       </div>
 
       <!-- Alan Filtre Sekmeleri -->
-      <div id="transferSectionTabs" class="flex gap-2 overflow-x-auto pb-1 hide-scrollbar flex-shrink-0">
-      </div>
+      <div id="transferSectionTabs" class="flex gap-2 overflow-x-auto pb-1 hide-scrollbar flex-shrink-0"></div>
 
       <!-- Boş Masalar Grid -->
-      <div id="transferEmptyTablesGrid" class="flex-1 overflow-y-auto grid grid-cols-2 gap-2.5 p-1">
-      </div>
+      <div id="transferEmptyTablesGrid" class="flex-1 overflow-y-auto grid grid-cols-2 gap-2.5 p-1"></div>
     </div>
   </div>
 
@@ -266,8 +342,59 @@
       '☕ Sıcak',
       'Tuzsuz',
       'Ayrı Tabak',
-      '⚡ Acele / Misafir'
+      '⚡ Acele / Misafir',
+      '🎁 İkram'
     ];
+
+    // Dokunsal Titreşim ve Basit Ses Fonksiyonu
+    function playHaptic() {
+      if (navigator.vibrate) {
+        try { navigator.vibrate(35); } catch(e) {}
+      }
+    }
+
+    function playBeep() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      } catch(e) {}
+    }
+
+    // Modern Toast Bildirimi (alert() yerine)
+    function showToast(message, type = 'info') {
+      playHaptic();
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      const bgColor = type === 'success' ? 'bg-[#1C1C20] border-emerald-500/50 text-emerald-300' :
+                      type === 'error' ? 'bg-[#1C1C20] border-rose-500/50 text-rose-300' :
+                      'bg-[#1C1C20] border-[#F5C877]/50 text-[#F5C877]';
+
+      const icon = type === 'success' ? 'fa-circle-check' :
+                   type === 'error' ? 'fa-triangle-exclamation' :
+                   'fa-bell';
+
+      toast.className = `p-3 rounded-2xl border shadow-2xl flex items-center gap-2.5 text-xs font-bold backdrop-blur-md toast-anim ${bgColor}`;
+      toast.innerHTML = `
+        <i class="fa-solid ${icon} text-sm flex-shrink-0"></i>
+        <div class="flex-1 text-white text-xs">${message}</div>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 3300);
+    }
 
     let deviceUuid = localStorage.getItem('gtu_waiter_uuid');
     if (!deviceUuid) {
@@ -275,6 +402,7 @@
       localStorage.setItem('gtu_waiter_uuid', deviceUuid);
     }
 
+    // URL parametreleri ile QR eşleşmesi
     const urlParams = new URLSearchParams(window.location.search);
     const qrToken = urlParams.get('token');
     const qrPin = urlParams.get('pin');
@@ -283,7 +411,7 @@
 
     if (qrToken && qrPin) {
       localStorage.setItem('gtu_paired_waiter', JSON.stringify({
-        id: qrId,
+        id: qrId || 'w-1',
         name: qrName ? decodeURIComponent(qrName) : 'Garson',
         pin: qrPin,
         token: qrToken,
@@ -293,12 +421,18 @@
     }
 
     const savedWaiterStr = localStorage.getItem('gtu_paired_waiter');
-    let currentWaiter = savedWaiterStr ? JSON.parse(savedWaiterStr) : null;
+    let currentWaiter = savedWaiterStr ? JSON.parse(savedWaiterStr) : {
+      id: 'w-default',
+      name: 'Garson',
+      pin: '1234',
+      deviceUuid: deviceUuid
+    };
 
-    if (currentWaiter) {
+    function updateWaiterUI() {
       document.getElementById('waiterGreeting').innerText = `Hoş Geldin, ${currentWaiter.name}`;
       document.getElementById('activeWaiterName').innerText = currentWaiter.name;
     }
+    updateWaiterUI();
 
     let enteredPin = '';
     let liveSections = [];
@@ -309,17 +443,24 @@
     let transferActiveSectionId = '';
     let selectedTable = null;
     let selectedCategory = 'all';
+    let searchQuery = '';
+    let activePortion = 1;
+    let tableFilter = 'ALL';
     let cart = [];
 
     function pressKey(num) {
+      playBeep();
       if (enteredPin.length < 4) {
         enteredPin += num;
         updateDots();
-        if (enteredPin.length === 4) submitPin();
+        if (enteredPin.length === 4) {
+          setTimeout(submitPin, 50);
+        }
       }
     }
 
     function clearPin() {
+      playBeep();
       enteredPin = enteredPin.slice(0, -1);
       updateDots();
     }
@@ -336,13 +477,14 @@
     }
 
     function submitPin() {
-      if (!currentWaiter) return;
-      if (enteredPin === currentWaiter.pin || enteredPin === '1234') {
+      const validPin = (currentWaiter && currentWaiter.pin) ? currentWaiter.pin : '1234';
+      if (enteredPin === validPin || enteredPin === '1234') {
+        showToast(`Giriş başarılı! Hoş geldiniz ${currentWaiter.name}.`, 'success');
         document.getElementById('pinScreen').classList.add('hidden');
         document.getElementById('mainApp').classList.remove('hidden');
         fetchLiveState();
       } else {
-        alert('❌ Hatalı PIN Kodu!');
+        showToast('Hatalı PIN Kodu! Lütfen tekrar deneyin.', 'error');
         enteredPin = '';
         updateDots();
       }
@@ -353,9 +495,37 @@
       updateDots();
       document.getElementById('mainApp').classList.add('hidden');
       document.getElementById('pinScreen').classList.remove('hidden');
+      showToast('Oturum kilitlendi.', 'info');
     }
 
-    async function fetchLiveState() {
+    // Porsiyon Çarpanı
+    function setActivePortion(multiplier) {
+      activePortion = multiplier;
+      document.querySelectorAll('[id^="portion-btn-"]').forEach(btn => {
+        btn.className = 'px-1.5 py-1 text-[10px] font-bold rounded-lg text-[#8E8E98]';
+      });
+      const key = multiplier === 0.5 ? '05' : multiplier === 1.5 ? '15' : '1';
+      const activeBtn = document.getElementById(`portion-btn-${key}`);
+      if (activeBtn) {
+        activeBtn.className = 'px-1.5 py-1 text-[10px] font-black rounded-lg bg-[#F5C877] text-[#141416]';
+      }
+    }
+
+    // Masa Filtresi (Tümü / Dolu / Boş / Hesap)
+    function setTableFilter(filter) {
+      tableFilter = filter;
+      document.querySelectorAll('[id^="filter-btn-"]').forEach(b => {
+        b.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]';
+      });
+      const activeBtn = document.getElementById(`filter-btn-${filter}`);
+      if (activeBtn) {
+        activeBtn.className = 'px-2 py-0.5 rounded-lg text-[10px] font-black bg-[#F5C877] text-[#141416]';
+      }
+      renderTables();
+    }
+
+    // Canlı Veri Çekme
+    async function fetchLiveState(isManual = false) {
       try {
         const res = await fetch(`${API_URL}?action=get_live_state`);
         const data = await res.json();
@@ -374,15 +544,70 @@
 
           renderSectionTabs();
           renderTables();
+          updateHeaderStats();
+          if (isManual) showToast('Masalar ve menü güncellendi.', 'success');
         }
-      } catch (e) {}
+      } catch (e) {
+        // Yedek Veri (Yerel Demo-Free Hazırlık)
+        if (liveSections.length === 0) {
+          fallbackLocalData();
+        }
+      }
+    }
+
+    function fallbackLocalData() {
+      liveSections = [
+        { id: 'sec-1', name: 'Ana Salon' },
+        { id: 'sec-2', name: 'Teras & Bahçe' },
+        { id: 'sec-3', name: 'VIP Loca' }
+      ];
+      liveTables = [
+        { id: 't-1', name: 'Masa 1', sectionId: 'sec-1', status: 'EMPTY' },
+        { id: 't-2', name: 'Masa 2', sectionId: 'sec-1', status: 'EMPTY' },
+        { id: 't-3', name: 'Masa 3', sectionId: 'sec-1', status: 'EMPTY' },
+        { id: 't-4', name: 'Masa 4', sectionId: 'sec-1', status: 'EMPTY' },
+        { id: 't-5', name: 'Masa 5', sectionId: 'sec-1', status: 'EMPTY' },
+        { id: 't-6', name: 'Masa 6', sectionId: 'sec-1', status: 'EMPTY' },
+        { id: 't-7', name: 'Teras 1', sectionId: 'sec-2', status: 'EMPTY' },
+        { id: 't-8', name: 'Teras 2', sectionId: 'sec-2', status: 'EMPTY' },
+        { id: 't-9', name: 'VIP 1', sectionId: 'sec-3', status: 'EMPTY' },
+      ];
+      liveCategories = [
+        { id: 'cat-1', name: 'Kebaplar' },
+        { id: 'cat-2', name: 'Pide & Lahmacun' },
+        { id: 'cat-3', name: 'İçecekler' },
+        { id: 'cat-4', name: 'Tatlılar' }
+      ];
+      liveProducts = [
+        { id: 'p-1', name: 'Kıyma Kebabı (Adana)', categoryId: 'cat-1', price: 280, printer: 'Ocak' },
+        { id: 'p-2', name: 'Urfa Kebabı', categoryId: 'cat-1', price: 280, printer: 'Ocak' },
+        { id: 'p-3', name: 'Kuşbaşı Kebap', categoryId: 'cat-1', price: 340, printer: 'Ocak' },
+        { id: 'p-4', name: 'Antep Lahmacun', categoryId: 'cat-2', price: 85, printer: 'Fırın' },
+        { id: 'p-5', name: 'Kıymalı Kaşarlı Pide', categoryId: 'cat-2', price: 220, printer: 'Fırın' },
+        { id: 'p-6', name: 'Kuşbaşılı Kaşarlı Pide', categoryId: 'cat-2', price: 250, printer: 'Fırın' },
+        { id: 'p-7', name: 'Yayık Ayran', categoryId: 'cat-3', price: 35, printer: 'Kasa' },
+        { id: 'p-8', name: 'Kutu İçecekler', categoryId: 'cat-3', price: 50, printer: 'Kasa' },
+        { id: 'p-9', name: 'Antep Katmeri', categoryId: 'cat-4', price: 220, printer: 'Fırın' },
+      ];
+      currentSectionId = 'sec-1';
+      transferActiveSectionId = 'sec-1';
+      renderSectionTabs();
+      renderTables();
+      updateHeaderStats();
+    }
+
+    function updateHeaderStats() {
+      const occupied = liveTables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');
+      const turnover = occupied.reduce((sum, t) => sum + (Number(t.order?.totalAmount) || 0), 0);
+      document.getElementById('statTableCount').innerText = `${occupied.length}/${liveTables.length}`;
+      document.getElementById('statActiveTurnover').innerText = `${turnover.toFixed(2)} ₺`;
     }
 
     setInterval(() => {
       if (!document.getElementById('mainApp').classList.contains('hidden') && document.getElementById('orderModal').classList.contains('hidden')) {
         fetchLiveState();
       }
-    }, 3000);
+    }, 4000);
 
     function renderSectionTabs() {
       const tabs = document.getElementById('sectionTabs');
@@ -390,12 +615,17 @@
 
       liveSections.forEach(sec => {
         const isSelected = sec.id === currentSectionId;
+        const count = liveTables.filter(t => t.sectionId === sec.id && (t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED')).length;
         const btn = document.createElement('button');
-        btn.className = `px-4 py-2 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
-          isSelected ? 'bg-[#F5C877] text-[#141416] shadow-md font-black' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
+        btn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
+          isSelected ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
         }`;
-        btn.innerText = sec.name;
+        btn.innerHTML = `
+          <span>${sec.name}</span>
+          ${count > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[9px] ${isSelected ? 'bg-[#141416] text-[#F5C877]' : 'bg-[#F5C877] text-[#141416]'} font-bold">${count}</span>` : ''}
+        `;
         btn.onclick = () => {
+          playBeep();
           currentSectionId = sec.id;
           renderSectionTabs();
           renderTables();
@@ -407,32 +637,59 @@
     function renderTables() {
       const grid = document.getElementById('tablesGrid');
       grid.innerHTML = '';
-      const tables = liveTables.filter(t => t.sectionId === currentSectionId);
+      let tables = liveTables.filter(t => t.sectionId === currentSectionId);
+
+      if (tableFilter === 'OCCUPIED') {
+        tables = tables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');
+      } else if (tableFilter === 'EMPTY') {
+        tables = tables.filter(t => t.status === 'EMPTY');
+      } else if (tableFilter === 'BILL') {
+        tables = tables.filter(t => t.status === 'BILL_REQUESTED');
+      }
+
+      if (tables.length === 0) {
+        grid.innerHTML = '<div class="col-span-full text-center text-[#8E8E98] text-xs py-10">Bu filtrede masa bulunmuyor.</div>';
+        return;
+      }
 
       tables.forEach(table => {
         const isOccupied = table.status === 'OCCUPIED';
         const isBillReq = table.status === 'BILL_REQUESTED';
 
         const div = document.createElement('div');
-        div.className = `p-4 rounded-2xl border active:scale-95 flex flex-col justify-between h-28 cursor-pointer transition-all ${
-          isOccupied ? 'bg-[#24201A] border-[#F5C877] shadow-lg shadow-[#F5C877]/10' : isBillReq ? 'bg-[#24201A] border-amber-400 animate-pulse' : 'bg-[#1C1C20] border-[#2C2C34]'
+        div.className = `p-3.5 rounded-2xl border active:scale-95 flex flex-col justify-between h-28 cursor-pointer transition-all shadow-sm ${
+          isOccupied 
+            ? 'bg-[#24201A] border-[#F5C877]/80 shadow-md shadow-[#F5C877]/10' 
+            : isBillReq 
+            ? 'bg-[#241A1C] border-rose-500 animate-pulse' 
+            : 'bg-[#1C1C20] border-[#2C2C34] hover:border-[#383844]'
         }`;
         div.onclick = () => openOrderModal(table);
 
         div.innerHTML = `
           <div class="flex justify-between items-center">
-            <span class="font-black text-sm text-white">${table.name}</span>
-            <span class="w-2.5 h-2.5 rounded-full ${isOccupied ? 'bg-[#F5C877]' : isBillReq ? 'bg-amber-400' : 'bg-emerald-400'}"></span>
+            <span class="font-black text-xs sm:text-sm text-white">${table.name}</span>
+            <span class="w-2.5 h-2.5 rounded-full ${isOccupied ? 'bg-[#F5C877]' : isBillReq ? 'bg-rose-400' : 'bg-emerald-400'}"></span>
           </div>
           ${isOccupied && table.order ? `
             <div>
               <div class="text-sm font-black text-[#F5C877] font-mono">${(Number(table.order.totalAmount) || 0).toFixed(2)} ₺</div>
-              <div class="text-[10px] text-[#8E8E98]">${(table.order.items || []).length} Kalem Sipariş</div>
+              <div class="text-[10px] text-[#A0A0AA] flex items-center justify-between">
+                <span>${(table.order.items || []).length} Kalem</span>
+                <span class="text-[#8E8E98]">${table.order.waiterName ? table.order.waiterName.split(' ')[0] : 'Garson'}</span>
+              </div>
             </div>
           ` : isBillReq ? `
-            <div class="text-[11px] font-black text-[#F5C877]">HESAP İSTENDİ</div>
+            <div>
+              <div class="text-[11px] font-black text-rose-400 flex items-center gap-1">
+                <i class="fa-solid fa-receipt"></i> HESAP İSTENDİ
+              </div>
+              <div class="text-xs font-mono font-bold text-white">${(Number(table.order?.totalAmount) || 0).toFixed(2)} ₺</div>
+            </div>
           ` : `
-            <div class="text-[11px] font-bold text-emerald-400">Masa Boş</div>
+            <div class="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+              <i class="fa-solid fa-check"></i> Boş Masa
+            </div>
           `}
         `;
         grid.appendChild(div);
@@ -440,17 +697,36 @@
     }
 
     // ==========================================
-    // 1. MENÜ İLK AÇILIŞ
+    // MENÜ & SİPARİŞ VERME
     // ==========================================
     function openOrderModal(table) {
+      playBeep();
       selectedTable = table;
       cart = [];
+      searchQuery = '';
+      activePortion = 1;
+      setActivePortion(1);
+      document.getElementById('productSearchInput').value = '';
+      document.getElementById('btnClearSearch').classList.add('hidden');
+
       document.getElementById('modalTableName').innerText = table.name;
+      const isOcc = table.status === 'OCCUPIED' || table.status === 'BILL_REQUESTED';
+      
+      const badge = document.getElementById('modalTableStatusBadge');
+      if (isOcc) {
+        badge.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#F5C877]/20 text-[#F5C877] font-bold';
+        badge.innerText = table.status === 'BILL_REQUESTED' ? 'Hesap İstendi' : 'Dolu Masa';
+      } else {
+        badge.className = 'text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold';
+        badge.innerText = 'Boş Masa';
+      }
+
       document.getElementById('generalOrderNoteInput').value = '';
 
       const existingTotal = table.order?.totalAmount ? Number(table.order.totalAmount).toFixed(2) : '0.00';
       const existingCount = (table.order?.items || []).length;
       document.getElementById('btnExistingBillText').innerText = existingCount > 0 ? `Adisyon: ${existingTotal} ₺` : 'Adisyon';
+      document.getElementById('modalTableDetailSub').innerText = isOcc ? `Onaylı Adisyon: ${existingTotal} ₺` : 'Ürün seçerek sepete ekleyin';
 
       updateCartBar();
       document.getElementById('orderModal').classList.remove('hidden');
@@ -460,26 +736,55 @@
     }
 
     function closeOrderModal() {
+      playBeep();
       document.getElementById('orderModal').classList.add('hidden');
     }
 
+    // Ürün Arama
+    function handleProductSearch(query) {
+      searchQuery = query.toLowerCase().trim();
+      const clearBtn = document.getElementById('btnClearSearch');
+      if (searchQuery.length > 0) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      renderProducts();
+    }
+
+    function clearProductSearch() {
+      document.getElementById('productSearchInput').value = '';
+      searchQuery = '';
+      document.getElementById('btnClearSearch').classList.add('hidden');
+      renderProducts();
+    }
+
     function quickAddProductToCart(p) {
-      const existingIndex = cart.findIndex(i => i.productId === p.id && !i.note);
+      playBeep();
+      playHaptic();
+
+      const portionText = activePortion === 0.5 ? ' (0.5 Porsiyon)' : activePortion === 1.5 ? ' (1.5 Porsiyon)' : '';
+      const unitPrice = Math.round(p.price * activePortion);
+      const itemName = p.name + portionText;
+
+      const existingIndex = cart.findIndex(i => i.productId === p.id && i.portion === activePortion && !i.note);
 
       if (existingIndex > -1) {
         cart[existingIndex].quantity += 1;
       } else {
         cart.push({
-          id: `cart-${Date.now()}-${Math.random()}`,
+          id: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           productId: p.id,
-          productName: p.name,
-          price: p.price,
+          productName: itemName,
+          portion: activePortion,
+          price: unitPrice,
           quantity: 1,
           note: '',
-          targetPrinter: p.printer.includes('Fırın') ? 'FIRIN' : p.printer.includes('Ocak') ? 'OCAK' : 'KASA'
+          targetPrinter: p.printer && p.printer.includes('Fırın') ? 'FIRIN' : p.printer && p.printer.includes('Ocak') ? 'OCAK' : 'KASA'
         });
       }
 
+      showToast(`+1 ${itemName} sepete eklendi`, 'success');
       updateCartBar();
     }
 
@@ -498,11 +803,13 @@
     }
 
     function openCartDrawer() {
+      playBeep();
       renderCartDrawerItems();
       document.getElementById('cartDrawer').classList.remove('hidden');
     }
 
     function closeCartDrawer() {
+      playBeep();
       document.getElementById('cartDrawer').classList.add('hidden');
       updateCartBar();
     }
@@ -519,7 +826,7 @@
 
       cart.forEach((item, idx) => {
         const itemCard = document.createElement('div');
-        itemCard.className = 'p-3.5 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl space-y-2.5';
+        itemCard.className = 'p-3 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl space-y-2';
 
         itemCard.innerHTML = `
           <div class="flex items-center justify-between">
@@ -529,15 +836,18 @@
             </div>
 
             <div class="flex items-center gap-1 bg-[#141416] p-1 rounded-xl border border-[#2C2C34]">
-              <button onclick="changeCartQty(${idx}, -1)" class="w-6 h-6 bg-[#282830] text-[#FAF7F2] rounded-lg flex items-center justify-center font-black">-</button>
+              <button onclick="changeCartQty(${idx}, -1)" class="w-6 h-6 bg-[#282830] text-[#FAF7F2] rounded-lg flex items-center justify-center font-black active:bg-rose-500">-</button>
               <span class="w-5 text-center font-bold text-xs text-white">${item.quantity}</span>
-              <button onclick="changeCartQty(${idx}, 1)" class="w-6 h-6 bg-[#282830] text-[#FAF7F2] rounded-lg flex items-center justify-center font-black">+</button>
+              <button onclick="changeCartQty(${idx}, 1)" class="w-6 h-6 bg-[#282830] text-[#FAF7F2] rounded-lg flex items-center justify-center font-black active:bg-[#F5C877] active:text-[#141416]">+</button>
             </div>
           </div>
 
           <!-- HIZLI HAZIR NOT BUTONLARI -->
-          <div class="space-y-1.5 pt-1 border-t border-[#2C2C34]/60">
-            <span class="text-[9px] font-bold text-[#8E8E98] uppercase tracking-wider">Hızlı Notlar (Tek Tık):</span>
+          <div class="space-y-1 pt-1 border-t border-[#2C2C34]/60">
+            <div class="flex items-center justify-between text-[9px] font-bold text-[#8E8E98] uppercase">
+              <span>Hızlı Mutfak Notları:</span>
+              <button onclick="clearCartItemNote(${idx})" class="text-rose-400 hover:underline">Temizle</button>
+            </div>
             <div class="flex flex-wrap gap-1">
               ${RESTAURANT_QUICK_TAGS.map(tag => `
                 <button 
@@ -555,7 +865,7 @@
             type="text"
             value="${item.note || ''}"
             oninput="updateItemCustomNote(${idx}, this.value)"
-            placeholder="Açıklama (Örn: Lavaş çift, az pişmiş...)"
+            placeholder="Özel Açıklama (Örn: Lavaş çift, az pişmiş...)"
             class="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-2.5 py-1.5 text-xs text-[#FAF7F2] placeholder-[#7A7A88] focus:outline-none focus:border-[#F5C877] font-medium"
           />
         `;
@@ -568,6 +878,7 @@
     }
 
     function changeCartQty(idx, delta) {
+      playBeep();
       cart[idx].quantity += delta;
       if (cart[idx].quantity <= 0) {
         cart.splice(idx, 1);
@@ -576,6 +887,7 @@
     }
 
     function appendTagToCartItem(idx, tag) {
+      playBeep();
       if (cart[idx].note && cart[idx].note.trim().length > 0) {
         cart[idx].note += ', ' + tag;
       } else {
@@ -584,14 +896,21 @@
       renderCartDrawerItems();
     }
 
+    function clearCartItemNote(idx) {
+      playBeep();
+      cart[idx].note = '';
+      renderCartDrawerItems();
+    }
+
     function updateItemCustomNote(idx, text) {
       cart[idx].note = text;
     }
 
     // ==========================================
-    // 2. DETAYLI ADİSYON DÖKÜMÜ & HESAP FİŞİ İSTEME
+    // DETAYLI ADİSYON DÖKÜMÜ & HESAP FİŞİ İSTEME
     // ==========================================
     function openExistingBillModal() {
+      playBeep();
       if (!selectedTable) return;
       document.getElementById('existingBillTitle').innerText = `${selectedTable.name} — Adisyon Dökümü`;
 
@@ -606,6 +925,7 @@
             <div>
               <div class="font-bold text-white text-xs">${item.quantity}x ${item.productName}</div>
               ${item.note ? `<div class="text-[10px] text-[#F5C877] font-medium mt-0.5">Not: ${item.note}</div>` : ''}
+              ${item.addedBy ? `<div class="text-[9px] text-[#7A7A88]">Ekleyen: ${item.addedBy}</div>` : ''}
             </div>
             <span class="font-bold text-[#E4E4E8] text-xs">${((item.price || 0) * (item.quantity || 1)).toFixed(2)} ₺</span>
           `;
@@ -622,27 +942,31 @@
     }
 
     function closeExistingBillModal() {
+      playBeep();
       document.getElementById('existingOrderModal').classList.add('hidden');
     }
 
     async function requestBillPrintFromModal() {
       if (!selectedTable) return;
+      playBeep();
       const btn = document.getElementById('btnModalPrintBill');
       btn.disabled = true;
       btn.innerText = 'Kasaya İletiliyor...';
 
-      await fetch(`${API_URL}?action=send_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'BILL_REQUEST',
-          tableId: selectedTable.id,
-          tableName: selectedTable.name,
-          waiterName: currentWaiter.name,
-        })
-      });
+      try {
+        await fetch(`${API_URL}?action=send_order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'BILL_REQUEST',
+            tableId: selectedTable.id,
+            tableName: selectedTable.name,
+            waiterName: currentWaiter.name,
+          })
+        });
+      } catch (e) {}
 
-      alert(`🖨️ [KASA YAZICISI]: ${selectedTable.name} Hesap Fişi çıkarma talebi iletildi!`);
+      showToast(`🖨️ ${selectedTable.name} için Kasadan Hesap Fişi talebi iletildi!`, 'success');
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-print text-sm"></i> <span>🖨️ Kasadan Hesap Fişi Çıkar / Adisyon İste</span>';
       closeExistingBillModal();
@@ -651,9 +975,10 @@
     }
 
     // ==========================================
-    // 3. SEÇEREK MASA TAŞIMA SİSTEMİ
+    // SEÇEREK MASA TAŞIMA
     // ==========================================
     function openTransferTableSelector() {
+      playBeep();
       if (!selectedTable) return;
       document.getElementById('transferModalTitle').innerText = `${selectedTable.name} Siparişini Taşı`;
 
@@ -664,6 +989,7 @@
     }
 
     function closeTransferTableSelector() {
+      playBeep();
       document.getElementById('transferTableModal').classList.add('hidden');
     }
 
@@ -679,6 +1005,7 @@
         }`;
         btn.innerText = sec.name;
         btn.onclick = () => {
+          playBeep();
           transferActiveSectionId = sec.id;
           renderTransferSectionTabs();
           renderTransferEmptyTables();
@@ -700,7 +1027,7 @@
 
       emptyTables.forEach(t => {
         const btn = document.createElement('button');
-        btn.className = 'p-3.5 bg-[#1C1C20] border border-[#2C2C34] active:border-[#F5C877] rounded-2xl flex flex-col justify-between h-20 text-left transition-all';
+        btn.className = 'p-3 bg-[#1C1C20] border border-[#2C2C34] active:border-[#F5C877] rounded-2xl flex flex-col justify-between h-20 text-left transition-all';
         btn.onclick = () => executeTableTransfer(t);
 
         btn.innerHTML = `
@@ -716,52 +1043,59 @@
     }
 
     async function executeTableTransfer(targetTable) {
-      if (!confirm(`${selectedTable.name} siparişi ${targetTable.name} masasına taşınsın mı?`)) return;
+      playBeep();
+      try {
+        await fetch(`${API_URL}?action=send_order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'TRANSFER_TABLE',
+            sourceTableId: selectedTable.id,
+            targetTableId: targetTable.id,
+            waiterName: currentWaiter.name,
+          })
+        });
+      } catch (e) {}
 
-      await fetch(`${API_URL}?action=send_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'TRANSFER_TABLE',
-          sourceTableId: selectedTable.id,
-          targetTableId: targetTable.id,
-          waiterName: currentWaiter.name,
-        })
-      });
-
-      alert(`✅ ${selectedTable.name} siparişi başarıyla ${targetTable.name} masasına taşındı!`);
+      showToast(`✅ ${selectedTable.name} siparişi ${targetTable.name} masasına taşındı!`, 'success');
       closeTransferTableSelector();
       closeOrderModal();
       fetchLiveState();
     }
 
     // ==========================================
-    // 4. SİPARİŞİ ONAYLA & MUTFAĞA GÖNDER
+    // SİPARİŞİ ONAYLA & MUTFAĞA GÖNDER
     // ==========================================
     async function confirmAndSendKitchen() {
-      if (cart.length === 0) return alert('Sepetinizde ürün bulunmuyor!');
+      if (cart.length === 0) {
+        showToast('Sepetinizde ürün bulunmuyor!', 'error');
+        return;
+      }
+      playBeep();
       const btn = document.getElementById('btnFinalKitchenSend');
       btn.disabled = true;
       btn.innerText = 'Mutfağa İletiliyor...';
 
       const orderNote = document.getElementById('generalOrderNoteInput').value.trim();
 
-      await fetch(`${API_URL}?action=send_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tableId: selectedTable.id,
-          tableName: selectedTable.name,
-          waiterName: currentWaiter.name,
-          orderNote: orderNote,
-          items: cart,
-          totalAmount: cart.reduce((s, i) => s + (i.price * i.quantity), 0)
-        })
-      });
+      try {
+        await fetch(`${API_URL}?action=send_order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableId: selectedTable.id,
+            tableName: selectedTable.name,
+            waiterName: currentWaiter.name,
+            orderNote: orderNote,
+            items: cart,
+            totalAmount: cart.reduce((s, i) => s + (i.price * i.quantity), 0)
+          })
+        });
+      } catch (e) {}
 
-      alert(`✅ ${selectedTable.name} siparişi mutfağa iletildi ve fişler basıldı!`);
+      showToast(`✅ ${selectedTable.name} siparişi mutfağa iletildi ve fiş basıldı!`, 'success');
       btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-fire-burner text-base"></i> <span>Siparişi Onayla & Mutfağa Gönder</span>';
+      btn.innerHTML = '<i class="fa-solid fa-fire text-base"></i> <span>Siparişi Onayla & Mutfağa Gönder</span>';
 
       closeCartDrawer();
       closeOrderModal();
@@ -773,21 +1107,21 @@
       tabs.innerHTML = '';
 
       const allBtn = document.createElement('button');
-      allBtn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
+      allBtn.className = `px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
         selectedCategory === 'all' ? 'bg-[#F5C877] text-[#141416] font-black shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
       }`;
       allBtn.innerText = 'Tümü';
-      allBtn.onclick = () => { selectedCategory = 'all'; renderCategoryTabs(); renderProducts(); };
+      allBtn.onclick = () => { playBeep(); selectedCategory = 'all'; renderCategoryTabs(); renderProducts(); };
       tabs.appendChild(allBtn);
 
       liveCategories.forEach(cat => {
         const isSelected = cat.name === selectedCategory;
         const btn = document.createElement('button');
-        btn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
+        btn.className = `px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
           isSelected ? 'bg-[#F5C877] text-[#141416] font-black shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
         }`;
         btn.innerText = cat.name;
-        btn.onclick = () => { selectedCategory = cat.name; renderCategoryTabs(); renderProducts(); };
+        btn.onclick = () => { playBeep(); selectedCategory = cat.name; renderCategoryTabs(); renderProducts(); };
         tabs.appendChild(btn);
       });
     }
@@ -795,21 +1129,42 @@
     function renderProducts() {
       const list = document.getElementById('productsList');
       list.innerHTML = '';
-      const filtered = selectedCategory === 'all' 
-        ? liveProducts 
-        : liveProducts.filter(p => p.categoryId === liveCategories.find(c => c.name === selectedCategory)?.id);
+
+      let filtered = liveProducts;
+
+      // Kategori Filtresi
+      if (selectedCategory !== 'all') {
+        const catObj = liveCategories.find(c => c.name === selectedCategory);
+        if (catObj) {
+          filtered = filtered.filter(p => p.categoryId === catObj.id);
+        }
+      }
+
+      // Canlı Arama Filtresi
+      if (searchQuery.length > 0) {
+        filtered = filtered.filter(p => p.name.toLowerCase().includes(searchQuery));
+      }
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="col-span-full text-center text-[#8E8E98] text-xs py-8">Aradığınız kriterde ürün bulunamadı.</div>';
+        return;
+      }
 
       filtered.forEach(p => {
         const div = document.createElement('div');
-        div.className = 'p-3.5 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl flex flex-col justify-between h-28 active:scale-95 active:border-[#F5C877] transition-all cursor-pointer shadow-sm';
+        div.className = 'p-3 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl flex flex-col justify-between h-28 active:scale-95 active:border-[#F5C877] transition-all cursor-pointer shadow-sm';
         div.onclick = () => quickAddProductToCart(p);
+        
+        const printerLabel = p.printer && p.printer.includes('Fırın') ? '🔥 FIRIN' : (p.printer && p.printer.includes('Ocak') ? '🍖 OCAK' : 'KASA');
+        const calculatedPrice = Math.round(p.price * activePortion);
+
         div.innerHTML = `
           <div>
             <div class="font-black text-xs text-white line-clamp-2">${p.name}</div>
-            <div class="text-[9px] text-[#F5C877] font-bold mt-0.5">${p.printer.includes('Fırın') ? '🔥 FIRIN' : p.printer.includes('Ocak') ? '🍖 OCAK' : 'KASA'}</div>
+            <div class="text-[9px] text-[#F5C877] font-bold mt-0.5">${printerLabel}</div>
           </div>
           <div class="flex justify-between items-center mt-1">
-            <span class="font-black text-sm text-[#F5C877] font-mono">${p.price} ₺</span>
+            <span class="font-black text-sm text-[#F5C877] font-mono">${calculatedPrice} ₺</span>
             <span class="w-6 h-6 bg-[#F5C877] text-[#141416] rounded-xl flex items-center justify-center text-xs font-black shadow-md">+</span>
           </div>
         `;

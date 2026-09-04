@@ -86,15 +86,15 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
   // 3. Caller ID Testi
   const handleTestCallerId = () => {
     setIsTestingCallerId(true);
-    restaurantDataService.playAudioAlert('kitchen');
+    restaurantDataService.playAudioAlert('phone', config.soundAlerts.repeatCount || 2);
     setTimeout(() => {
-      restaurantDataService.addRecentCall('05325554141', {
-        id: 'cust-demo',
-        name: 'Ahmet Yılmaz (Müdavim Müşteri)',
-        address: 'İbrahimli Mah. 25. Sok. No: 4 Gaziantep',
+      restaurantDataService.addRecentCall('05321002030', {
+        name: 'Gelen Çağrı (Hat 1)',
+        phone: '0532 100 20 30',
+        address: 'Telefon arayanı için paket adisyonu açılabilir',
       });
       setIsTestingCallerId(false);
-      notify.info('Sanal Arama Algılandı', '0532 555 41 41 numaralı müşteriden çağrı geldi. Sipariş ekranı tetiklendi.');
+      notify.info('Gelen Çağrı Algılandı', '0532 100 20 30 numaralı telefondan çağrı sinyali alındı. Paket servis açılabilir.');
     }, 600);
   };
 
@@ -557,33 +557,33 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
             className="w-full py-3 bg-[#141416] hover:bg-slate-800 border border-[#383844] text-white text-xs font-black rounded-2xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:border-[#F5C877] disabled:opacity-50"
           >
             <PhoneCall className="w-4 h-4 text-amber-400" />
-            <span>{isTestingCallerId ? 'Çağrı Simüle Ediliyor...' : '📞 Sanal Test Çağrısı Gönder'}</span>
+            <span>{isTestingCallerId ? 'Hat Sinyali Okunuyor...' : '📞 Caller ID Bağlantısını Doğrula'}</span>
           </button>
         </div>
 
       </div>
 
       {/* 5. SESLİ BİLDİRİMLER & RESTORAN ZİLLERİ */}
-      <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-5">
+      <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#2C2C34] pb-4">
           <div className="flex items-center gap-3">
             <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black ${
               config.soundAlerts.enabled 
-                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
+                ? 'bg-[#F5C877]/15 text-[#F5C877] border border-[#F5C877]/30' 
                 : 'bg-[#141416] text-[#A0A0AA] border border-[#2C2C34]'
             }`}>
               {config.soundAlerts.enabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
             </div>
             <div>
-              <h3 className="text-sm font-black text-white">Sesli Uyarılar & Restoran Bildirim Zilleri</h3>
-              <p className="text-xs text-[#C4C4CC]">Garson siparişi, mutfak gecikmesi ve kasa bildirim tonları</p>
+              <h3 className="text-sm font-black text-white">Sesli Uyarılar & Restoran Zil Melodileri</h3>
+              <p className="text-xs text-[#C4C4CC]">Telefon zil sesi, mutfak çağrı çanı, tekrar sayıları ve ses seviyesi</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-xs text-[#C4C4CC]">
               <span>Ses Seviyesi:</span>
-              <span className="font-mono font-black text-amber-300">%{config.soundAlerts.volume}</span>
+              <span className="font-mono font-black text-[#F5C877]">%{config.soundAlerts.volume}</span>
               <input
                 type="range"
                 min="10"
@@ -603,11 +603,69 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
                 onChange={(e) => handleToggle('soundAlerts', 'enabled', e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F5C877]"></div>
             </label>
           </div>
         </div>
 
+        {/* ZİL SESİ VE TEKRAR SAYISI SEÇİM PANELİ */}
+        <div className="p-5 bg-[#141416] rounded-2xl border border-[#2C2C34] grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <div>
+            <label className="text-[11px] font-bold text-[#C4C4CC] uppercase tracking-wider block mb-1.5">
+              🔔 Ana Restoran Zil Melodisi
+            </label>
+            <select
+              disabled={!config.soundAlerts.enabled}
+              value={config.soundAlerts.ringtoneType || 'phone'}
+              onChange={(e) => handleToggle('soundAlerts', 'ringtoneType', e.target.value)}
+              className="w-full p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:border-[#F5C877] focus:outline-none disabled:opacity-50"
+            >
+              <option value="phone">📞 Telefon Zil Sesi (Nostaljik Sabit Hat / Çift Çalma)</option>
+              <option value="kitchen">🛎️ Restoran Mutfak Çanı (Ding-Dong)</option>
+              <option value="register">💵 Kasa & Çekmece Sesi (Ka-Ching)</option>
+              <option value="melody">🎵 Melodik Restoran Bildirimi (Arpej)</option>
+              <option value="alert">🚨 Acil Uyarı Düdüğü (Alarm)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-[#C4C4CC] uppercase tracking-wider block mb-1.5">
+              🔁 Zil Çalma / Tekrar Sayısı
+            </label>
+            <select
+              disabled={!config.soundAlerts.enabled}
+              value={config.soundAlerts.repeatCount || 2}
+              onChange={(e) => handleToggle('soundAlerts', 'repeatCount', Number(e.target.value))}
+              className="w-full p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:border-[#F5C877] focus:outline-none disabled:opacity-50"
+            >
+              <option value={1}>1 Kez Çalsın</option>
+              <option value={2}>2 Kez Tekrarlasın (Önerilen)</option>
+              <option value={3}>3 Kez Tekrarlasın</option>
+              <option value={4}>4 Kez Tekrarlasın</option>
+              <option value={5}>5 Kez Tekrarlasın (Uzun Çağrı)</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col justify-end pt-5 md:pt-0">
+            <button
+              type="button"
+              disabled={!config.soundAlerts.enabled}
+              onClick={() => {
+                restaurantDataService.playAudioAlert(
+                  config.soundAlerts.ringtoneType || 'phone',
+                  config.soundAlerts.repeatCount || 2
+                );
+                notify.info('Zil Sesi Çalınıyor', `${config.soundAlerts.repeatCount || 2} kez çalma testi başlatıldı.`);
+              }}
+              className="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] text-xs font-black rounded-xl flex items-center justify-center gap-2 hover:opacity-95 shadow-md shadow-[#F5C877]/10 disabled:opacity-50 cursor-pointer transition-transform active:scale-98"
+            >
+              <Bell className="w-4 h-4 text-[#141416]" />
+              <span>Seçili Zili ({config.soundAlerts.repeatCount || 2}x) Dinle</span>
+            </button>
+          </div>
+        </div>
+
+        {/* BİLDİRİM OLAYLARI KARTLARI */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           
           <div className="p-4 bg-[#141416] rounded-2xl border border-[#2C2C34] flex flex-col justify-between space-y-3">
@@ -625,11 +683,11 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
               <p className="text-[11px] text-[#A0A0AA] mt-1">Garson veya masadan sipariş iletildiğinde</p>
             </div>
             <button
-              onClick={() => restaurantDataService.playAudioAlert('kitchen')}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => restaurantDataService.playAudioAlert(config.soundAlerts.ringtoneType || 'phone', config.soundAlerts.repeatCount || 2)}
+              className="w-full py-2 bg-[#1C1C20] hover:bg-[#282830] border border-[#2C2C34] text-[#F5C877] text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>Ding-Dong Çal</span>
+              <span>Zili Çal ({config.soundAlerts.repeatCount || 2}x)</span>
             </button>
           </div>
 
@@ -648,8 +706,8 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
               <p className="text-[11px] text-[#A0A0AA] mt-1">20 dakikayı aşan hazır olmayan adisyonlar</p>
             </div>
             <button
-              onClick={() => restaurantDataService.playAudioAlert('alert')}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-rose-400 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => restaurantDataService.playAudioAlert('alert', 2)}
+              className="w-full py-2 bg-[#1C1C20] hover:bg-[#282830] border border-[#2C2C34] text-rose-400 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
               <span>Uyarı Tonu Çal</span>
@@ -659,7 +717,7 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
           <div className="p-4 bg-[#141416] rounded-2xl border border-[#2C2C34] flex flex-col justify-between space-y-3">
             <div>
               <div className="flex items-center justify-between">
-                <span className="font-black text-xs text-white">Online Sipariş Sesi</span>
+                <span className="font-black text-xs text-white">Online & Paket Servis Sesi</span>
                 <input
                   type="checkbox"
                   disabled={!config.soundAlerts.enabled}
@@ -668,14 +726,14 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
                   className="w-4 h-4 accent-[#F5C877]"
                 />
               </div>
-              <p className="text-[11px] text-[#A0A0AA] mt-1">Getir, Yemeksepeti & Trendyol çağrıları</p>
+              <p className="text-[11px] text-[#A0A0AA] mt-1">Telefon araması veya online sipariş düştüğünde</p>
             </div>
             <button
-              onClick={() => restaurantDataService.playAudioAlert('kitchen')}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => restaurantDataService.playAudioAlert('phone', config.soundAlerts.repeatCount || 2)}
+              className="w-full py-2 bg-[#1C1C20] hover:bg-[#282830] border border-[#2C2C34] text-sky-400 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>Çağrı Zilini Çal</span>
+              <span>Telefon Çal ({config.soundAlerts.repeatCount || 2}x)</span>
             </button>
           </div>
 
@@ -694,11 +752,11 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
               <p className="text-[11px] text-[#A0A0AA] mt-1">Ödeme alındığında veya hesap kapatıldığında</p>
             </div>
             <button
-              onClick={() => restaurantDataService.playAudioAlert('register')}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => restaurantDataService.playAudioAlert('register', 1)}
+              className="w-full py-2 bg-[#1C1C20] hover:bg-[#282830] border border-[#2C2C34] text-emerald-400 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>Kasa Çanı Çal</span>
+              <span>Kasa Ka-Ching Çal</span>
             </button>
           </div>
 
