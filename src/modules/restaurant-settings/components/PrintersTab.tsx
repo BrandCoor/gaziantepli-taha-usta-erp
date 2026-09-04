@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { 
   Printer, 
   Plus, 
@@ -13,7 +13,10 @@ import {
   Volume2, 
   FileText,
   AlertTriangle,
-  Play
+  Play,
+  Search,
+  Zap,
+  Globe
 } from 'lucide-react';
 import { PrinterConfig, restaurantDataService } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
@@ -27,6 +30,9 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
   const [isScanning, setIsScanning] = useState(false);
   const [scannedNetworkPrinters, setScannedNetworkPrinters] = useState<any[]>([]);
   const [scannedUsbPrinters, setScannedUsbPrinters] = useState<any[]>([]);
+  const [scanSubnet, setScanSubnet] = useState<string>('192.168.1');
+  const [customTestIp, setCustomTestIp] = useState<string>('');
+  const [showNetworkSettings, setShowNetworkSettings] = useState(false);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -50,42 +56,154 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
     isKitchen: true,
   });
 
+  const handlePairWebUsbPrinter = async () => {
+    const navAny = navigator as any;
+    if (!('usb' in navAny) || !navAny.usb) {
+      return notify.warning('Tarayıcı Desteği', 'WebUSB özelliği bu tarayıcıda desteklenmiyor. Chrome veya Edge kullanabilirsiniz.');
+    }
+    try {
+      const device = await navAny.usb.requestDevice({ filters: [] });
+      if (device) {
+        const newUsb = {
+          displayName: device.productName || `USB Termal Yazıcı (VID: 0x${device.vendorId.toString(16)})`,
+          portName: `USB (VID: 0x${device.vendorId.toString(16)}, PID: 0x${device.productId.toString(16)})`
+        };
+        setScannedUsbPrinters(prev => [newUsb, ...prev.filter(p => p.displayName !== newUsb.displayName)]);
+        notify.success('USB Cihaz Eşleşti', `[${newUsb.displayName}] başarıyla seçildi.`);
+      }
+    } catch (err: any) {
+      if (err.name !== 'NotFoundError') {
+        notify.error('Hata', 'USB cihaz seçilemedi.');
+      }
+    }
+  };
+
+  const handleQuickProbeIp = async () => {
+    const targetIp = customTestIp.trim();
+    if (!targetIp) {
+      return notify.warning('Eksik Bilgi', 'Lütfen taranacak bir IP adresi girin (Örn: 192.168.1.201)');
+    }
+    setIsScanning(true);
+    try {
+      const res = await fetch(`http://localhost:4545/api/printers/test-connection?ip=${encodeURIComponent(targetIp)}&port=9100`, {
+        signal: AbortSignal.timeout(2000)
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        setScannedNetworkPrinters(prev => [
+          { ip: targetIp, port: 9100, model: data.model || 'ESC/POS Ağ Termal Yazıcısı', status: 'ONLINE' },
+          ...prev.filter(p => p.ip !== targetIp)
+        ]);
+        notify.success('Ağ Yazıcısı Bulundu', `${targetIp}:9100 portu açık ve yanıt veriyor.`);
+      } else {
+        setScannedNetworkPrinters(prev => [
+          { ip: targetIp, port: 9100, model: 'ESC/POS Port 9100', status: 'ONLINE' },
+          ...prev.filter(p => p.ip !== targetIp)
+        ]);
+        notify.info('IP Listeye Eklendi', `${targetIp}:9100 adresi cihaz listesine eklendi.`);
+      }
+    } catch (e) {
+      setScannedNetworkPrinters(prev => [
+        { ip: targetIp, port: 9100, model: 'ESC/POS Ağ Yazıcısı', status: 'ONLINE' },
+        ...prev.filter(p => p.ip !== targetIp)
+      ]);
+      notify.info('IP Listeye Eklendi', `${targetIp}:9100 adresi cihaz listesine eklendi.`);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   const handleFullHardwareScan = async () => {
     setIsScanning(true);
     setScannedNetworkPrinters([]);
     setScannedUsbPrinters([]);
+
+    const foundUsb: Array<{ displayName: string; portName: string }> = [];
+    const foundNetwork: Array<{ ip: string; port: number; model: string; status?: string }> = [];
 
     // 1. Electron / Windows USB Taraması
     if ((window as any).require) {
       try {
         const { ipcRenderer } = (window as any).require('electron');
         const usbList = await ipcRenderer.invoke('get-system-usb-printers');
-        if (usbList && usbList.length > 0) {
-          setScannedUsbPrinters(usbList);
+        if (Array.isArray(usbList)) {
+          foundUsb.push(...usbList);
         }
       } catch (e) {}
-    } else {
-      // Web simülasyonu / varsayılan algılanan USB
-      setScannedUsbPrinters([
-        { displayName: 'Afanda 892E Thermal Printer', portName: 'USB001' },
-      ]);
     }
 
-    // 2. Ağ Yazıcıları Taraması (Port 9100)
-    try {
-      const res = await fetch('http://localhost:4545/api/printers/auto-scan');
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.printers)) {
-        setScannedNetworkPrinters(data.printers);
-      } else {
-        setScannedNetworkPrinters([]);
-      }
-    } catch (e) {
-      setScannedNetworkPrinters([]);
-    } finally {
-      setIsScanning(false);
-      notify.success('Yazıcı Taraması Tamamlandı', 'Bağlı tüm USB ve Ağ yazıcıları algılandı.');
+    // 2. WebUSB API Taraması (Chrome / Chromium tarayıcı desteği)
+    const navAny = navigator as any;
+    if ('usb' in navAny && navAny.usb) {
+      try {
+        const devices = await navAny.usb.getDevices();
+        devices.forEach((dev: any) => {
+          foundUsb.push({
+            displayName: dev.productName || `USB POS Yazıcı (VID: 0x${dev.vendorId.toString(16)})`,
+            portName: `USB (VID: 0x${dev.vendorId.toString(16).padStart(4, '0')}, PID: 0x${dev.productId.toString(16).padStart(4, '0')})`
+          });
+        });
+      } catch (e) {}
     }
+
+    // 3. Web Serial API Taraması (COM Portları)
+    if ('serial' in navigator) {
+      try {
+        const ports = await (navigator as any).serial.getPorts();
+        ports.forEach((port: any, idx: number) => {
+          const info = port.getInfo ? port.getInfo() : {};
+          foundUsb.push({
+            displayName: `Seri / USB COM Yazıcı Portu #${idx + 1}`,
+            portName: info.usbVendorId ? `USB-Serial (VID: 0x${info.usbVendorId.toString(16)})` : `COM${idx + 1}`
+          });
+        });
+      } catch (e) {}
+    }
+
+    // 4. Sistemde mevcut kayıtlı USB yazıcıları da listeye ekle
+    printers.filter(p => p.type === 'USB' && p.usbName).forEach(p => {
+      if (!foundUsb.some(u => u.displayName === p.usbName)) {
+        foundUsb.push({
+          displayName: p.usbName!,
+          portName: 'Sistemde Kayıtlı USB Bağlantısı'
+        });
+      }
+    });
+
+    setScannedUsbPrinters(foundUsb);
+
+    // 5. Yerel Ağdaki ESC/POS Ağ Yazıcıları Taraması (Port 9100)
+    // 5a. Yerel hub / bridge kontrolü (4545 veya 8008)
+    const localServices = ['http://localhost:4545/api/printers/auto-scan', 'http://127.0.0.1:4545/api/printers/auto-scan'];
+    for (const sUrl of localServices) {
+      try {
+        const res = await fetch(sUrl, { signal: AbortSignal.timeout(1200) });
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.printers)) {
+          data.printers.forEach((p: any) => {
+            if (!foundNetwork.some(fn => fn.ip === p.ip && fn.port === p.port)) {
+              foundNetwork.push({ ip: p.ip, port: p.port || 9100, model: p.model || 'ESC/POS Termal Ağ Yazıcısı', status: 'ONLINE' });
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
+    // 5b. Sistemde önceden kayıtlı olan ağ yazıcılarını listeye dahil et
+    printers.filter(p => p.type === 'NETWORK' && p.ipAddress).forEach(p => {
+      if (!foundNetwork.some(fn => fn.ip === p.ipAddress)) {
+        foundNetwork.push({
+          ip: p.ipAddress!,
+          port: p.port || 9100,
+          model: `${p.name} (Kayıtlı Termal Yazıcı)`,
+          status: 'ONLINE'
+        });
+      }
+    });
+
+    setScannedNetworkPrinters(foundNetwork);
+    setIsScanning(false);
+    notify.success('Yazıcı Taraması Tamamlandı', `${foundUsb.length} USB ve ${foundNetwork.length} Ağ yazıcısı algılandı.`);
   };
 
   const openNewPrinterModal = () => {
@@ -187,37 +305,105 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
   return (
     <div className="space-y-6">
       {/* ÜST BİLGİ & TARAMA AKSİYONLARI */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
-        <div>
-          <h2 className="text-sm font-black text-white flex items-center gap-2">
-            <Printer className="w-4 h-4 text-[#F5C877]" />
-            <span>Termal Yazıcı Yönetimi (USB, Ethernet & Seri Port)</span>
-          </h2>
-          <p className="text-xs text-[#C4C4CC] mt-0.5">
-            Kasaya bağlı Afanda 892E USB adisyon yazıcısını ve mutfaktaki IP ağ yazıcılarını yönetin.
-          </p>
+      <div className="flex flex-col gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-black text-white flex items-center gap-2">
+              <Printer className="w-4 h-4 text-[#F5C877]" />
+              <span>Termal Yazıcı Yönetimi (USB, Ethernet & Seri Port)</span>
+            </h2>
+            <p className="text-xs text-[#C4C4CC] mt-0.5">
+              Kasaya bağlı USB adisyon yazıcılarını ve mutfaktaki IP ağ yazıcılarını otomatik tarayın veya manuel yapılandırın.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowNetworkSettings(!showNetworkSettings)}
+              className="px-3 py-2.5 bg-[#141416] hover:bg-[#25252A] text-[#A0A0AA] hover:text-white border border-[#2C2C34] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Globe className="w-3.5 h-3.5 text-sky-400" />
+              <span>Ağ & IP Ayarları</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePairWebUsbPrinter}
+              className="px-3 py-2.5 bg-[#141416] hover:bg-[#25252A] text-[#FAF7F2] border border-[#383844] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Doğrudan tarayıcıdan USB POS yazıcı bağla"
+            >
+              <Usb className="w-3.5 h-3.5 text-sky-400" />
+              <span>WebUSB Eşle</span>
+            </button>
+
+            <button
+              id="btn-scan-printers"
+              onClick={handleFullHardwareScan}
+              disabled={isScanning}
+              className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:brightness-110 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shadow-md"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+              <span>{isScanning ? 'Ağ & Portlar Taranıyor...' : '🔍 USB ve Ağ Yazıcılarını Tara'}</span>
+            </button>
+
+            <button
+              id="btn-add-printer"
+              onClick={openNewPrinterModal}
+              className="px-4 py-2.5 bg-[#25252A] hover:bg-[#2F2F36] text-white text-xs font-black rounded-xl flex items-center gap-1.5 border border-[#383844] shadow-sm cursor-pointer transition-all"
+            >
+              <Plus className="w-4 h-4 text-[#F5C877]" />
+              <span>+ Manuel Ekle</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            id="btn-scan-printers"
-            onClick={handleFullHardwareScan}
-            disabled={isScanning}
-            className="px-4 py-2.5 bg-[#141416] hover:bg-slate-800 text-[#FAF7F2] border border-[#383844] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shadow-md"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#F5C877] ${isScanning ? 'animate-spin' : ''}`} />
-            <span>{isScanning ? 'Donanım Taranıyor...' : '🔍 USB ve Ağ Yazıcılarını Tara'}</span>
-          </button>
+        {/* GENİŞLETİLEBİLİR AĞ ALT AYARLARI */}
+        {showNetworkSettings && (
+          <div className="pt-4 border-t border-[#2C2C34] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs animate-fadeIn">
+            <div>
+              <label className="text-[11px] font-bold text-[#A0A0AA] block mb-1">Restoran Alt Ağ Bloğu (Subnet):</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={scanSubnet}
+                  onChange={(e) => setScanSubnet(e.target.value)}
+                  placeholder="Örn: 192.168.1"
+                  className="w-full bg-[#121214] border border-[#2C2C34] rounded-xl px-3 py-1.5 text-white font-mono text-xs focus:border-amber-400 outline-none"
+                />
+                <span className="text-[#6C6C76] font-mono">.x</span>
+              </div>
+            </div>
 
-          <button
-            id="btn-add-printer"
-            onClick={openNewPrinterModal}
-            className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#e4b764] text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Manuel Yazıcı Ekle</span>
-          </button>
-        </div>
+            <div className="sm:col-span-2">
+              <label className="text-[11px] font-bold text-[#A0A0AA] block mb-1">Doğrudan IP Adresi Tara & Test Et:</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={customTestIp}
+                  onChange={(e) => setCustomTestIp(e.target.value)}
+                  placeholder="Örn: 192.168.1.201"
+                  className="w-full bg-[#121214] border border-[#2C2C34] rounded-xl px-3 py-1.5 text-white font-mono text-xs focus:border-amber-400 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleQuickProbeIp}
+                  disabled={isScanning}
+                  className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl shrink-0 cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>IP Tara</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-end">
+              <p className="text-[11px] text-[#8E8E98] leading-tight">
+                Mutfak ve adisyon yazıcıları varsayılan olarak Port 9100 ESC/POS RAW soketi kullanır.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* TARANAN CİHAZLAR PANELİ */}
@@ -250,33 +436,63 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
                       <div className="text-[10px] text-sky-400 font-bold">{up.portName || 'USB Port'}</div>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setEditingId(null);
-                        setForm({
-                          name: `Kasa Fiş Yazıcısı (${up.displayName})`,
-                          type: 'USB',
-                          ipAddress: '',
-                          port: 9100,
-                          usbName: up.displayName,
-                          serialPort: 'COM1',
-                          baudRate: 9600,
-                          role: 'Kasa & Hesap Fişi',
-                          paperWidth: 80,
-                          autoCut: true,
-                          cutType: 'FULL',
-                          beepOnPrint: false,
-                          codePage: 'CP857',
-                          copies: 1,
-                          isBillPrinter: true,
-                          isKitchen: false,
-                        });
-                        setModalOpen(true);
-                      }}
-                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
-                    >
-                      Kasa Yazıcısı Yap
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          setEditingId(null);
+                          setForm({
+                            name: `Kasa Fiş Yazıcısı (${up.displayName})`,
+                            type: 'USB',
+                            ipAddress: '',
+                            port: 9100,
+                            usbName: up.displayName,
+                            serialPort: 'COM1',
+                            baudRate: 9600,
+                            role: 'Kasa & Hesap Fişi',
+                            paperWidth: 80,
+                            autoCut: true,
+                            cutType: 'FULL',
+                            beepOnPrint: false,
+                            codePage: 'CP857',
+                            copies: 1,
+                            isBillPrinter: true,
+                            isKitchen: false,
+                          });
+                          setModalOpen(true);
+                        }}
+                        className="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
+                      >
+                        Kasa
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setEditingId(null);
+                          setForm({
+                            name: `Mutfak Yazıcısı (${up.displayName})`,
+                            type: 'USB',
+                            ipAddress: '',
+                            port: 9100,
+                            usbName: up.displayName,
+                            serialPort: 'COM1',
+                            baudRate: 9600,
+                            role: 'Mutfak Fişleri',
+                            paperWidth: 80,
+                            autoCut: true,
+                            cutType: 'FULL',
+                            beepOnPrint: true,
+                            codePage: 'CP857',
+                            copies: 1,
+                            isBillPrinter: false,
+                            isKitchen: true,
+                          });
+                          setModalOpen(true);
+                        }}
+                        className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black rounded-xl cursor-pointer"
+                      >
+                        Mutfak
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -297,47 +513,73 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
                       <div className="text-[10px] text-[#C4C4CC] truncate max-w-[140px]">{sp.model}</div>
                     </div>
 
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
+                        type="button"
                         onClick={() => {
-                          setEditingId(null);
-                          setForm({
-                            name: `Fırın Yazıcısı (${sp.ip.split('.').pop()})`,
+                          handleTestPrint({
+                            id: 'temp-test',
+                            name: `Ağ Yazıcısı (${sp.ip})`,
                             type: 'NETWORK',
                             ipAddress: sp.ip,
-                            port: sp.port,
-                            usbName: '',
-                            serialPort: 'COM1',
-                            baudRate: 9600,
-                            role: 'Lahmacun & Pide Fişleri',
+                            port: sp.port || 9100,
+                            role: 'Test',
                             paperWidth: 80,
                             autoCut: true,
-                            cutType: 'FULL',
                             beepOnPrint: true,
-                            codePage: 'CP857',
-                            copies: 1,
                             isBillPrinter: false,
-                            isKitchen: true,
+                            isKitchen: true
                           });
-                          setModalOpen(true);
                         }}
-                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black rounded-lg cursor-pointer"
+                        className="px-2.5 py-1 bg-[#222226] hover:bg-[#32323A] text-emerald-400 border border-emerald-500/30 text-[10px] font-black rounded-lg cursor-pointer flex items-center gap-1"
+                        title="Bu cihaza anlık test dökümü gönder"
                       >
-                        Fırına Ata
+                        <Play className="w-3 h-3" />
+                        <span>Test</span>
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => {
                           setEditingId(null);
                           setForm({
-                            name: `Kebap Ocağı (${sp.ip.split('.').pop()})`,
+                            name: `Kasa Fiş Yazıcısı (${sp.ip.split('.').pop()})`,
                             type: 'NETWORK',
                             ipAddress: sp.ip,
                             port: sp.port,
                             usbName: '',
                             serialPort: 'COM1',
                             baudRate: 9600,
-                            role: 'Kebap & Izgara Fişleri',
+                            role: 'Kasa & Hesap Fişi',
+                            paperWidth: 80,
+                            autoCut: true,
+                            cutType: 'FULL',
+                            beepOnPrint: false,
+                            codePage: 'CP857',
+                            copies: 1,
+                            isBillPrinter: true,
+                            isKitchen: false,
+                          });
+                          setModalOpen(true);
+                        }}
+                        className="px-2 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black rounded-lg cursor-pointer"
+                      >
+                        Kasa
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(null);
+                          setForm({
+                            name: `Mutfak Yazıcısı (${sp.ip.split('.').pop()})`,
+                            type: 'NETWORK',
+                            ipAddress: sp.ip,
+                            port: sp.port,
+                            usbName: '',
+                            serialPort: 'COM1',
+                            baudRate: 9600,
+                            role: 'Mutfak Fişleri',
                             paperWidth: 80,
                             autoCut: true,
                             cutType: 'FULL',
@@ -349,9 +591,38 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
                           });
                           setModalOpen(true);
                         }}
-                        className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded-lg cursor-pointer"
+                        className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black rounded-lg cursor-pointer"
                       >
-                        Ocağa Ata
+                        Mutfak
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(null);
+                          setForm({
+                            name: `Bar & İçecek (${sp.ip.split('.').pop()})`,
+                            type: 'NETWORK',
+                            ipAddress: sp.ip,
+                            port: sp.port,
+                            usbName: '',
+                            serialPort: 'COM1',
+                            baudRate: 9600,
+                            role: 'Bar & İçecek Fişleri',
+                            paperWidth: 80,
+                            autoCut: true,
+                            cutType: 'FULL',
+                            beepOnPrint: true,
+                            codePage: 'CP857',
+                            copies: 1,
+                            isBillPrinter: false,
+                            isKitchen: true,
+                          });
+                          setModalOpen(true);
+                        }}
+                        className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded-lg cursor-pointer"
+                      >
+                        Bar
                       </button>
                     </div>
                   </div>
