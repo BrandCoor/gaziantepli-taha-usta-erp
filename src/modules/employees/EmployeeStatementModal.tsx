@@ -95,7 +95,7 @@ export const EmployeeStatementModal: React.FC<EmployeeStatementModalProps> = ({
     setEditAmount(String(p.amount || 0));
     setEditDate(p.date ? p.date.split('T')[0] : new Date().toISOString().split('T')[0]);
     setEditType(p.type);
-    setEditPaymentMethod(p.paymentMethod || 'CASH');
+    setEditPaymentMethod(p.paymentMethod === 'BANK' ? 'BANK' : 'CASH');
     setEditDescription(p.description || '');
   };
 

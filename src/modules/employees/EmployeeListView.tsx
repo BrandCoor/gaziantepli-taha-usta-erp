@@ -358,7 +358,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
     setEditPayAmount(String(p.amount || 0));
     setEditPayDate(p.date ? p.date.split('T')[0] : new Date().toISOString().split('T')[0]);
     setEditPayType(p.type);
-    setEditPayMethod(p.paymentMethod || 'CASH');
+    setEditPayMethod(p.paymentMethod === 'BANK' ? 'BANK' : 'CASH');
     setEditPayDescription(p.description || '');
   };
 

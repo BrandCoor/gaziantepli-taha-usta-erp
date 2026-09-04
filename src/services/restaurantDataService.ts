@@ -197,7 +197,7 @@ export interface CategoryConfig {
   id: string;
   name: string;
   color: string;
-  printerId: string;
+  printerId?: string;
 }
 
 export interface ProductConfig {
@@ -221,7 +221,7 @@ export interface WaiterConfig {
   deviceUuid: string;
   deviceName: string;
   macAddress: string;
-  status: 'APPROVED' | 'SUSPENDED' | 'NOT_PAIRED';
+  status: 'APPROVED' | 'SUSPENDED' | 'NOT_PAIRED' | 'PENDING';
   allowedSections: string[];
   permissions: {
     canDiscount: boolean;
