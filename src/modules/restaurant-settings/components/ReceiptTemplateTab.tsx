@@ -13,6 +13,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { ReceiptSettingsConfig, restaurantDataService } from '../../../services/restaurantDataService';
+import { printerService } from '../../../services/printerService';
 import { notify } from '../../../services/notificationService';
 
 interface ReceiptTemplateTabProps {
@@ -50,46 +51,42 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
     notify.success('Adisyon Şablonu Kaydedildi', 'Termal yazıcı fiş tasarımı güncellendi.');
   };
 
-  const handleTestThermalPrint = () => {
+  const handleTestThermalPrint = async () => {
     restaurantDataService.playAudioAlert('beep');
+    const result = await printerService.printTestBill(form);
     setTimeout(() => {
       restaurantDataService.playAudioAlert('register');
     }, 250);
-    notify.success('Test Fişi İletildi', 'Varsayılan kasa yazıcısına test adisyonu gönderildi.');
+    if (result.success) {
+      notify.success('Test Fişi İletildi', result.message || 'Varsayılan kasa yazıcısına test adisyonu gönderildi.');
+    } else {
+      notify.warning('Yazıcı Uyarısı', result.message);
+    }
   };
 
   const handleCopyReceiptText = () => {
-    const text = `
-================================
-     ${form.title}
-     ${form.subtitle}
---------------------------------
-Tel: ${form.phone}
-Adres: ${form.address}
-V.D: ${form.taxOffice} - V.No: ${form.taxNumber}
---------------------------------
-Masa: Salon - Masa 4
-Garson: Mehmet Usta
-Tarih: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}
---------------------------------
-1x Adana Kebap (Porsiyon)  ₺280.00
-2x Lahmacun (Antep Usulü)  ₺180.00
-1x Yayık Ayran (300ml)     ₺40.00
-1x Antep Katmeri           ₺160.00
---------------------------------
-TOPLAM TUTAR:              ₺660.00
-KDV Dahil (%10):           ₺60.00
---------------------------------
-Wi-Fi: ${form.wifiName}
-Şifre: ${form.wifiPassword}
-Instagram: ${form.instagram}
-${form.footerMessage}
-================================
-`;
+    const text = printerService.generatePlainTextReceipt('BILL', {
+      settings: form,
+      tableName: 'Ana Salon / Masa 4',
+      waiterName: 'Mehmet Usta',
+      orderTime: `${new Date().toLocaleDateString('tr-TR')} - 19:42`,
+      orderNumber: 841,
+      items: [
+        { name: 'Adana Kebap (Porsiyon)', quantity: 1, price: 280, totalPrice: 280, note: 'Acılı, köz biberli' },
+        { name: 'Lahmacun (Antep Usulü)', quantity: 2, price: 90, totalPrice: 180 },
+        { name: 'Yayık Ayran (300ml)', quantity: 2, price: 40, totalPrice: 80 },
+        { name: 'Antep Katmeri', quantity: 1, price: 160, totalPrice: 160 },
+      ],
+      subtotal: 700,
+      discountAmount: 35,
+      totalAmount: 665,
+      vatBase: 604.55,
+      vatAmount: 60.45,
+    });
     navigator.clipboard.writeText(text.trim());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    notify.info('Panoya Kopyalandı', 'Fiş metni kopyalandı.');
+    notify.info('Panoya Kopyalandı', 'Fiş metni panoya kopyalandı.');
   };
 
   return (

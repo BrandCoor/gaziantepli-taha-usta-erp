@@ -553,11 +553,30 @@ class RestaurantDataService {
       const rawPrinters = localStorage.getItem(STORAGE_KEYS.PRINTERS);
       if (rawPrinters) {
         const printers: PrinterConfig[] = JSON.parse(rawPrinters);
-        const demoPrinterIps = ['192.168.1.201', '192.168.1.202', '192.168.1.203'];
-        const demoPrinterIds = ['pr-firin', 'pr-ocak'];
+        const demoPrinterIps = ['192.168.1.200', '192.168.1.201', '192.168.1.202', '192.168.1.203'];
+        const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-mutfak'];
         const filtered = printers.filter(p => !demoPrinterIds.includes(p.id) && !demoPrinterIps.includes(p.ipAddress || ''));
         if (filtered.length !== printers.length) {
           localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(filtered));
+        }
+      }
+
+      // Purge demo printerId bindings from categories
+      const rawCategories = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+      if (rawCategories) {
+        const categories: CategoryConfig[] = JSON.parse(rawCategories);
+        const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-mutfak'];
+        let catChanged = false;
+        const cleanedCategories = categories.map(c => {
+          if (c.printerId && demoPrinterIds.includes(c.printerId)) {
+            catChanged = true;
+            const { printerId, ...rest } = c;
+            return rest;
+          }
+          return c;
+        });
+        if (catChanged) {
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(cleanedCategories));
         }
       }
 

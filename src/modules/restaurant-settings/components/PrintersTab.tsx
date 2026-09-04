@@ -190,18 +190,6 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
       } catch (e) {}
     }
 
-    // 5b. Sistemde önceden kayıtlı olan ağ yazıcılarını listeye dahil et
-    printers.filter(p => p.type === 'NETWORK' && p.ipAddress).forEach(p => {
-      if (!foundNetwork.some(fn => fn.ip === p.ipAddress)) {
-        foundNetwork.push({
-          ip: p.ipAddress!,
-          port: p.port || 9100,
-          model: `${p.name} (Kayıtlı Termal Yazıcı)`,
-          status: 'ONLINE'
-        });
-      }
-    });
-
     setScannedNetworkPrinters(foundNetwork);
     setIsScanning(false);
     notify.success('Yazıcı Taraması Tamamlandı', `${foundUsb.length} USB ve ${foundNetwork.length} Ağ yazıcısı algılandı.`);
