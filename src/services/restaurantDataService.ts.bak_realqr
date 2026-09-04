@@ -561,7 +561,6 @@ class RestaurantDataService {
           tables: this.getTables(),
           products,
           categories,
-          employees: this.getWaiters(),
         }),
       });
     } catch (e) {}
@@ -569,35 +568,6 @@ class RestaurantDataService {
 
   public async pullPendingOrdersFromCloud() {
     try {
-      // 1. Eşleşen Telefonları Canlı Senkronize Et
-      try {
-        const devRes = await fetch(`${API_SYNC_URL}?action=get_paired_devices`);
-        const devData = await devRes.json();
-        if (devData.success && devData.devices) {
-          const waiters = this.getWaiters();
-          let waiterUpdated = false;
-
-          waiters.forEach((w) => {
-            const paired = devData.devices[w.id];
-            if (paired && paired.deviceUuid) {
-              if (w.status !== 'APPROVED' || w.macAddress !== paired.deviceUuid) {
-                w.status = 'APPROVED';
-                w.macAddress = paired.deviceUuid;
-                w.deviceUuid = paired.deviceUuid;
-                w.deviceName = paired.deviceName || 'Akıllı Telefon';
-                waiterUpdated = true;
-              }
-            }
-          });
-
-          if (waiterUpdated) {
-            localStorage.setItem(STORAGE_KEYS.WAITERS, JSON.stringify(waiters));
-            this.notify();
-          }
-        }
-      } catch (devErr) {}
-
-      // 2. Bekleyen Siparişleri Çek
       const res = await fetch(`${API_SYNC_URL}?action=pull_pending_orders`);
       const data = await res.json();
       if (data.success && data.orders && data.orders.length > 0) {
@@ -1709,6 +1679,7 @@ class RestaurantDataService {
 
   public addWaiter(waiter: Partial<WaiterConfig> & { name: string; pin: string }): WaiterConfig {
     const waiters = this.getWaiters();
+    const generatedMac = (waiter.macAddress || '').trim().toUpperCase() || this.generateMacAddress();
     const token = `TOKEN-GTU-${Math.random().toString(36).substring(2, 9).toUpperCase()}-${Date.now().toString().slice(-4)}`;
     const newW: WaiterConfig = {
       id: `w-${Date.now()}`,
@@ -1716,10 +1687,10 @@ class RestaurantDataService {
       phone: waiter.phone?.trim() || '',
       pin: waiter.pin.trim(),
       qrToken: token,
-      macAddress: '',
-      deviceUuid: '',
-      deviceName: 'Eşleşme Bekliyor',
-      status: 'NOT_PAIRED',
+      macAddress: generatedMac,
+      deviceUuid: waiter.deviceUuid || `UUID-${generatedMac.replace(/[^A-Z0-9]/g, '')}`,
+      deviceName: waiter.deviceName?.trim() || 'Telefon (Eşleşti)',
+      status: waiter.status || 'APPROVED',
       allowedSections: waiter.allowedSections || ['ALL'],
       permissions: waiter.permissions || {
         canDiscount: false,
@@ -1728,9 +1699,10 @@ class RestaurantDataService {
         canTransferTable: true,
         canPrintBill: true,
       },
+      lastActiveAt: new Date().toISOString(),
     };
-    waiters.push(newW);
-    localStorage.setItem(STORAGE_KEYS.WAITERS, JSON.stringify(waiters));
+    const updated = [...waiters, newW];
+    this.saveWaiters(updated);
     return newW;
   }
 

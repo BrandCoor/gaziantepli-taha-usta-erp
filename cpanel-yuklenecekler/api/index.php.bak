@@ -1,10 +1,13 @@
-﻿<?php
+<?php
+// Gaziantepli Taha Usta - Bulut Senkronizasyon & Sipariş Köprüsü (Hatasız Sürüm)
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit;
+}
 
 $dbFile = __DIR__ . '/restaurant_sync.json';
 if (!file_exists($dbFile)) {
@@ -14,45 +17,16 @@ if (!file_exists($dbFile)) {
         'products' => [],
         'categories' => [],
         'orders' => [],
-        'employees' => [],
         'paired_devices' => [],
-        'boss_settings' => ['password' => '1453', 'approved_devices' => []],
         'last_updated' => time()
     ];
     file_put_contents($dbFile, json_encode($initialData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
 
 $db = json_decode(file_get_contents($dbFile), true) ?: [];
-if (!isset($db['paired_devices'])) $db['paired_devices'] = [];
-if (!isset($db['boss_settings'])) $db['boss_settings'] = ['password' => '1453', 'approved_devices' => []];
-
 $action = $_GET['action'] ?? '';
 
-// 1. CİHAZ EŞLEŞTİRME VE MÜHÜRLEME
-if ($action === 'pair_device') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    if ($input && !empty($input['waiterId'])) {
-        $db['paired_devices'][$input['waiterId']] = [
-            'waiterId' => $input['waiterId'],
-            'waiterName' => $input['waiterName'] ?? 'Garson',
-            'deviceUuid' => $input['deviceUuid'] ?? ('TEL-' . rand(1000, 9999)),
-            'deviceName' => $input['deviceName'] ?? 'Mobil Cihaz',
-            'pairedAt' => date('Y-m-d H:i:s'),
-            'status' => 'APPROVED'
-        ];
-        file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        echo json_encode(['success' => true, 'device' => $db['paired_devices'][$input['waiterId']]]);
-        exit;
-    }
-}
-
-// 2. KASA İÇİN EŞLEŞEN CİHAZLARI GETİR
-if ($action === 'get_paired_devices') {
-    echo json_encode(['success' => true, 'devices' => $db['paired_devices'] ?? []]);
-    exit;
-}
-
-// 3. KASA TÜM VERİLERİ İTER
+// 1. KASA TÜM MASA VE MENÜYÜ BULUTA GÖNDERİR
 if ($action === 'push_kasa_state' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     if ($input) {
@@ -60,7 +34,6 @@ if ($action === 'push_kasa_state' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($input['tables'])) $db['tables'] = $input['tables'];
         if (isset($input['products'])) $db['products'] = $input['products'];
         if (isset($input['categories'])) $db['categories'] = $input['categories'];
-        if (isset($input['employees'])) $db['employees'] = $input['employees'];
         $db['last_updated'] = time();
         file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         echo json_encode(['success' => true]);
@@ -68,7 +41,7 @@ if ($action === 'push_kasa_state' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 4. CANLI VERİYİ DÖN
+// 2. GARSON TELEFONU CANLI VERİYİ ALIR
 if ($action === 'get_live_state') {
     echo json_encode([
         'success' => true,
@@ -81,12 +54,14 @@ if ($action === 'get_live_state') {
     exit;
 }
 
-// 5. SİPARİŞ / HESAP İSTEĞİ / MASA TAŞIMA
+// 3. GARSON TELEFONDAN SİPARİŞ / FİŞ İSTEĞİ / MASA TAŞIMA
 if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     if ($input) {
         $type = $input['type'] ?? 'ORDER';
+
         if ($type === 'BILL_REQUEST') {
+            // ADİSYONU SİLME! Sadece masayı HESAP İSTENDİ yap
             if (!empty($db['tables'])) {
                 foreach ($db['tables'] as &$tbl) {
                     if ($tbl['id'] === $input['tableId']) {
@@ -98,9 +73,11 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $input['id'] = 'req-' . time();
             $db['orders'][] = $input;
         } elseif ($type === 'TRANSFER_TABLE') {
+            // Masa Taşıma
             $srcId = $input['sourceTableId'];
             $tgtId = $input['targetTableId'];
             $savedOrder = null;
+
             if (!empty($db['tables'])) {
                 foreach ($db['tables'] as &$tbl) {
                     if ($tbl['id'] === $srcId) {
@@ -122,6 +99,7 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $db['orders'][] = $input;
         } else {
+            // Normal Sipariş
             $order = [
                 'id' => 'ord-' . time() . '-' . rand(100, 999),
                 'tableId' => $input['tableId'],
@@ -133,6 +111,7 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'printed' => false
             ];
             $db['orders'][] = $order;
+
             if (!empty($db['tables'])) {
                 foreach ($db['tables'] as &$tbl) {
                     if ($tbl['id'] === $input['tableId']) {
@@ -143,6 +122,7 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+
         $db['last_updated'] = time();
         file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         echo json_encode(['success' => true]);
@@ -150,7 +130,7 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 6. KASA BEKLEYEN SİPARİŞLERİ ÇEKER
+// 4. KASA BEKLEYEN İŞLEMLERİ ÇEKER
 if ($action === 'pull_pending_orders') {
     $pending = [];
     if (!empty($db['orders'])) {
@@ -166,29 +146,26 @@ if ($action === 'pull_pending_orders') {
     exit;
 }
 
-// 7. PATRON CİRO VE ÖZET
-if ($action === 'get_boss_summary') {
-    $totalTurnover = 0;
-    $occupiedTables = 0;
-    $totalTables = count($db['tables'] ?? []);
-    if (!empty($db['tables'])) {
-        foreach ($db['tables'] as $tbl) {
-            if (($tbl['status'] ?? '') === 'OCCUPIED' || ($tbl['status'] ?? '') === 'BILL_REQUESTED') {
-                $occupiedTables++;
-                if (!empty($tbl['order']['totalAmount'])) {
-                    $totalTurnover += (float)$tbl['order']['totalAmount'];
-                }
-            }
-        }
+// 5. CİHAZ EŞLEŞTİRME
+if ($action === 'pair_device' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    if ($input && !empty($input['waiterId'])) {
+        $db['paired_devices'][$input['waiterId']] = [
+            'waiterId' => $input['waiterId'],
+            'waiterName' => $input['waiterName'] ?? 'Garson',
+            'deviceUuid' => $input['deviceUuid'] ?? 'MOB-' . rand(1000, 9999),
+            'deviceName' => $input['deviceName'] ?? 'Mobil Telefon',
+            'pairedAt' => date('Y-m-d H:i:s'),
+            'status' => 'APPROVED'
+        ];
+        file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        echo json_encode(['success' => true]);
+        exit;
     }
-    echo json_encode([
-        'success' => true,
-        'totalTurnover' => $totalTurnover,
-        'occupiedTables' => $occupiedTables,
-        'totalTables' => $totalTables,
-        'orderCount' => count($db['orders'] ?? []),
-        'lastUpdated' => date('H:i:s')
-    ]);
+}
+
+if ($action === 'get_paired_devices') {
+    echo json_encode(['success' => true, 'devices' => $db['paired_devices'] ?? []]);
     exit;
 }
 

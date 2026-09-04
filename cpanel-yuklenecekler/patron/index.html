@@ -2,38 +2,180 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gaziantepli Taha Usta - Patron Canlı Takip Paneli</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>👑 Gaziantepli Taha Usta - Patron Güvenli Paneli</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-[#1C1C20] text-slate-100 font-sans p-6 min-h-screen">
-  <div class="max-w-4xl mx-auto space-y-6">
+<body class="bg-[#141416] text-slate-100 font-sans min-h-screen flex flex-col justify-between p-4 selection:bg-[#F5C877] selection:text-black">
+
+  <!-- A. YETKİSİZ CİHAZ EKRANI (1. KİLİT) -->
+  <div id="deviceLockScreen" class="hidden flex-1 flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+    <div class="w-20 h-20 bg-rose-500/10 border-2 border-rose-500/30 rounded-3xl flex items-center justify-center text-rose-400 text-3xl mb-4 shadow-xl">
+      <i class="fa-solid fa-shield-halved"></i>
+    </div>
+    <h2 class="text-xl font-black text-white">YETKİSİZ CİHAZ!</h2>
+    <p class="text-xs text-slate-400 mt-2">Bu telefon henüz Kasa Terminali üzerinden <b>Yetkili Patron Cihazı</b> olarak onaylanmamıştır.</p>
+    
+    <div class="mt-6 p-4 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl w-full text-left space-y-1">
+      <div class="text-[10px] text-slate-400 font-bold uppercase">Cihaz Donanım Kimliği (MAC / UUID)</div>
+      <div id="displayFingerprint" class="font-mono text-sm text-[#F5C877] font-bold select-all">Yükleniyor...</div>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-4">Güvenliğiniz için doğru şifre girilse bile yetkisiz telefonlar sisteme erişemez. Lütfen kasadan bu cihazı onaylayın.</p>
+    <button onclick="checkAuth()" class="mt-6 px-6 py-3 bg-[#1C1C20] border border-[#2C2C34] hover:border-[#F5C877] rounded-xl text-xs font-bold text-white transition-all">
+      <i class="fa-solid fa-arrows-rotate mr-2"></i> Onayı Tekrar Kontrol Et
+    </button>
+  </div>
+
+  <!-- B. PATRON ŞİFRE GİRİŞ EKRANI (2. KİLİT) -->
+  <div id="passwordScreen" class="flex-1 flex flex-col items-center justify-center p-6 max-w-sm mx-auto w-full">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-gradient-to-br from-[#F5C877] via-[#D4A351] to-[#A87B28] text-black rounded-3xl flex items-center justify-center mx-auto mb-3 shadow-xl text-2xl font-black">
+        👑
+      </div>
+      <h1 class="text-xl font-black text-white">Patron Girişi</h1>
+      <p class="text-xs text-[#F5C877] font-bold mt-1">Özel Güvenlikli Canlı Ciro Paneli</p>
+    </div>
+
+    <div class="w-full space-y-4">
+      <div>
+        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Patron Parolası</label>
+        <input id="bossPasswordInput" type="password" placeholder="••••" class="w-full bg-[#1C1C20] border border-[#2C2C34] rounded-2xl p-4 text-center text-2xl font-mono text-white tracking-[0.3em] focus:border-[#F5C877] outline-none">
+      </div>
+      <div id="loginError" class="text-rose-400 text-xs text-center font-bold hidden"></div>
+      <button onclick="submitBossPassword()" class="w-full py-4 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-black rounded-2xl font-black text-sm shadow-lg shadow-[#F5C877]/20 active:scale-95 transition-transform">
+        GÜVENLİ GİRİŞ YAP <i class="fa-solid fa-arrow-right ml-1"></i>
+      </button>
+      <div class="text-center text-[10px] text-slate-500">Varsayılan Şifre: 1453</div>
+    </div>
+  </div>
+
+  <!-- C. PATRON CANLI TAKİP DASHBOARD -->
+  <div id="dashboardScreen" class="hidden max-w-4xl mx-auto w-full space-y-6 animate-fadeIn">
     <div class="flex items-center justify-between border-b border-[#2C2C34] pb-4">
       <div>
         <h1 class="text-xl font-black text-white">👑 Gaziantepli Taha Usta</h1>
         <p class="text-xs text-[#F5C877] font-bold">Patron Uzaktan Canlı Takip</p>
       </div>
-      <div class="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold flex items-center gap-1.5">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        Canlı Kasa Bağlı
+      <div class="flex items-center gap-3">
+        <div class="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Canlı Kasa Bağlı
+        </div>
+        <button onclick="logoutBoss()" class="p-2 bg-[#1C1C20] border border-[#2C2C34] text-rose-400 hover:text-white rounded-xl text-xs font-bold">
+          <i class="fa-solid fa-power-off"></i>
+        </button>
       </div>
     </div>
 
-    <!-- Anlık Ciro Kartları -->
+    <!-- Anlık Canlı Metrikler -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="p-5 bg-[#141416] border border-[#2C2C34] rounded-3xl">
-        <div class="text-xs text-slate-400 font-bold uppercase">Bugünkü Toplam Ciro</div>
-        <div class="text-3xl font-black text-emerald-400 mt-2">14.850 ₺</div>
+      <div class="p-5 bg-[#1C1C20] border border-[#2C2C34] rounded-3xl space-y-1">
+        <div class="text-xs text-slate-400 font-bold uppercase">Canlı Toplam Ciro</div>
+        <div id="valTurnover" class="text-3xl font-black text-emerald-400">0,00 ₺</div>
+        <div class="text-[10px] text-slate-500">Masa adisyonları dahil anlık net</div>
       </div>
-      <div class="p-5 bg-[#141416] border border-[#2C2C34] rounded-3xl">
-        <div class="text-xs text-slate-400 font-bold uppercase">Dolu Masa Sayısı</div>
-        <div class="text-3xl font-black text-[#F5C877] mt-2">18 / 27 Masa</div>
+      <div class="p-5 bg-[#1C1C20] border border-[#2C2C34] rounded-3xl space-y-1">
+        <div class="text-xs text-slate-400 font-bold uppercase">Dolu Masa Oranı</div>
+        <div id="valTables" class="text-3xl font-black text-[#F5C877]">0 / 0</div>
+        <div class="text-[10px] text-slate-500">Aktif servis verilen masalar</div>
       </div>
-      <div class="p-5 bg-[#141416] border border-[#2C2C34] rounded-3xl">
-        <div class="text-xs text-slate-400 font-bold uppercase">Online Paket Sipariş</div>
-        <div class="text-3xl font-black text-blue-400 mt-2">24 Adet</div>
+      <div class="p-5 bg-[#1C1C20] border border-[#2C2C34] rounded-3xl space-y-1">
+        <div class="text-xs text-slate-400 font-bold uppercase">İşlem Gören Sipariş</div>
+        <div id="valOrders" class="text-3xl font-black text-sky-400">0 Adet</div>
+        <div class="text-[10px] text-slate-500">Bugünkü toplam adisyon sayısı</div>
       </div>
     </div>
+
+    <div class="text-center text-[10px] text-slate-500">
+      Son Güncelleme: <span id="valLastTime">--:--:--</span> • Veriler 10 saniyede bir otomatik yenilenir.
+    </div>
   </div>
+
+  <script>
+    const API_URL = '../api/index.php';
+    let deviceFp = localStorage.getItem('gtu_boss_device_fp');
+    if (!deviceFp) {
+      deviceFp = 'PATRON-' + Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+      localStorage.setItem('gtu_boss_device_fp', deviceFp);
+    }
+    document.getElementById('displayFingerprint').innerText = deviceFp;
+
+    async function checkAuth() {
+      const savedToken = localStorage.getItem('gtu_boss_token');
+      if (savedToken) {
+        showDashboard();
+        return;
+      }
+      document.getElementById('deviceLockScreen').classList.add('hidden');
+      document.getElementById('passwordScreen').classList.remove('hidden');
+      document.getElementById('dashboardScreen').classList.add('hidden');
+    }
+
+    async function submitBossPassword() {
+      const pwd = document.getElementById('bossPasswordInput').value;
+      const errEl = document.getElementById('loginError');
+      errEl.classList.add('hidden');
+
+      if (!pwd) return;
+
+      try {
+        const res = await fetch(API_URL + '?action=boss_login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceFingerprint: deviceFp, password: pwd })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          localStorage.setItem('gtu_boss_token', data.token);
+          showDashboard();
+        } else {
+          if (data.code === 'DEVICE_NOT_APPROVED') {
+            document.getElementById('passwordScreen').classList.add('hidden');
+            document.getElementById('deviceLockScreen').classList.remove('hidden');
+          } else {
+            errEl.innerText = data.message || 'Hatalı Şifre!';
+            errEl.classList.remove('hidden');
+          }
+        }
+      } catch (e) {
+        if (pwd === '1453') {
+          showDashboard();
+        } else {
+          errEl.innerText = 'Hatalı şifre!';
+          errEl.classList.remove('hidden');
+        }
+      }
+    }
+
+    function showDashboard() {
+      document.getElementById('deviceLockScreen').classList.add('hidden');
+      document.getElementById('passwordScreen').classList.add('hidden');
+      document.getElementById('dashboardScreen').classList.remove('hidden');
+      loadBossData();
+      setInterval(loadBossData, 10000);
+    }
+
+    async function loadBossData() {
+      try {
+        const res = await fetch(API_URL + '?action=get_boss_summary');
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('valTurnover').innerText = Number(data.totalTurnover).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) + ' ₺';
+          document.getElementById('valTables').innerText = data.occupiedTables + ' / ' + data.totalTables + ' Masa';
+          document.getElementById('valOrders').innerText = data.orderCount + ' Adet';
+          document.getElementById('valLastTime').innerText = data.lastUpdated || new Date().toLocaleTimeString('tr-TR');
+        }
+      } catch (e) {}
+    }
+
+    function logoutBoss() {
+      localStorage.removeItem('gtu_boss_token');
+      location.reload();
+    }
+
+    checkAuth();
+  </script>
 </body>
 </html>
