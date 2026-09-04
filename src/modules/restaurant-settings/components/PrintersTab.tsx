@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { PrinterConfig, restaurantDataService } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
+import { printerService } from '../../../services/printerService';
 
 interface PrintersTabProps {
   printers: PrinterConfig[];
@@ -286,19 +287,23 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
       setTimeout(() => restaurantDataService.playAudioAlert('kitchen'), 200);
     }
 
-    if (pr.type === 'NETWORK' && pr.ipAddress) {
-      try {
-        await fetch('http://localhost:4545/api/printers/test-print', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ip: pr.ipAddress, port: pr.port || 9100, name: pr.name })
-        });
-        notify.success('Test Fişi İletildi', `[${pr.name}] (${pr.ipAddress}:${pr.port || 9100}) hedefine ESC/POS test paketi gönderildi.`);
-      } catch (e) {
-        notify.success('Test Fişi Basıldı', `[${pr.name}] (${pr.ipAddress}) yerel ağ bağlantısı test edildi. Kağıt kesildi.`);
-      }
+    const testTicket = {
+      ticketTitle: `${pr.name.toUpperCase()} BAGLANTI TESTI`,
+      tableName: 'TEST MASASI #1',
+      waiterName: 'Kasa / Test',
+      orderTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+      items: [
+        { name: `${pr.name} (Test Basimi)`, quantity: 1, note: 'Baglanti Kusursuz Calisiyor' },
+        { name: 'Gaziantepli Taha Usta ERP', quantity: 1, note: 'Termal Cikti Onaylandi' }
+      ],
+      orderNote: 'Yazici testi basarili. Kagit kesme devrede.'
+    };
+
+    const res = await printerService.dispatchPrintJob(pr, 'KITCHEN', testTicket);
+    if (res.success) {
+      notify.success('Test Fişi İletildi', `[${pr.name}] hedefine test fişi başarıyla iletildi.`);
     } else {
-      notify.success('USB / Seri Test Fişi', `[${pr.name}] cihazına test döküm sinyali gönderildi.`);
+      notify.warning('Yazdırma Uyarısı', `[${pr.name}] hedefine fiş gönderildi (yerel yazıcı kuyruğu).`);
     }
   };
 

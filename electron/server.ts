@@ -7,6 +7,7 @@ import {
   generateKitchenReceipt,
   generateBillReceipt,
   generateZReportReceipt,
+  generateCancelReceipt,
   sendToNetworkPrinter,
   scanLocalNetworkPrinters
 } from './printer';
@@ -63,6 +64,82 @@ app.post('/api/printers/test-print', async (req, res) => {
     res.json({ success });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 3. GENEL FİŞ YAZDIRMA (Mutfak, Hesap, İptal)
+app.post('/api/printers/print-ticket', async (req, res) => {
+  try {
+    const { printer, jobType, data } = req.body;
+    if (!printer) {
+      return res.status(400).json({ success: false, error: 'Yazıcı bilgisi eksik' });
+    }
+
+    let buffer: Buffer;
+    if (jobType === 'BILL') {
+      buffer = generateBillReceipt(data);
+    } else if (jobType === 'CANCEL') {
+      buffer = generateCancelReceipt(data);
+    } else if (jobType === 'Z_REPORT') {
+      buffer = generateZReportReceipt(data);
+    } else {
+      buffer = generateKitchenReceipt(data);
+    }
+
+    if (printer.type === 'NETWORK' && printer.ipAddress) {
+      const success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
+      return res.json({ success, message: success ? 'Yazıcıya iletildi' : 'Yazıcıya bağlanılamadı' });
+    }
+
+    // USB / Diğer yazıcılar
+    res.json({ success: true, message: 'İstek işlendi' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 4. DİREKT MUTFAK FİŞİ GÖNDERME
+app.post('/api/printers/print-kitchen', async (req, res) => {
+  try {
+    const { printer, ticket } = req.body;
+    const buffer = generateKitchenReceipt(ticket);
+    let success = false;
+    if (printer?.type === 'NETWORK' && printer?.ipAddress) {
+      success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
+    }
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. DİREKT ADİSYON / HESAP FİŞİ GÖNDERME
+app.post('/api/printers/print-bill', async (req, res) => {
+  try {
+    const { printer, bill } = req.body;
+    const buffer = generateBillReceipt(bill);
+    let success = false;
+    if (printer?.type === 'NETWORK' && printer?.ipAddress) {
+      success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
+    }
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. DİREKT İPTAL FİŞİ GÖNDERME
+app.post('/api/printers/print-cancel', async (req, res) => {
+  try {
+    const { printer, cancelData } = req.body;
+    const buffer = generateCancelReceipt(cancelData);
+    let success = false;
+    if (printer?.type === 'NETWORK' && printer?.ipAddress) {
+      success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
+    }
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

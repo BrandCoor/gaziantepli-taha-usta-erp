@@ -15,6 +15,7 @@ import { CompanySettingsView } from './modules/settings/CompanySettingsView';
 import { LoginView } from './modules/auth/LoginView';
 import { GlobalModal } from './components/common/GlobalModal';
 import { dataService } from './services/dataService';
+import { printerService } from './services/printerService';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

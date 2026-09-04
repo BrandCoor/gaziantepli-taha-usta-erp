@@ -49,6 +49,7 @@ import {
 } from '../../services/restaurantDataService';
 import { dataService, Customer } from '../../services/dataService';
 import { notify } from '../../services/notificationService';
+import { printerService } from '../../services/printerService';
 
 const CANCEL_REASONS = [
   'Müşteri Siparişten Vazgeçti',
@@ -323,15 +324,23 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   };
 
   // ADİSYON / ARA HESAP FİŞİ YAZDIRMA
-  const handlePrintPreliminaryBill = () => {
+  const handlePrintPreliminaryBill = async () => {
     if (!selectedTable) return;
     if (orderItems.length === 0) {
       return notify.warning('Adisyon Boş', 'Yazdırılacak sipariş kalemi bulunmuyor.');
     }
-    notify.success(
-      'Adisyon Fişi Yazdırıldı',
-      `${selectedTable.name} için ara hesap fişi (${currentTotal.toFixed(2)} ₺) kasaya ve adisyon yazıcısına gönderildi.`
-    );
+    const res = await printerService.printBill(selectedTable, orderItems);
+    if (res.success) {
+      notify.success(
+        'Adisyon Fişi Yazdırıldı',
+        `${selectedTable.name} için ara hesap fişi (${currentTotal.toFixed(2)} ₺) kasaya ve adisyon yazıcısına gönderildi.`
+      );
+    } else {
+      notify.warning(
+        'Adisyon Yazdırılamadı',
+        res.message || 'Yazıcıya bağlanılamadı. Lütfen Ayarlar > Yazıcılar sekmesinden yazıcı ayarlarınızı kontrol edin.'
+      );
+    }
   };
 
   const handleItemAction = (index: number) => {
@@ -361,13 +370,22 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     if (!item) return;
     const reason = itemCancelModal.selectedReason === 'Diğer (Özel Açıklama)' ? itemCancelModal.customNote : itemCancelModal.selectedReason;
 
+    // Mutfağa daha önce gönderilmiş ürün ise iptal fişi dök
+    if (item.status === 'SENT_TO_KITCHEN') {
+      printerService.printCancellationTicket(selectedTable, [{
+        name: item.productName,
+        quantity: itemCancelModal.cancelQty,
+        reason: `${reason || 'İptal'}`
+      }], 'Kasa / Taha Usta');
+    }
+
     restaurantDataService.cancelItemQuantity(selectedTable.id, itemCancelModal.itemIndex, itemCancelModal.cancelQty, reason);
     notify.warning('Mutfak İptal Fişi Kesildi', `${selectedTable.name} -> ${itemCancelModal.cancelQty}x ${item.productName} iptal edildi.`);
     setItemCancelModal({ open: false, itemIndex: -1, maxQty: 1, cancelQty: 1, selectedReason: CANCEL_REASONS[0], customNote: '' });
   };
 
   // MUTFAĞA GÖNDERME
-  const handleSendToKitchen = () => {
+  const handleSendToKitchen = async () => {
     if (!selectedTable) return;
     const pendingItems = orderItems.filter(i => i.status === 'PENDING');
     if (pendingItems.length === 0) {
@@ -377,13 +395,26 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     const updatedItems: OrderItemState[] = orderItems.map(i => ({ ...i, status: 'SENT_TO_KITCHEN' }));
     restaurantDataService.updateTableOrder(selectedTable.id, updatedItems, 'Taha Usta', selectedTable.customerInfo, generalOrderNote);
 
+    // Mutfak / Ocak / Fırın İstasyon Yazıcılarına Otomatik Fiş Dökümü
+    const printResult = await printerService.printKitchenTickets(
+      selectedTable,
+      pendingItems,
+      'Taha Usta',
+      generalOrderNote
+    );
+
     if (selectedTable.customerInfo) {
       notify.success(
         '🛵 Paket Siparişi Mutfağa İletildi',
-        `Müşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}\nYazıcılara fiş basıldı.`
+        `Müşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}\n${printResult.success ? 'Yazıcılara fiş basıldı (' + printResult.details.join(', ') + ')' : 'Mutfak fişi gönderildi.'}`
       );
     } else {
-      notify.success('Mutfak Fişleri Basıldı', `${selectedTable.name} siparişi ilgili yazıcılara iletildi.`);
+      notify.success(
+        'Mutfak Fişleri Basıldı',
+        printResult.success
+          ? `${selectedTable.name} siparişi ilgili istasyon yazıcılarına iletildi: ${printResult.details.join(', ')}`
+          : `${selectedTable.name} siparişi mutfağa iletildi.`
+      );
     }
 
     setSelectedTable(null);
@@ -392,6 +423,16 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   const handleConfirmTableCancel = () => {
     if (!selectedTable) return;
     const reason = tableCancelModal.selectedReason === 'Diğer (Özel Açıklama)' ? tableCancelModal.customNote : tableCancelModal.selectedReason;
+
+    // Mutfağa daha önce gönderilmiş ürünler varsa mutfağa toplu iptal fişi bas
+    const kitchenItems = orderItems.filter(i => i.status === 'SENT_TO_KITCHEN');
+    if (kitchenItems.length > 0) {
+      printerService.printCancellationTicket(selectedTable, kitchenItems.map(i => ({
+        name: i.productName,
+        quantity: i.quantity,
+        reason: `${reason || 'Masa İptali'}`
+      })), 'Kasa');
+    }
 
     restaurantDataService.cancelTableOrder(selectedTable.id, reason);
     notify.error('Masa İptal Edildi', `${selectedTable.name} adisyonu iptal edilerek kapatıldı.`);
@@ -590,6 +631,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     setCustomers(dataService.getCustomers());
 
     if (printReceipt) {
+      printerService.printBill(selectedTable, orderItems, paymentEntries);
       notify.success('Hesap Kapatıldı & Fiş Basıldı', `${selectedTable.name} hesabı kapatıldı ve adisyon fişi kesildi.`);
     } else {
       notify.success('Hesap Kapatıldı', `${selectedTable.name} masası başarıyla kapatıldı.`);

@@ -253,3 +253,37 @@ export function generateZReportReceipt(data: any): Buffer {
 
   return Buffer.from(text, 'binary');
 }
+
+// 6. MUTFAK İPTAL FİŞİ
+export function generateCancelReceipt(data: any): Buffer {
+  let text = '';
+  text += Commands.INIT + Commands.BEEP + Commands.BEEP + Commands.ALIGN_CENTER;
+  text += Commands.DOUBLE_SIZE + Commands.BOLD_ON;
+  text += `*** SIPARIS IPTALI ***\n`;
+  text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
+  text += Commands.DOUBLE_LINE;
+  text += Commands.ALIGN_LEFT;
+  text += Commands.DOUBLE_HEIGHT + Commands.BOLD_ON;
+  text += `MASA: ${formatTurkishText(data.tableName || 'MASA')}\n`;
+  text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
+  text += `Garson: ${formatTurkishText(data.waiterName || 'Kasa')}  |  Saat: ${data.orderTime || new Date().toLocaleTimeString('tr-TR')}\n`;
+  text += Commands.LINE;
+
+  for (const item of data.items || []) {
+    text += Commands.DOUBLE_HEIGHT + Commands.BOLD_ON;
+    text += `IPTAL: ${item.quantity}x ${formatTurkishText(item.name || item.productName)}\n`;
+    text += Commands.NORMAL_SIZE + Commands.BOLD_OFF;
+    if (item.reason) {
+      text += `   * Neden: ${formatTurkishText(item.reason)}\n`;
+    }
+  }
+
+  if (data.reason) {
+    text += Commands.LINE + Commands.BOLD_ON;
+    text += `IPTAL SEBEBI: ${formatTurkishText(data.reason)}\n`;
+    text += Commands.BOLD_OFF;
+  }
+
+  text += Commands.LINE + '\n\n\n' + Commands.CUT_PAPER;
+  return Buffer.from(text, 'binary');
+}

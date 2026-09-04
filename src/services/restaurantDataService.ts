@@ -519,6 +519,16 @@ type ChangeListener = () => void;
 class RestaurantDataService {
   private listeners: Set<ChangeListener> = new Set();
   private pendingActivePosTableId: string | null = null;
+  private kitchenPrintCallback?: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string) => void;
+  private billPrintCallback?: (table: TableState, items: OrderItemState[]) => void;
+
+  public onKitchenOrderPrint(cb: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string) => void) {
+    this.kitchenPrintCallback = cb;
+  }
+
+  public onBillRequestPrint(cb: (table: TableState, items: OrderItemState[]) => void) {
+    this.billPrintCallback = cb;
+  }
 
   constructor() {
     this.purgeDemoData();
@@ -688,6 +698,10 @@ class RestaurantDataService {
         data.orders.forEach((ord: any) => {
           if (ord.type === 'BILL_REQUEST') {
             this.setBillRequested(ord.tableId);
+            const tbl = this.getTables().find(t => t.id === ord.tableId);
+            if (tbl && tbl.order?.items && tbl.order.items.length > 0 && this.billPrintCallback) {
+              this.billPrintCallback(tbl, tbl.order.items);
+            }
           } else if (ord.type === 'TRANSFER_TABLE') {
             this.transferTable(ord.sourceTableId, ord.targetTableId);
           } else {
@@ -716,6 +730,12 @@ class RestaurantDataService {
 
     const mergedItems = [...existingItems, ...newItems];
     this.updateTableOrder(table.id, mergedItems, incoming.waiterName, table.customerInfo, incoming.orderNote);
+
+    // Garsonun mobilden girdiği yeni sipariş kalemlerini anında mutfak yazıcılarına bas
+    if (newItems.length > 0 && this.kitchenPrintCallback) {
+      const currentTable = this.getTables().find(t => t.id === incoming.tableId) || table;
+      this.kitchenPrintCallback(currentTable, newItems, incoming.waiterName || 'Garson', incoming.orderNote);
+    }
   }
 
   public getSections(): SectionConfig[] {
