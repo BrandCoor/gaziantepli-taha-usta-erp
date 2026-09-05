@@ -424,7 +424,23 @@ export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
   autoAcceptOrders: false,
 };
 
-const API_SYNC_URL = 'https://api.rymedya.com.tr/index.php';
+export const getApiSyncUrl = (): string => {
+  try {
+    const custom = localStorage.getItem('CUSTOM_API_SYNC_URL');
+    if (custom && custom.trim().length > 0) return custom.trim();
+  } catch (e) {}
+  return 'https://api.rymedya.com.tr/index.php';
+};
+
+export const setApiSyncUrl = (url: string): void => {
+  try {
+    if (!url || url.trim().length === 0) {
+      localStorage.removeItem('CUSTOM_API_SYNC_URL');
+    } else {
+      localStorage.setItem('CUSTOM_API_SYNC_URL', url.trim());
+    }
+  } catch (e) {}
+};
 
 const DEFAULT_PRINTERS: PrinterConfig[] = [];
 
@@ -719,7 +735,7 @@ class RestaurantDataService {
         };
       });
 
-      await fetch(`${API_SYNC_URL}?action=push_kasa_state`, {
+      await fetch(`${getApiSyncUrl()}?action=push_kasa_state`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -737,7 +753,7 @@ class RestaurantDataService {
     try {
       // 1. Eşleşen Telefonları Canlı Senkronize Et
       try {
-        const devRes = await fetch(`${API_SYNC_URL}?action=get_paired_devices`);
+        const devRes = await fetch(`${getApiSyncUrl()}?action=get_paired_devices`);
         const devData = await devRes.json();
         if (devData.success && devData.devices) {
           const waiters = this.getWaiters();
@@ -764,7 +780,7 @@ class RestaurantDataService {
       } catch (devErr) {}
 
       // 2. Bekleyen Siparişleri Çek
-      const res = await fetch(`${API_SYNC_URL}?action=pull_pending_orders`);
+      const res = await fetch(`${getApiSyncUrl()}?action=pull_pending_orders`);
       const data = await res.json();
       if (data.success && data.orders && data.orders.length > 0) {
         data.orders.forEach((ord: any) => {
@@ -2259,7 +2275,7 @@ class RestaurantDataService {
     this.saveFoodPlatformsConfig(updated);
 
     try {
-      await fetch(`${API_SYNC_URL}?action=update_platform_store_status`, {
+      await fetch(`${getApiSyncUrl()}?action=update_platform_store_status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2277,7 +2293,7 @@ class RestaurantDataService {
 
   public async fetchPlatformStoreStatus(): Promise<any> {
     try {
-      const res = await fetch(`${API_SYNC_URL}?action=get_platform_store_status`);
+      const res = await fetch(`${getApiSyncUrl()}?action=get_platform_store_status`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && data.platformStoreStatus) {
@@ -2303,6 +2319,20 @@ class RestaurantDataService {
       }
     } catch (e) {}
     return null;
+  }
+
+  public async testDatabaseConnection(customUrl?: string): Promise<{ success: boolean; mode: string; message: string; tables?: any; error?: string }> {
+    try {
+      const url = customUrl || getApiSyncUrl();
+      const res = await fetch(`${url}?action=test_db`, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) {
+        return { success: false, mode: 'OFFLINE', message: `Sunucu HTTP ${res.status} hatası döndürdü.` };
+      }
+      const data = await res.json();
+      return data;
+    } catch (e: any) {
+      return { success: false, mode: 'OFFLINE', message: `Sunucuya erişilemedi: ${e.message || 'Bağlantı zaman aşımı'}` };
+    }
   }
 
   private continuousAlarmInterval: any = null;

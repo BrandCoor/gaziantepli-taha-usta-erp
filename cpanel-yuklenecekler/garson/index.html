@@ -324,7 +324,15 @@
   </div>
 
   <script>
-    const API_URL = 'https://api.rymedya.com.tr/index.php';
+    // Kendi sunucusuna yüklendiğinde otomatik '../api/index.php' veya özel host URL'sini kullanır
+    const API_URL = (function() {
+      const custom = localStorage.getItem('CUSTOM_API_URL');
+      if (custom) return custom;
+      if (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost') {
+        return '../api/index.php';
+      }
+      return 'https://api.rymedya.com.tr/index.php';
+    })();
 
     // SÜREKLİ KULLANILAN RESTORAN HAZIR NOTLARI
     const RESTAURANT_QUICK_TAGS = [

@@ -307,7 +307,11 @@
   </div>
 
   <script>
-    const API_URL = '../api/index.php';
+    const API_URL = (function() {
+      const custom = localStorage.getItem('CUSTOM_API_URL');
+      if (custom) return custom;
+      return '../api/index.php';
+    })();
 
     let deviceFp = localStorage.getItem('gtu_boss_device_fp');
     if (!deviceFp) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   HardDrive, 
   Download, 
@@ -10,9 +10,15 @@ import {
   Server, 
   ShieldCheck,
   RotateCcw,
-  FileCode
+  FileCode,
+  Database,
+  Check,
+  ExternalLink,
+  Save,
+  HelpCircle,
+  Activity
 } from 'lucide-react';
-import { restaurantDataService } from '../../../services/restaurantDataService';
+import { restaurantDataService, getApiSyncUrl, setApiSyncUrl } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
 
 interface SystemBackupTabProps {
@@ -25,6 +31,59 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
   const [localServerStatus, setLocalServerStatus] = useState<'IDLE' | 'ONLINE' | 'OFFLINE'>('IDLE');
   const [importJsonText, setImportJsonText] = useState('');
   const [importModalOpen, setImportModalOpen] = useState(false);
+
+  // MySQL & phpMyAdmin API Ayarları
+  const [apiUrl, setApiUrlState] = useState(getApiSyncUrl());
+  const [isTestingDb, setIsTestingDb] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{
+    success: boolean;
+    mode: string;
+    message: string;
+    tables?: Record<string, number>;
+    host?: string;
+    database?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setApiUrlState(getApiSyncUrl());
+  }, []);
+
+  const handleSaveApiUrl = () => {
+    setApiSyncUrl(apiUrl);
+    notify.success('API Adresi Kaydedildi', 'Tüm sipariş ve bulut senkronizasyonları bu adres üzerinden yürütülecektir.');
+  };
+
+  const handleResetApiUrl = () => {
+    const defaultUrl = 'https://api.rymedya.com.tr/index.php';
+    setApiUrlState(defaultUrl);
+    setApiSyncUrl('');
+    notify.info('Varsayılana Döndürüldü', 'Orijinal merkezi sunucu adresi tanımlandı.');
+  };
+
+  const handleTestDatabase = async () => {
+    setIsTestingDb(true);
+    setDbTestResult(null);
+    try {
+      const result = await restaurantDataService.testDatabaseConnection(apiUrl);
+      setDbTestResult(result);
+      if (result.success && result.mode === 'MYSQL') {
+        notify.success('MySQL Bağlantısı Başarılı', 'phpMyAdmin veritabanı ile tam uyumlu bağlantı kuruldu!');
+      } else if (result.success) {
+        notify.info('API Bağlantısı Aktif', result.message);
+      } else {
+        notify.error('Bağlantı Hatası', result.message || 'Veritabanına ulaşılamadı.');
+      }
+    } catch (e: any) {
+      setDbTestResult({
+        success: false,
+        mode: 'ERROR',
+        message: e.message || 'Bilinmeyen hata'
+      });
+      notify.error('Hata', 'Sunucuya bağlanılamadı.');
+    } finally {
+      setIsTestingDb(false);
+    }
+  };
 
   // Bulut Senkronizasyonu
   const handleManualCloudSync = async () => {
@@ -158,6 +217,120 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
           <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
           <span>{isSyncing ? 'Senkronize Ediliyor...' : 'Şimdi Bulutla Eşitle'}</span>
         </button>
+      </div>
+
+      {/* MYSQL & PHPMYADMIN VERİTABANI SUNUCUSU YÖNETİMİ */}
+      <div className="bg-[#1C1C20] rounded-3xl p-6 border border-amber-500/30 shadow-2xl space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#2C2C34] pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center font-black">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-white">MySQL & phpMyAdmin Veritabanı Sunucusu</h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  v3.1 Klasik phpMyAdmin
+                </span>
+              </div>
+              <p className="text-xs text-[#A0A0AA]">
+                Restoran verilerini kendi hostinginizdeki phpMyAdmin / MySQL veritabanında saklayın
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTestDatabase}
+              disabled={isTestingDb}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl flex items-center gap-2 shadow-lg cursor-pointer transition-all disabled:opacity-50"
+            >
+              <Activity className={`w-3.5 h-3.5 ${isTestingDb ? 'animate-spin' : ''}`} />
+              <span>{isTestingDb ? 'Test Ediliyor...' : 'Bağlantıyı & Tabloları Test Et'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* API URL AYARI */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <label className="font-bold text-white flex items-center gap-1.5">
+              <span>Merkezi API Endpoint Adresi (index.php)</span>
+              <span className="text-[10px] text-[#A0A0AA] font-normal">(Kendi siteniz veya rymedya.com.tr)</span>
+            </label>
+            <button
+              onClick={handleResetApiUrl}
+              className="text-[11px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
+            >
+              Varsayılan Sunucuya Dön
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={apiUrl}
+              onChange={(e) => setApiUrlState(e.target.value)}
+              placeholder="https://siteniz.com/api/index.php"
+              className="flex-1 px-4 py-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+            />
+            <button
+              onClick={handleSaveApiUrl}
+              className="px-5 py-2.5 bg-[#F5C877] hover:bg-[#e4b764] text-slate-950 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Adresi Kaydet</span>
+            </button>
+          </div>
+        </div>
+
+        {/* TEST SONUÇ PANELİ */}
+        {dbTestResult && (
+          <div className={`p-4 rounded-2xl border text-xs space-y-3 ${
+            dbTestResult.success && dbTestResult.mode === 'MYSQL'
+              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200'
+              : dbTestResult.success
+              ? 'bg-sky-500/10 border-sky-500/40 text-sky-200'
+              : 'bg-rose-500/10 border-rose-500/40 text-rose-200'
+          }`}>
+            <div className="flex items-center justify-between font-bold">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{dbTestResult.message}</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase font-mono tracking-wider bg-black/40 border border-current">
+                Mod: {dbTestResult.mode}
+              </span>
+            </div>
+
+            {dbTestResult.tables && (
+              <div className="pt-2 border-t border-current/20">
+                <div className="text-[11px] font-bold uppercase tracking-wider mb-2">phpMyAdmin Canlı Tablo Kayıtları:</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                  {Object.entries(dbTestResult.tables).map(([table, count]) => (
+                    <div key={table} className="bg-black/30 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                      <span className="opacity-80">{table}</span>
+                      <span className="font-bold text-amber-300">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PHPMYADMIN BİLGİLENDİRME KUTUSU */}
+        <div className="p-4 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-2 text-xs text-[#A0A0AA]">
+          <div className="font-bold text-white flex items-center gap-2">
+            <HelpCircle className="w-4 h-4 text-amber-400" />
+            <span>Kendi Hostinginizde phpMyAdmin Kullanımı Nasıl Çalışır?</span>
+          </div>
+          <p className="text-[11px] leading-relaxed">
+            1. cPanel'de açtığınız veritabanına <strong>cpanel-yuklenecekler/veritabani_kurulum.sql</strong> dosyasını phpMyAdmin'den <em>İçe Aktar (Import)</em> yapın.<br/>
+            2. <strong>cpanel-yuklenecekler/api/config.php</strong> dosyasına veritabanı adınızı ve şifrenizi girin.<br/>
+            3. Yukarıdaki kutudan API adresinizi <strong>https://siteniz.com/api/index.php</strong> olarak kaydedip test edin.
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
