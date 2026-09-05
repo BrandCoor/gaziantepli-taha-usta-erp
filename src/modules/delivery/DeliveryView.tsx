@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   PhoneCall, 
   PhoneIncoming, 
@@ -23,8 +23,12 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
   const [customers, setCustomers] = useState<Customer[]>(dataService.getCustomers() || []);
   const [recentCalls, setRecentCalls] = useState<CallLogItem[]>(restaurantDataService.getRecentCalls() || []);
 
-  const [inputPhone, setInputPhone] = useState('0532 999 88 77');
   const [activeCaller, setActiveCaller] = useState<CustomerDeliveryInfo | null>(null);
+  const [searchCallQuery, setSearchCallQuery] = useState('');
+  const [manualCallModal, setManualCallModal] = useState(false);
+  const [manualPhone, setManualPhone] = useState('');
+  const [manualName, setManualName] = useState('');
+  const [manualAddress, setManualAddress] = useState('');
 
   // Hızlı Kayıt Modalı
   const [quickSaveModal, setQuickSaveModal] = useState(false);
@@ -43,35 +47,29 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
     return () => unsub();
   }, []);
 
-  const handleSimulateCall = (phoneToTest?: string) => {
-    const rawPhone = (phoneToTest || inputPhone).trim();
-    if (!rawPhone) return;
+  const handleCreateManualCall = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualPhone.trim()) return;
 
-    const cleanRaw = rawPhone.replace(/\D/g, '');
+    const cleanRaw = manualPhone.replace(/\D/g, '');
     const found = customers.find(c => {
       const cleanC = (c.phone || '').replace(/\D/g, '');
       return cleanC && (cleanC.includes(cleanRaw) || cleanRaw.includes(cleanC));
     });
 
-    if (found) {
-      const info: CustomerDeliveryInfo = {
-        customerId: found.id,
-        name: found.name,
-        phone: found.phone || rawPhone,
-        address: found.address || 'Kayıtlı adres yok',
-        notes: found.notes,
-      };
-      setActiveCaller(info);
-      restaurantDataService.addCallLog(rawPhone, info);
-    } else {
-      const info: CustomerDeliveryInfo = {
-        name: 'Kayıtsız Müşteri',
-        phone: rawPhone,
-        address: '',
-      };
-      setActiveCaller(info);
-      restaurantDataService.addCallLog(rawPhone, { name: 'Kayıtsız Numara', address: '' });
-    }
+    const info: CustomerDeliveryInfo = {
+      customerId: found?.id,
+      name: manualName.trim() || found?.name || 'Gelen Çağrı',
+      phone: manualPhone.trim(),
+      address: manualAddress.trim() || found?.address || '',
+    };
+
+    setActiveCaller(info);
+    restaurantDataService.addCallLog(manualPhone.trim(), info);
+    setManualCallModal(false);
+    setManualPhone('');
+    setManualName('');
+    setManualAddress('');
   };
 
   const handleSaveCustomerForm = (e: React.FormEvent) => {
@@ -156,20 +154,24 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-[#141416] p-2 rounded-2xl border border-[#2C2C34]">
-          <input
-            type="text"
-            value={inputPhone}
-            onChange={(e) => setInputPhone(e.target.value)}
-            placeholder="0532 999 88 77"
-            className="px-3.5 py-2 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-bold text-amber-300 w-40 focus:outline-none focus:border-[#F5C877]"
-          />
+        <div className="flex items-center gap-2.5">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-[#8E8E98] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchCallQuery}
+              onChange={(e) => setSearchCallQuery(e.target.value)}
+              placeholder="Numara veya müşteri ara..."
+              className="pl-8 pr-3 py-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-medium text-white placeholder:text-[#8E8E98] w-48 sm:w-56 focus:outline-none focus:border-[#F5C877]"
+            />
+          </div>
+
           <button
-            onClick={() => handleSimulateCall()}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
+            onClick={() => setManualCallModal(true)}
+            className="px-4 py-2 bg-[#F5C877] hover:bg-[#e4b764] text-slate-950 rounded-xl text-xs font-black shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
           >
             <PhoneIncoming className="w-4 h-4" />
-            <span>Çağrı Simüle Et</span>
+            <span>+ Çağrı Ekle</span>
           </button>
         </div>
       </div>
@@ -236,8 +238,8 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-[#F5C877]" />
             <div>
-              <h2 className="text-sm font-black text-white">Son Arayanlar Listesi (Gelen Çağrılar Geçmişi)</h2>
-              <p className="text-[11px] text-[#C4C4CC]">Sabit hattan gelen son aramalar. Tek tıkla doğrudan paket sipariş açabilirsiniz.</p>
+              <h2 className="text-sm font-black text-white">Gelen Çağrılar ve Son Arayanlar</h2>
+              <p className="text-[11px] text-[#C4C4CC]">Sabit hat Caller ID cihazından gelen çağrılar. Tek tıkla doğrudan boş paket masasına adisyon açabilirsiniz.</p>
             </div>
           </div>
           <span className="text-xs font-bold text-[#F5C877] bg-[#F5C877]/10 border border-[#F5C877]/20 px-3 py-1 rounded-xl">
@@ -246,12 +248,32 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
         </div>
 
         <div className="space-y-2.5">
-          {recentCalls.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#A0A0AA] bg-[#141416]/60 rounded-2xl">
-              Henüz çağrı kaydı bulunmuyor.
-            </div>
-          ) : (
-            recentCalls.map((call) => {
+          {(() => {
+            const filteredCalls = recentCalls.filter(c => {
+              const q = searchCallQuery.toLowerCase().trim();
+              if (!q) return true;
+              return (
+                (c.phone || '').includes(q) ||
+                (c.customerName || '').toLowerCase().includes(q) ||
+                (c.address || '').toLowerCase().includes(q)
+              );
+            });
+
+            if (filteredCalls.length === 0) {
+              return (
+                <div className="p-10 text-center text-xs text-[#A0A0AA] bg-[#141416]/60 rounded-2xl border border-dashed border-[#2C2C34] space-y-2">
+                  <div className="w-10 h-10 mx-auto rounded-full bg-[#282830] flex items-center justify-center text-[#8E8E98]">
+                    <PhoneIncoming className="w-5 h-5" />
+                  </div>
+                  <div className="font-bold text-white">Henüz Gelen Arama Bulunmuyor</div>
+                  <div className="text-[11px] text-[#8E8E98] max-w-md mx-auto">
+                    Sabit hat Caller ID cihazı dinlemede. Müşteri aradığında bilgileri anlık olarak burada listelenir veya &quot;+ Çağrı Ekle&quot; ile manuel arama kaydedebilirsiniz.
+                  </div>
+                </div>
+              );
+            }
+
+            return filteredCalls.map((call) => {
               const registered = customers.find(c => {
                 const cClean = (c.phone || '').replace(/\D/g, '');
                 const pClean = call.phone.replace(/\D/g, '');
@@ -280,7 +302,7 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
                         <span className={`px-2 py-0.5 rounded-md text-[9px] font-black ${
                           isReg ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-[#C4C4CC]'
                         }`}>
-                          {isReg ? 'Kayıtlı' : 'Kayıtsız'}
+                          {isReg ? 'Kayıtlı Müşteri' : 'Kayıtsız Numara'}
                         </span>
                       </div>
                       <div className="text-[11px] font-mono text-amber-300 font-bold mt-0.5">{call.phone}</div>
@@ -318,16 +340,16 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
                         phone: call.phone,
                         address: displayAddress || '',
                       })}
-                      className="px-4 py-2 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition-transform active:scale-95"
+                      className="px-4 py-2 bg-[#F5C877] hover:bg-[#e4b764] text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition-transform active:scale-95"
                     >
                       <ShoppingBag className="w-3.5 h-3.5 text-slate-950" />
-                      <span>Sipariş Ver →</span>
+                      <span>Sipariş Aç →</span>
                     </button>
                   </div>
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
       </div>
 
@@ -393,6 +415,77 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
                   className="px-5 py-2.5 bg-[#F5C877] hover:bg-[#F5C877] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer"
                 >
                   Rehbere Kaydet
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MANUEL ÇAĞRI EKLEME MODALI */}
+      {manualCallModal && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#141416] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <PhoneIncoming className="w-5 h-5 text-[#F5C877]" />
+                <span>Manuel Çağrı & Arayan Kaydı Ekle</span>
+              </h3>
+              <button onClick={() => setManualCallModal(false)} className="text-[#C4C4CC] hover:text-white cursor-pointer">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualCall} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-[#C4C4CC]">Arayan Telefon Numarası *</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={manualPhone}
+                  onChange={(e) => setManualPhone(e.target.value)}
+                  placeholder="0532 123 45 67"
+                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-bold text-amber-300 focus:outline-none focus:border-[#F5C877]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[#C4C4CC]">Müşteri Adı Soyadı (Opsiyonel)</label>
+                <input
+                  type="text"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="Örn: Ahmet Yılmaz"
+                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#F5C877]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[#C4C4CC]">Teslimat Adresi (Opsiyonel)</label>
+                <textarea
+                  value={manualAddress}
+                  onChange={(e) => setManualAddress(e.target.value)}
+                  placeholder="Örn: Değirmiçem Mah. Mithat Enç Cad. No: 12"
+                  className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs text-white focus:outline-none focus:border-[#F5C877]"
+                  rows={2}
+                />
+              </div>
+
+              <div className="pt-3 border-t border-[#2C2C34] flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManualCallModal(false)}
+                  className="px-4 py-2.5 bg-slate-800 text-[#E4E4E8] rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-[#F5C877] hover:bg-[#e4b764] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer flex items-center gap-1.5"
+                >
+                  <PhoneIncoming className="w-4 h-4" />
+                  <span>Çağrıyı Kaydet</span>
                 </button>
               </div>
             </form>

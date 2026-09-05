@@ -28,6 +28,7 @@ interface PrintersTabProps {
 }
 
 export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh }) => {
+  const categories = restaurantDataService.getCategories();
   const [isScanning, setIsScanning] = useState(false);
   const [scannedNetworkPrinters, setScannedNetworkPrinters] = useState<any[]>([]);
   const [scannedUsbPrinters, setScannedUsbPrinters] = useState<any[]>([]);
@@ -55,6 +56,9 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
     copies: 1,
     isBillPrinter: false,
     isKitchen: true,
+    printAllKitchen: false,
+    assignedCategoryIds: [],
+    assignedStations: ['OCAK'],
   });
 
   const handlePairWebUsbPrinter = async () => {
@@ -214,6 +218,9 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
       copies: 1,
       isBillPrinter: false,
       isKitchen: true,
+      printAllKitchen: false,
+      assignedCategoryIds: [],
+      assignedStations: ['OCAK'],
     });
     setModalOpen(true);
   };
@@ -235,8 +242,11 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
       beepOnPrint: pr.beepOnPrint ?? true,
       codePage: pr.codePage || 'CP857',
       copies: pr.copies || 1,
-      isBillPrinter: pr.isBillPrinter,
-      isKitchen: pr.isKitchen,
+      isBillPrinter: pr.isBillPrinter ?? false,
+      isKitchen: pr.isKitchen ?? true,
+      printAllKitchen: pr.printAllKitchen ?? false,
+      assignedCategoryIds: pr.assignedCategoryIds || [],
+      assignedStations: pr.assignedStations || (pr.isKitchen ? ['OCAK'] : []),
     });
     setModalOpen(true);
   };
@@ -264,6 +274,19 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
       onConfirm: () => {
         restaurantDataService.deletePrinter(id);
         notify.success('Yazıcı Silindi', `[${name}] sistemden kaldırıldı.`);
+        onRefresh();
+      }
+    });
+  };
+
+  const handleClearAllPrinters = () => {
+    notify.confirm({
+      title: 'Tüm Yazıcıları Sil',
+      message: 'Kayıtlı tüm yazıcıları sistemden kaldırmak istediğinize emin misiniz? Hiçbir yazıcı kalmayacaktır.',
+      type: 'danger',
+      onConfirm: () => {
+        restaurantDataService.savePrinters([]);
+        notify.success('Yazıcılar Temizlendi', 'Tüm yazıcı kayıtları silindi.');
         onRefresh();
       }
     });
@@ -348,6 +371,18 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
               <Plus className="w-4 h-4 text-[#F5C877]" />
               <span>+ Manuel Ekle</span>
             </button>
+
+            {printers.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllPrinters}
+                className="px-3 py-2.5 bg-rose-950/40 hover:bg-rose-950 text-rose-300 border border-rose-800/50 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Tüm yazıcıları sil"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Tümünü Temizle</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -627,102 +662,157 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
       )}
 
       {/* MEVCUT KAYITLI YAZICILAR LİSTESİ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {printers.map((pr) => {
-          const isNetwork = pr.type === 'NETWORK';
-          const isUsb = pr.type === 'USB';
-          return (
-            <div key={pr.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-4 hover:border-[#3E3E4A] transition-all">
-              <div>
-                {/* Üst İkon & Durum Rozeti */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
-                      pr.isKitchen 
-                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
-                        : 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
-                    }`}>
-                      {pr.isKitchen ? <Flame className="w-5 h-5" /> : <Printer className="w-5 h-5" />}
+      {printers.length === 0 ? (
+        <div className="bg-[#1C1C20] border border-dashed border-[#2C2C34] rounded-3xl p-10 text-center max-w-xl mx-auto space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#141416] border border-[#2C2C34] flex items-center justify-center mx-auto text-[#8E8E98]">
+            <Printer className="w-7 h-7 text-[#8E8E98]" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-white">Tanımlı veya Bağlı Yazıcı Bulunmuyor</h3>
+            <p className="text-xs text-[#8E8E98] mt-1 leading-relaxed">
+              Tüm demo yazıcılar temizlendi. İşletmenizin fiziksel yazıcısını bağlamak için yukarıdaki &quot;+ Manuel Ekle&quot; veya &quot;🔍 USB ve Ağ Yazıcılarını Tara&quot; butonunu kullanabilirsiniz.
+            </p>
+          </div>
+          <div className="pt-2 flex items-center justify-center gap-3">
+            <button
+              onClick={openNewPrinterModal}
+              className="px-4 py-2.5 bg-[#F5C877] hover:bg-[#e4b764] text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Yeni Yazıcı Ekle</span>
+            </button>
+            <button
+              onClick={handleFullHardwareScan}
+              disabled={isScanning}
+              className="px-4 py-2.5 bg-[#25252A] hover:bg-[#2F2F36] text-white font-bold text-xs rounded-xl border border-[#383844] transition-all cursor-pointer flex items-center gap-2"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+              <span>Otomatik Tara</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {printers.map((pr) => {
+            const isNetwork = pr.type === 'NETWORK';
+            const isUsb = pr.type === 'USB';
+            return (
+              <div key={pr.id} className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col justify-between space-y-4 hover:border-[#3E3E4A] transition-all">
+                <div>
+                  {/* Üst İkon & Durum Rozeti */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                        pr.isKitchen 
+                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
+                          : 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+                      }`}>
+                        {pr.isKitchen ? <Flame className="w-5 h-5" /> : <Printer className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          Çevrimiçi
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Çevrimiçi
+
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => openEditPrinterModal(pr)} 
+                        className="p-1.5 text-[#C4C4CC] hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
+                        title="Düzenle"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeletePrinter(pr.id, pr.name)} 
+                        className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer transition-colors"
+                        title="Sil"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <h3 className="font-black text-sm text-white tracking-tight">{pr.name}</h3>
+                  <p className="text-xs text-[#C4C4CC] mt-0.5">{pr.role}</p>
+
+                  {/* Yazıcı Görev & Yönlendirme Rozetleri */}
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {pr.isBillPrinter && (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                        🧾 Kasa & Hesap
+                      </span>
+                    )}
+                    {pr.printAllKitchen && (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        🍳 Tüm Mutfak
+                      </span>
+                    )}
+                    {!pr.printAllKitchen && pr.assignedStations?.map(st => (
+                      <span key={st} className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        {st === 'OCAK' ? '🔥 Ocak/Izgara' : st === 'FIRIN' ? '🥖 Fırın/Pide' : st === 'BAR' ? '🍹 Bar' : '🥗 Mutfak'}
+                      </span>
+                    ))}
+                    {!pr.printAllKitchen && pr.assignedCategoryIds && pr.assignedCategoryIds.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        📂 {pr.assignedCategoryIds.length} Kategori
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Donanım Özellik Kutusu */}
+                  <div className="mt-4 p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-2 text-xs">
+                    <div className="flex justify-between text-[#C4C4CC]">
+                      <span className="flex items-center gap-1">
+                        {isNetwork ? <Wifi className="w-3 h-3 text-[#F5C877]" /> : <Usb className="w-3 h-3 text-sky-400" />}
+                        Bağlantı Türü:
+                      </span>
+                      <strong className="text-white font-mono">{pr.type}</strong>
+                    </div>
+
+                    <div className="flex justify-between text-[#C4C4CC]">
+                      <span>Port / Adres:</span>
+                      <strong className="font-mono text-amber-300">
+                        {isNetwork ? `${pr.ipAddress}:${pr.port || 9100}` : isUsb ? pr.usbName || 'USB' : pr.serialPort || 'COM1'}
+                      </strong>
+                    </div>
+
+                    <div className="flex justify-between text-[#C4C4CC] pt-1 border-t border-[#2C2C34]/80">
+                      <span>Kağıt Genişliği:</span>
+                      <strong className="text-white">{pr.paperWidth || 80} mm</strong>
+                    </div>
+
+                    <div className="flex justify-between text-[#C4C4CC]">
+                      <span>Otomatik Kesici:</span>
+                      <span className={`font-bold ${pr.autoCut ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        {pr.autoCut ? '✓ Aktif' : '✗ Kapalı'}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-[#C4C4CC]">
+                      <span>Zil / Bip Alarmı:</span>
+                      <span className={`font-bold ${pr.beepOnPrint ? 'text-amber-300' : 'text-slate-500'}`}>
+                        {pr.beepOnPrint ? '✓ Bip Sesi Açık' : '✗ Sessiz'}
                       </span>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => openEditPrinterModal(pr)} 
-                      className="p-1.5 text-[#C4C4CC] hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
-                      title="Düzenle"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleDeletePrinter(pr.id, pr.name)} 
-                      className="p-1.5 text-rose-400 hover:bg-rose-950/60 rounded-lg cursor-pointer transition-colors"
-                      title="Sil"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
                 </div>
 
-                <h3 className="font-black text-sm text-white tracking-tight">{pr.name}</h3>
-                <p className="text-xs text-[#C4C4CC] mt-0.5">{pr.role}</p>
-
-                {/* Donanım Özellik Kutusu */}
-                <div className="mt-4 p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-2 text-xs">
-                  <div className="flex justify-between text-[#C4C4CC]">
-                    <span className="flex items-center gap-1">
-                      {isNetwork ? <Wifi className="w-3 h-3 text-[#F5C877]" /> : <Usb className="w-3 h-3 text-sky-400" />}
-                      Bağlantı Türü:
-                    </span>
-                    <strong className="text-white font-mono">{pr.type}</strong>
-                  </div>
-
-                  <div className="flex justify-between text-[#C4C4CC]">
-                    <span>Port / Adres:</span>
-                    <strong className="font-mono text-amber-300">
-                      {isNetwork ? `${pr.ipAddress}:${pr.port || 9100}` : isUsb ? pr.usbName || 'USB' : pr.serialPort || 'COM1'}
-                    </strong>
-                  </div>
-
-                  <div className="flex justify-between text-[#C4C4CC] pt-1 border-t border-[#2C2C34]/80">
-                    <span>Kağıt Genişliği:</span>
-                    <strong className="text-white">{pr.paperWidth || 80} mm</strong>
-                  </div>
-
-                  <div className="flex justify-between text-[#C4C4CC]">
-                    <span>Otomatik Kesici:</span>
-                    <span className={`font-bold ${pr.autoCut ? 'text-emerald-400' : 'text-slate-500'}`}>
-                      {pr.autoCut ? '✓ Aktif' : '✗ Kapalı'}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between text-[#C4C4CC]">
-                    <span>Zil / Bip Alarmı:</span>
-                    <span className={`font-bold ${pr.beepOnPrint ? 'text-amber-300' : 'text-slate-500'}`}>
-                      {pr.beepOnPrint ? '✓ Bip Sesi Açık' : '✗ Sessiz'}
-                    </span>
-                  </div>
-                </div>
+                {/* Alt Test Butonu */}
+                <button
+                  onClick={() => handleTestPrint(pr)}
+                  className="w-full py-2.5 bg-[#141416] hover:bg-slate-800 border border-[#383844] text-white text-xs font-black rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:border-[#F5C877]"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#F5C877]" />
+                  <span>Test Fişi Bas & Zil Çal</span>
+                </button>
               </div>
-
-              {/* Alt Test Butonu */}
-              <button
-                onClick={() => handleTestPrint(pr)}
-                className="w-full py-2.5 bg-[#141416] hover:bg-slate-800 border border-[#383844] text-white text-xs font-black rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:border-[#F5C877]"
-              >
-                <Printer className="w-3.5 h-3.5 text-[#F5C877]" />
-                <span>Test Fişi Bas & Zil Çal</span>
-              </button>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* YAZICI EKLEME / DÜZENLEME MODALI */}
       {modalOpen && (
@@ -885,6 +975,148 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
                 </div>
               </div>
 
+              {/* HANGİ YAZICIDAN NE ÇIKACAK? (YÖNLENDİRME AYARLARI) */}
+              <div className="p-3.5 bg-[#1C1C20] rounded-2xl border border-[#383844] space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-[#2C2C34]">
+                  <span className="text-xs font-black text-[#F5C877] flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5" />
+                    Bu Yazıcıdan Hangi Fişler Basılacak?
+                  </span>
+                </div>
+
+                {/* Kasa & Hesap Kapatma Fişi */}
+                <label className="flex items-start justify-between gap-3 p-2.5 rounded-xl bg-[#141416] border border-[#2C2C34] hover:border-[#3E3E4A] cursor-pointer transition-all">
+                  <div>
+                    <span className="text-xs font-bold text-white block">🧾 Hesap & Kasa Adisyon Fişi</span>
+                    <span className="text-[11px] text-[#A0A0AA] leading-snug">
+                      Masa hesap isteme ve kasa ödeme kapatma fişlerini bu yazıcıdan bas.
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={form.isBillPrinter}
+                    onChange={(e) => setForm({ ...form, isBillPrinter: e.target.checked })}
+                    className="w-4 h-4 mt-0.5 accent-[#F5C877]"
+                  />
+                </label>
+
+                {/* Mutfak Sipariş Fişleri */}
+                <label className="flex items-start justify-between gap-3 p-2.5 rounded-xl bg-[#141416] border border-[#2C2C34] hover:border-[#3E3E4A] cursor-pointer transition-all">
+                  <div>
+                    <span className="text-xs font-bold text-white block">🍳 Mutfak Sipariş Fişi</span>
+                    <span className="text-[11px] text-[#A0A0AA] leading-snug">
+                      Garson veya kasadan girilen yemek/içecek sipariş fişlerini bu yazıcıdan bas.
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={form.isKitchen}
+                    onChange={(e) => setForm({ ...form, isKitchen: e.target.checked })}
+                    className="w-4 h-4 mt-0.5 accent-[#F5C877]"
+                  />
+                </label>
+
+                {/* Mutfak Seçenekleri Detayı */}
+                {form.isKitchen && (
+                  <div className="pl-3.5 border-l-2 border-[#F5C877]/50 space-y-3 pt-1">
+                    {/* Tek Mutfak Modu */}
+                    <label className="flex items-center justify-between p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer text-xs font-bold text-amber-300">
+                      <span>Tüm Mutfak Siparişleri Bu Yazıcıdan Çıksın (Tek Yazıcı)</span>
+                      <input
+                        type="checkbox"
+                        checked={form.printAllKitchen}
+                        onChange={(e) => setForm({ ...form, printAllKitchen: e.target.checked })}
+                        className="w-4 h-4 accent-[#F5C877]"
+                      />
+                    </label>
+
+                    {!form.printAllKitchen && (
+                      <div className="space-y-2.5 pt-1">
+                        <div>
+                          <span className="text-[11px] font-bold text-[#E4E4E8] block mb-1.5">
+                            Hedef İstasyonlar (Ürünlerin Pişme/Hazırlanma Alanı):
+                          </span>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { key: 'OCAK', label: '🔥 Ocak / Kebap & Izgara', desc: 'Kebap, Köfte, Tavuk vb.' },
+                              { key: 'FIRIN', label: '🥖 Fırın / Lahmacun & Pide', desc: 'Lahmacun, Pide, Güveç vb.' },
+                              { key: 'MUTFAK', label: '🥗 Mutfak / Meze & Salata', desc: 'Salata, Meze, Çorba vb.' },
+                              { key: 'BAR', label: '🍹 Bar / İçecek & Tatlı', desc: 'Kola, Ayran, Künefe vb.' },
+                            ].map(st => {
+                              const isChecked = (form.assignedStations || []).includes(st.key as any);
+                              return (
+                                <label
+                                  key={st.key}
+                                  className={`flex items-start gap-2 p-2 rounded-xl border cursor-pointer transition-all ${
+                                    isChecked
+                                      ? 'bg-amber-500/15 border-amber-500/40 text-white'
+                                      : 'bg-[#141416] border-[#2C2C34] text-[#C4C4CC] hover:bg-slate-800'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      const current = form.assignedStations || [];
+                                      const next = e.target.checked
+                                        ? [...current, st.key as any]
+                                        : current.filter(k => k !== st.key);
+                                      setForm({ ...form, assignedStations: next });
+                                    }}
+                                    className="w-3.5 h-3.5 mt-0.5 accent-[#F5C877]"
+                                  />
+                                  <div>
+                                    <span className="text-xs font-bold block">{st.label}</span>
+                                    <span className="text-[10px] text-[#A0A0AA]">{st.desc}</span>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {categories.length > 0 && (
+                          <div className="pt-2 border-t border-[#2C2C34]">
+                            <span className="text-[11px] font-bold text-[#E4E4E8] block mb-1">
+                              Veya Doğrudan Menü Kategorileri Seçin:
+                            </span>
+                            <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                              {categories.map(c => {
+                                const isCatChecked = (form.assignedCategoryIds || []).includes(c.id);
+                                return (
+                                  <label
+                                    key={c.id}
+                                    className={`flex items-center gap-1.5 p-2 rounded-lg border text-[11px] font-bold cursor-pointer transition-all ${
+                                      isCatChecked
+                                        ? 'bg-[#F5C877]/15 border-[#F5C877]/40 text-[#F5C877]'
+                                        : 'bg-[#141416] border-[#2C2C34] text-slate-300 hover:bg-slate-800'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isCatChecked}
+                                      onChange={(e) => {
+                                        const current = form.assignedCategoryIds || [];
+                                        const next = e.target.checked
+                                          ? [...current, c.id]
+                                          : current.filter(id => id !== c.id);
+                                        setForm({ ...form, assignedCategoryIds: next });
+                                      }}
+                                      className="w-3.5 h-3.5 accent-[#F5C877]"
+                                    />
+                                    <span className="truncate">{c.name}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Toggle Switches */}
               <div className="p-3 bg-[#1C1C20] rounded-2xl border border-[#2C2C34] space-y-2.5">
                 <label className="flex items-center justify-between cursor-pointer">
@@ -903,16 +1135,6 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
                     type="checkbox"
                     checked={form.beepOnPrint}
                     onChange={(e) => setForm({ ...form, beepOnPrint: e.target.checked })}
-                    className="w-4 h-4 accent-[#F5C877]"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between cursor-pointer">
-                  <span className="text-xs font-bold text-white">Mutfak Hazırlık İstasyonu Olarak Kullan</span>
-                  <input
-                    type="checkbox"
-                    checked={form.isKitchen}
-                    onChange={(e) => setForm({ ...form, isKitchen: e.target.checked })}
                     className="w-4 h-4 accent-[#F5C877]"
                   />
                 </label>

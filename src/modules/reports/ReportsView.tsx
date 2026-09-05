@@ -82,6 +82,9 @@ export const ReportsView: React.FC = () => {
   // Z Arşivi Arama
   const [zSearchQuery, setZSearchQuery] = useState<string>('');
 
+  // Adisyon Denetim Filtresi (Tümü / Ödenenler / İptal Edilenler)
+  const [auditStatusFilter, setAuditStatusFilter] = useState<'ALL' | 'PAID' | 'CANCELLED'>('ALL');
+
   // Filtrelenmiş Rapor Verisi
   const [filteredReportData, setFilteredReportData] = useState<DetailedReportResult>(() => {
     try {
@@ -279,6 +282,24 @@ export const ReportsView: React.FC = () => {
     );
   }, [zHistory, zSearchQuery]);
 
+  // Adisyon Denetimi Listesi (Ödenenler ve İptal Edilenler)
+  const displayAuditOrders = useMemo(() => {
+    const allOrders: CompletedOrderArchive[] = [...(filteredReportData.orders || [])];
+    const existingIds = new Set(allOrders.map(o => o.id));
+    (filteredReportData.cancelledOrders || []).forEach(co => {
+      if (!existingIds.has(co.id)) {
+        allOrders.push(co);
+      }
+    });
+
+    return allOrders.filter(ord => {
+      const isCancelled = ord.status === 'CANCELLED';
+      if (auditStatusFilter === 'PAID') return !isCancelled;
+      if (auditStatusFilter === 'CANCELLED') return isCancelled;
+      return true;
+    });
+  }, [filteredReportData, auditStatusFilter]);
+
   // Termal Fiş Önizleme Aç
   const handleOpenXReceiptModal = () => {
     setThermalModalData({
@@ -443,9 +464,39 @@ export const ReportsView: React.FC = () => {
       ]);
     });
 
-    // 4. Sayfa: İptal Kayıtları
+    // 4. Sayfa: İptal Edilen Adisyonlar
+    if ((filteredReportData.cancelledOrders || []).length > 0) {
+      const cancelledOrdersSheet = workbook.addWorksheet('İptal Edilen Adisyonlar');
+      cancelledOrdersSheet.columns = [
+        { header: 'Adisyon No', key: 'no', width: 15 },
+        { header: 'İptal Tarihi & Saati', key: 'time', width: 20 },
+        { header: 'Masa', key: 'tbl', width: 15 },
+        { header: 'Bölge', key: 'sec', width: 18 },
+        { header: 'Garson / Kasiyer', key: 'waiter', width: 20 },
+        { header: 'İptal Eden Yetkili', key: 'by', width: 20 },
+        { header: 'İptal Nedeni', key: 'reason', width: 25 },
+        { header: 'Kalem Sayısı', key: 'itemCount', width: 15 },
+        { header: 'İptal Edilen Tutar (TL)', key: 'tot', width: 20 },
+      ];
+
+      (filteredReportData.cancelledOrders || []).forEach(ord => {
+        cancelledOrdersSheet.addRow([
+          `#${ord.orderNumber}`,
+          ord.cancelledAt || ord.closedTime || '-',
+          ord.tableName,
+          ord.sectionName,
+          ord.waiterName || 'Kasiyer',
+          ord.cancelledBy || 'Yetkili',
+          ord.cancelReason || 'Masa İptali',
+          (ord.items || []).length,
+          ord.totalAmount
+        ]);
+      });
+    }
+
+    // 5. Sayfa: İptal ve Zayi Kayıtları (Tekil Ürünler)
     if ((filteredReportData.cancelLogs || []).length > 0) {
-      const cancelSheet = workbook.addWorksheet('İptal ve Zayi Kayıtları');
+      const cancelSheet = workbook.addWorksheet('İptal ve Zayi Kalemleri');
       cancelSheet.columns = [
         { header: 'Zaman', key: 'time', width: 20 },
         { header: 'Masa', key: 'tbl', width: 15 },
@@ -1354,12 +1405,46 @@ export const ReportsView: React.FC = () => {
             {/* ALT SEKME 5: ADİSYON DENETİM LİSTESİ */}
             {analysisSubTab === 'order_audit' && (
               <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] shadow-xl overflow-hidden">
-                <div className="p-4 border-b border-[#2C2C34] flex items-center justify-between">
+                <div className="p-4 border-b border-[#2C2C34] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h3 className="text-xs font-black text-white uppercase tracking-wider">
-                      Filtrelenen Dönem Adisyon Denetim Kayıtları
+                      Filtrelenen Dönem Adisyon Denetim Kayıtları ({displayAuditOrders.length})
                     </h3>
-                    <p className="text-[11px] text-[#8E8E98]">Herhangi bir adisyona tıklayarak masa fiş detayını inceleyebilirsiniz.</p>
+                    <p className="text-[11px] text-[#8E8E98]">Kapatılan tüm hesapları ve iptal edilen adisyonları inceleyebilirsiniz.</p>
+                  </div>
+
+                  {/* Durum Filtresi: Tümü / Ödenenler / İptal Edilenler */}
+                  <div className="flex items-center gap-1.5 bg-[#141416] p-1 rounded-xl border border-[#2C2C34] self-start sm:self-auto">
+                    <button
+                      onClick={() => setAuditStatusFilter('ALL')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        auditStatusFilter === 'ALL'
+                          ? 'bg-[#282830] text-white shadow'
+                          : 'text-[#8E8E98] hover:text-white'
+                      }`}
+                    >
+                      Tümü ({(filteredReportData.orders || []).length + (filteredReportData.cancelledOrders || []).length})
+                    </button>
+                    <button
+                      onClick={() => setAuditStatusFilter('PAID')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        auditStatusFilter === 'PAID'
+                          ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 shadow'
+                          : 'text-[#8E8E98] hover:text-white'
+                      }`}
+                    >
+                      Kapatılanlar ({(filteredReportData.orders || []).filter(o => o.status !== 'CANCELLED').length})
+                    </button>
+                    <button
+                      onClick={() => setAuditStatusFilter('CANCELLED')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        auditStatusFilter === 'CANCELLED'
+                          ? 'bg-rose-950/70 border border-rose-500/40 text-rose-300 shadow'
+                          : 'text-[#8E8E98] hover:text-white'
+                      }`}
+                    >
+                      İptal Edilenler ({(filteredReportData.cancelledOrders || []).length})
+                    </button>
                   </div>
                 </div>
 
@@ -1367,38 +1452,82 @@ export const ReportsView: React.FC = () => {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-[#141416] text-[#8E8E98] font-bold border-b border-[#2C2C34]">
                       <tr>
+                        <th className="p-3.5">Durum</th>
                         <th className="p-3.5">Adisyon No</th>
-                        <th className="p-3.5">Kapanış Saati</th>
+                        <th className="p-3.5">Zaman</th>
                         <th className="p-3.5">Masa / Bölge</th>
-                        <th className="p-3.5">Garson</th>
-                        <th className="p-3.5">Ödeme Şekli</th>
+                        <th className="p-3.5">Garson / Kasiyer</th>
+                        <th className="p-3.5">Ödeme / İptal Nedeni</th>
                         <th className="p-3.5 text-right">Tutar</th>
                         <th className="p-3.5 text-center">İncele</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#2C2C34]">
-                      {(filteredReportData.orders || []).length === 0 ? (
+                      {displayAuditOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="p-8 text-center text-xs text-[#8E8E98]">
-                            Seçilen filtrelere uygun kapatılmış adisyon bulunamadı.
+                          <td colSpan={8} className="p-8 text-center text-xs text-[#8E8E98]">
+                            Seçilen filtrelere uygun adisyon kaydı bulunamadı.
                           </td>
                         </tr>
                       ) : (
-                        (filteredReportData.orders || []).map(ord => {
+                        displayAuditOrders.map(ord => {
+                          const isCancelled = ord.status === 'CANCELLED';
                           const payStr = (ord.payments || []).map(p => p.type).join(', ') || 'Nakit';
+
                           return (
-                            <tr key={ord.id} className="hover:bg-[#141416]/50 transition-colors">
+                            <tr
+                              key={ord.id}
+                              className={`transition-colors ${
+                                isCancelled
+                                  ? 'bg-rose-950/15 hover:bg-rose-950/30 border-l-2 border-rose-500'
+                                  : 'hover:bg-[#141416]/50'
+                              }`}
+                            >
+                              <td className="p-3.5">
+                                {isCancelled ? (
+                                  <span className="px-2 py-0.5 bg-rose-950 border border-rose-500/50 text-rose-400 rounded-md font-black text-[9px] uppercase tracking-wider">
+                                    İPTAL EDİLDİ
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-emerald-950 border border-emerald-500/50 text-emerald-400 rounded-md font-black text-[9px] uppercase tracking-wider">
+                                    KAPATILDI
+                                  </span>
+                                )}
+                              </td>
                               <td className="p-3.5 font-mono font-bold text-[#F5C877]">#{ord.orderNumber}</td>
-                              <td className="p-3.5 text-slate-300 font-mono">{ord.closedTime || ord.orderTime || '-'}</td>
-                              <td className="p-3.5 font-bold text-white">{ord.tableName} <span className="text-[#8E8E98] font-normal">({ord.sectionName})</span></td>
+                              <td className="p-3.5 text-slate-300 font-mono">
+                                {ord.cancelledAt ? (ord.cancelledAt.replace('T', ' ').substring(11, 16)) : (ord.closedTime || ord.orderTime || '-')}
+                              </td>
+                              <td className="p-3.5 font-bold text-white">
+                                {ord.tableName} <span className="text-[#8E8E98] font-normal">({ord.sectionName})</span>
+                              </td>
                               <td className="p-3.5 text-slate-300">{ord.waiterName || 'Kasiyer'}</td>
                               <td className="p-3.5">
-                                <span className="px-2 py-0.5 bg-slate-800 text-slate-200 rounded font-bold text-[10px]">
-                                  {payStr}
-                                </span>
+                                {isCancelled ? (
+                                  <div>
+                                    <span className="text-rose-300 font-bold text-[11px] block">
+                                      {ord.cancelReason || 'Masa İptal Edildi'}
+                                    </span>
+                                    <span className="text-[10px] text-[#8E8E98]">
+                                      Yetkili: {ord.cancelledBy || 'Kasiyer'}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-slate-800 text-slate-200 rounded font-bold text-[10px]">
+                                    {payStr}
+                                  </span>
+                                )}
                               </td>
-                              <td className="p-3.5 text-right font-mono font-black text-white text-sm">
-                                {formatMoney(ord.totalAmount)}
+                              <td className="p-3.5 text-right font-mono font-black text-sm">
+                                {isCancelled ? (
+                                  <span className="text-rose-400 line-through">
+                                    {formatMoney(ord.totalAmount)}
+                                  </span>
+                                ) : (
+                                  <span className="text-white">
+                                    {formatMoney(ord.totalAmount)}
+                                  </span>
+                                )}
                               </td>
                               <td className="p-3.5 text-center">
                                 <button
@@ -1422,15 +1551,91 @@ export const ReportsView: React.FC = () => {
             {/* ALT SEKME 6: İPTAL VE İKRAM DENETİMİ (KAÇAK & ZAYİ ÖNLEME) */}
             {analysisSubTab === 'loss_prevention' && (
               <div className="space-y-6">
+
+                {/* 1. İPTAL EDİLEN TÜM ADİSYONLAR & MASALAR */}
+                <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] shadow-xl overflow-hidden">
+                  <div className="p-4 border-b border-[#2C2C34] flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-400" />
+                        <span>İptal Edilen Tüm Adisyonlar ve Masalar ({(filteredReportData.cancelledOrders || []).length})</span>
+                      </h3>
+                      <p className="text-[11px] text-[#8E8E98]">
+                        Masada sipariş varken kapatılmayıp yetkili şifresiyle iptal edilen tüm adisyonların ve masaların tam denetim listesi.
+                      </p>
+                    </div>
+
+                    <span className="font-mono text-xs font-black text-rose-400 bg-rose-950/50 border border-rose-500/30 px-3 py-1 rounded-xl">
+                      Toplam İptal: {formatMoney(
+                        (filteredReportData.cancelledOrders || []).reduce((s, o) => s + (Number(o.totalAmount) || 0), 0)
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#141416] text-[#8E8E98] font-bold border-b border-[#2C2C34]">
+                        <tr>
+                          <th className="p-3.5">İptal Zamanı</th>
+                          <th className="p-3.5">Adisyon No</th>
+                          <th className="p-3.5">Masa / Bölge</th>
+                          <th className="p-3.5">İptal Nedeni</th>
+                          <th className="p-3.5">İptal Eden</th>
+                          <th className="p-3.5 text-center">Kalem</th>
+                          <th className="p-3.5 text-right">İptal Tutarı</th>
+                          <th className="p-3.5 text-center">İncele</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#2C2C34]">
+                        {(filteredReportData.cancelledOrders || []).length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-8 text-center text-xs text-emerald-400">
+                              Dönem içerisinde iptal edilmiş herhangi bir masa veya adisyon bulunmuyor.
+                            </td>
+                          </tr>
+                        ) : (
+                          (filteredReportData.cancelledOrders || []).map(ord => (
+                            <tr key={ord.id} className="hover:bg-rose-950/20 transition-colors">
+                              <td className="p-3.5 font-mono text-slate-300">
+                                {ord.cancelledAt ? ord.cancelledAt.replace('T', ' ').substring(0, 16) : (ord.closedTime || '-')}
+                              </td>
+                              <td className="p-3.5 font-mono font-bold text-[#F5C877]">#{ord.orderNumber}</td>
+                              <td className="p-3.5 font-bold text-white">
+                                {ord.tableName} <span className="text-[#8E8E98] font-normal">({ord.sectionName})</span>
+                              </td>
+                              <td className="p-3.5 text-rose-300 font-bold">{ord.cancelReason || 'Masa İptali'}</td>
+                              <td className="p-3.5 text-[#F5C877] font-bold">{ord.cancelledBy || 'Yetkili'}</td>
+                              <td className="p-3.5 text-center font-mono font-bold text-slate-300">
+                                {(ord.items || []).length} Kalem
+                              </td>
+                              <td className="p-3.5 text-right font-mono font-black text-rose-400 text-sm">
+                                {formatMoney(ord.totalAmount)}
+                              </td>
+                              <td className="p-3.5 text-center">
+                                <button
+                                  onClick={() => setSelectedAuditOrder(ord)}
+                                  className="p-1.5 bg-[#282830] hover:bg-[#343440] text-cyan-400 rounded-lg transition-colors cursor-pointer"
+                                  title="İptal Edilen Kalemleri Gör"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
                 
-                {/* İptal Kayıtları Tablosu */}
+                {/* 2. İptal Edilen Tekil Ürün Kayıtları Tablosu */}
                 <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] shadow-xl overflow-hidden">
                   <div className="p-4 border-b border-[#2C2C34]">
                     <h3 className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4" />
-                      <span>Masalardan İptal Edilen Ürün ve Zayi Kayıtları ({(filteredReportData.cancelLogs || []).length})</span>
+                      <span>Masalardan Silinen / İptal Edilen Tekil Ürünler ({(filteredReportData.cancelLogs || []).length})</span>
                     </h3>
-                    <p className="text-[11px] text-[#8E8E98]">Siparişten silinen veya iptal edilen ürünlerin denetim kaydı.</p>
+                    <p className="text-[11px] text-[#8E8E98]">Siparişten tek tek silinen veya iptal edilen ürünlerin zayi denetim kaydı.</p>
                   </div>
 
                   <div className="overflow-x-auto">

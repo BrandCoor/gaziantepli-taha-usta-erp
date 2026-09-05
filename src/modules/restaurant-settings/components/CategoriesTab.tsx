@@ -35,7 +35,7 @@ export const CategoriesTab: React.FC<CategoriesTabProps> = ({
   const [form, setForm] = useState({
     name: '',
     color: '#ef4444',
-    printerId: 'pr-ocak',
+    printerId: '',
   });
 
   const openNewCategoryModal = () => {

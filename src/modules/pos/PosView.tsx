@@ -176,7 +176,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
               ...i,
               price: Number(i.price) || 0,
               quantity: Number(i.quantity) || 1,
-              targetPrinter: i.targetPrinter || 'pr-ocak',
+              targetPrinter: i.targetPrinter || '',
               note: i.note || '',
               addedBy: i.addedBy || 'Garson',
               addedAt: i.addedAt || '12:00',
@@ -209,7 +209,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
         ...i,
         price: Number(i.price) || 0,
         quantity: Number(i.quantity) || 1,
-        targetPrinter: i.targetPrinter || 'pr-ocak',
+        targetPrinter: i.targetPrinter || '',
         note: i.note || '',
         addedBy: i.addedBy || 'Garson',
         addedAt: i.addedAt || '12:00',
@@ -241,7 +241,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
           categoryName: cat?.name || 'Diğer',
           price: Number(prod.price) || 0,
           quantity: 1,
-          targetPrinter: prod.printerId || cat?.printerId || 'pr-ocak',
+          targetPrinter: prod.printerId || cat?.printerId || '',
           status: 'PENDING',
           note: '',
           addedBy: 'Kasa (Taha Usta)',
@@ -392,6 +392,9 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       return notify.warning('Yeni Ürün Yok', 'Masada mutfağa gönderilecek yeni bir ilave ürün bulunmuyor!');
     }
 
+    const alreadySentItems = orderItems.filter(i => i.status !== 'PENDING');
+    const isAdditionalOrder = alreadySentItems.length > 0;
+
     const updatedItems: OrderItemState[] = orderItems.map(i => ({ ...i, status: 'SENT_TO_KITCHEN' }));
     restaurantDataService.updateTableOrder(selectedTable.id, updatedItems, 'Taha Usta', selectedTable.customerInfo, generalOrderNote);
 
@@ -400,7 +403,8 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       selectedTable,
       pendingItems,
       'Taha Usta',
-      generalOrderNote
+      generalOrderNote,
+      isAdditionalOrder
     );
 
     if (selectedTable.customerInfo) {

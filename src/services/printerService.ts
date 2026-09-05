@@ -24,6 +24,7 @@ export interface KitchenTicketData {
   orderTime: string;
   orderNumber?: number | string;
   orderNote?: string;
+  isAdditionalOrder?: boolean;
   customerInfo?: {
     name: string;
     phone: string;
@@ -79,11 +80,37 @@ export interface CancelTicketData {
 export function determineStationForProduct(
   productName: string,
   categoryName?: string
-): { stationKey: 'OCAK' | 'FIRIN' | 'MUTFAK'; stationTitle: string; chefTitle: string } {
+): { stationKey: 'OCAK' | 'FIRIN' | 'MUTFAK' | 'BAR'; stationTitle: string; chefTitle: string } {
   const pLower = (productName || '').toLowerCase();
   const cLower = (categoryName || '').toLowerCase();
 
-  // 1. FIRIN / PİDE & LAHMACUN (Taş fırında pişecekler)
+  // 1. BAR / İÇECEK & MEŞRUBAT
+  if (
+    cLower.includes('içecek') ||
+    cLower.includes('icecek') ||
+    cLower.includes('meşrubat') ||
+    cLower.includes('mesrubat') ||
+    cLower.includes('bar') ||
+    pLower.includes('ayran') ||
+    pLower.includes('kola') ||
+    pLower.includes('cola') ||
+    pLower.includes('fanta') ||
+    pLower.includes('gazoz') ||
+    pLower.includes('şalgam') ||
+    pLower.includes('salgam') ||
+    pLower.includes('çay') ||
+    pLower.includes('cay') ||
+    pLower.includes('kahve') ||
+    pLower.includes('limonata')
+  ) {
+    return {
+      stationKey: 'BAR',
+      stationTitle: 'BAR / İÇECEK SİPARİŞİ',
+      chefTitle: 'BAR & SERVİS',
+    };
+  }
+
+  // 2. FIRIN / PİDE & LAHMACUN (Taş fırında pişecekler)
   if (
     cLower.includes('fırın') ||
     cLower.includes('firin') ||
@@ -107,7 +134,7 @@ export function determineStationForProduct(
     };
   }
 
-  // 2. OCAK / KEBAP & IZGARA (Kebap ocağı ve ızgarada pişecekler)
+  // 3. OCAK / KEBAP & IZGARA (Kebap ocağı ve ızgarada pişecekler)
   if (
     cLower.includes('kebap') ||
     cLower.includes('ızgara') ||
@@ -139,10 +166,10 @@ export function determineStationForProduct(
     };
   }
 
-  // 3. MUTFAK / MEZE & İÇECEK (Soğuk mezeler, çorbalar, salata ve içecekler)
+  // 4. MUTFAK / MEZE & ÇORBA & SALATA
   return {
     stationKey: 'MUTFAK',
-    stationTitle: 'MUTFAK / MEZE & İÇECEK SİPARİŞİ',
+    stationTitle: 'MUTFAK / MEZE & SALATA SİPARİŞİ',
     chefTitle: 'MUTFAK USTASI',
   };
 }
@@ -182,6 +209,11 @@ class PrinterService {
     let txt = '';
 
     if (type === 'KITCHEN') {
+      if (data.isAdditionalOrder) {
+        txt += `*** ILAVE SIPARIS (EK SIPARIS) ***\n`;
+        txt += `>> ONCEKI SIPARISLERE ILAVE EDILMISTIR <<\n`;
+        txt += doubleLine;
+      }
       txt += `${this.cleanTurkish(data.ticketTitle || 'MUTFAK SIPARISI')}\n`;
       txt += `>>> ${this.cleanTurkish(data.chefStationTitle || 'USTA')} DIKKATINE <<<\n`;
       txt += doubleLine;
@@ -229,7 +261,7 @@ class PrinterService {
       const mersisNo = s.mersisNo || '012345678900001';
       const orderNumber = data.orderNumber || 841;
 
-      if (s.printLogo !== false) {
+      if (s.printLogo) {
         txt += `[ TU ]\n`;
       }
       txt += `${this.cleanTurkish(title)}\n`;
@@ -415,7 +447,7 @@ class PrinterService {
     if (!doc) return;
 
     let htmlBody = '';
-    const paperWidthPx = printer.paperWidth === 58 ? '260px' : '320px';
+    const is58mm = printer.paperWidth === 58;
 
     if (type === 'BILL') {
       const s = data.settings || restaurantDataService.getReceiptSettings();
@@ -430,16 +462,16 @@ class PrinterService {
         <div class="receipt-container">
           <div class="header">
             ${
-              s.printLogo !== false
+              s.printLogo
                 ? `<div class="logo-badge">TU</div>`
                 : ''
             }
             <div class="brand-title">${s.title || 'GAZİANTEPLİ TAHA USTA'}</div>
             <div class="brand-subtitle">${s.subtitle || 'Kebap & Lahmacun Salonu'}</div>
-            <div class="brand-sub">${s.address || 'Şehitkamil / Gaziantep'}</div>
+            <div class="brand-sub">${s.address || 'Kadıköy / İSTANBUL'}</div>
             <div class="brand-sub">Tel: ${s.phone || '0 (342) 555 00 27'}</div>
             <div class="tax-info">
-              ${s.taxOffice || 'Şehitkamil V.D.'} • VKN: ${s.taxNumber || '1234567890'}
+              ${s.taxOffice ? s.taxOffice + ' • ' : ''}VKN: ${s.taxNumber || '1234567890'}
               ${s.mersisNo ? ' • MERSİS: ' + s.mersisNo : ''}
             </div>
           </div>
@@ -449,20 +481,20 @@ class PrinterService {
           <div class="meta-section">
             ${
               s.showTableNumber !== false
-                ? `<div class="row"><span>MASA:</span><span class="bold">${data.tableName}</span></div>`
+                ? `<div class="row"><span class="meta-label">MASA:</span><span class="meta-val-bold">${data.tableName}</span></div>`
                 : ''
             }
             ${
               s.showWaiterName !== false
-                ? `<div class="row"><span>GARSON:</span><span>${data.waiterName || 'Mehmet Usta'}</span></div>`
+                ? `<div class="row"><span class="meta-label">GARSON:</span><span class="meta-val">${data.waiterName || 'Mehmet Usta'}</span></div>`
                 : ''
             }
             ${
               s.showOrderTime !== false
-                ? `<div class="row"><span>TARİH & SAAT:</span><span>${data.orderTime}</span></div>`
+                ? `<div class="row"><span class="meta-label">TARİH & SAAT:</span><span class="meta-val">${data.orderTime}</span></div>`
                 : ''
             }
-            <div class="row"><span>ADİSYON NO:</span><span class="bold">#GTU-${new Date().getFullYear()}-${String(orderNumber).padStart(4, '0')}</span></div>
+            <div class="row"><span class="meta-label">ADİSYON NO:</span><span class="meta-val-bold">#GTU-${new Date().getFullYear()}-${String(orderNumber).padStart(4, '0')}</span></div>
           </div>
 
           <div class="dashed-line"></div>
@@ -479,13 +511,13 @@ class PrinterService {
                 const price = Number(it.price) || 0;
                 const total = Number(it.totalPrice || price * qty) || 0;
                 return `
-                <div class="item-row">
-                  <div class="item-left">
-                    <div class="item-name">${qty}x ${it.name || it.productName}${it.isGift ? ' <span class="gift-badge">[İKRAM]</span>' : ''}</div>
-                    ${it.note ? `<div class="item-sub">* ${it.note}</div>` : ''}
-                    ${qty > 1 ? `<div class="item-sub">${qty} x ₺${price.toFixed(2)}</div>` : ''}
+                <div class="item-block">
+                  <div class="item-title-row">
+                    <span class="item-name">${qty}x ${it.name || it.productName}${it.isGift ? ' <span class="gift-badge">[İKRAM]</span>' : ''}</span>
+                    <span class="item-price">₺${total.toFixed(2)}</span>
                   </div>
-                  <div class="item-right">₺${total.toFixed(2)}</div>
+                  ${it.note ? `<div class="item-note">* ${it.note}</div>` : ''}
+                  ${qty > 1 ? `<div class="item-sub">${qty} x ₺${price.toFixed(2)}</div>` : ''}
                 </div>
               `;
               })
@@ -497,20 +529,20 @@ class PrinterService {
           <div class="totals-section">
             <div class="row">
               <span>Ara Toplam:</span>
-              <span>₺${subtotal.toFixed(2)}</span>
+              <span class="val-bold">₺${subtotal.toFixed(2)}</span>
             </div>
             ${
               discount > 0
                 ? `
               <div class="row discount">
                 <span>İkram & İndirim${data.discountPercent ? ` (%${data.discountPercent})` : ''}:</span>
-                <span>-₺${discount.toFixed(2)}</span>
+                <span class="val-bold">-₺${discount.toFixed(2)}</span>
               </div>
             `
                 : ''
             }
             <div class="row grand-total">
-              <span>GENEL TOPLAM:</span>
+              <span class="grand-label">GENEL TOPLAM:</span>
               <span class="grand-price">₺${grandTotal.toFixed(2)}</span>
             </div>
           </div>
@@ -518,6 +550,7 @@ class PrinterService {
           ${
             s.showVatDetails !== false
               ? `
+            <div class="dashed-line"></div>
             <div class="vat-section">
               <div class="row vat-header">
                 <span>KDV ORANI</span>
@@ -537,10 +570,11 @@ class PrinterService {
           ${
             s.wifiName || s.instagram
               ? `
+            <div class="dashed-line"></div>
             <div class="social-section">
               ${
                 s.wifiName
-                  ? `<div class="social-line">📶 Wi-Fi: <b>${s.wifiName}</b> | Şifre: <span class="mono">${s.wifiPassword || ''}</span></div>`
+                  ? `<div class="social-line">📶 Wi-Fi: <b>${s.wifiName}</b> | Şifre: <b>${s.wifiPassword || ''}</b></div>`
                   : ''
               }
               ${
@@ -553,19 +587,21 @@ class PrinterService {
               : ''
           }
 
+          <div class="dashed-line"></div>
+
           <div class="footer-msg">
             ${s.footerMessage || 'Afiyet Olsun. Yine Bekleriz!'}
           </div>
 
           ${
-            s.showBarcode !== false
+            s.showBarcode
               ? `
             <div class="barcode-container">
               <div class="barcode-bars">
                 ${[2, 1, 3, 1, 2, 4, 1, 2, 1, 3, 2, 1, 4, 2, 1, 3, 1, 2, 1, 4, 1, 2, 3, 1]
                   .map(
                     w =>
-                      `<div style="background-color:#0f172a; height:24px; width:${w}px; display:inline-block; margin-right:1px;"></div>`
+                      `<div style="background-color:#000; height:24px; width:${w}px; display:inline-block; margin-right:1px;"></div>`
                   )
                   .join('')}
               </div>
@@ -576,7 +612,7 @@ class PrinterService {
           }
 
           <div class="zigzag-edge">
-            ${Array.from({ length: 28 })
+            ${Array.from({ length: 30 })
               .map(
                 () =>
                   `<div class="zigzag-tooth"></div>`
@@ -588,6 +624,14 @@ class PrinterService {
     } else if (type === 'KITCHEN') {
       htmlBody = `
         <div class="kitchen-container">
+          ${
+            data.isAdditionalOrder
+              ? `
+            <div class="additional-order-banner">*** İLAVE SİPARİŞ (EK SİPARİŞ) ***</div>
+            <div class="additional-order-sub">&gt;&gt; ÖNCEKİ SİPARİŞLERE İLAVE EDİLMİŞTİR &lt;&lt;</div>
+          `
+              : ''
+          }
           <div class="kitchen-header">
             <div class="station-title">*** ${data.ticketTitle || 'MUTFAK SİPARİŞİ'} ***</div>
             <div class="chef-callout">&gt;&gt;&gt; ${data.chefStationTitle || 'İSTASYON USTASI'} DİKKATİNE &lt;&lt;&lt;</div>
@@ -645,7 +689,7 @@ class PrinterService {
           }
 
           <div class="zigzag-edge">
-            ${Array.from({ length: 28 })
+            ${Array.from({ length: 30 })
               .map(
                 () =>
                   `<div class="zigzag-tooth"></div>`
@@ -666,90 +710,376 @@ class PrinterService {
       <head>
         <title>${printer.name} - Baskı</title>
         <style>
-          @page { size: ${printer.paperWidth === 58 ? '58mm' : '80mm'} auto; margin: 0; }
-          * { box-sizing: border-box; }
-          body {
-            font-family: 'Courier New', Courier, monospace;
+          @page {
+            size: ${is58mm ? '58mm' : '80mm'} auto;
             margin: 0;
-            padding: 4px;
-            background: #fff;
-            color: #000;
-            font-size: 11px;
-            line-height: 1.25;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            color: #000000;
+            font-family: 'Consolas', 'Courier New', 'SF Mono', 'Roboto Mono', Menlo, Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.35;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
           }
           .receipt-container, .kitchen-container {
             width: 100%;
-            max-width: ${paperWidthPx};
+            max-width: ${is58mm ? '280px' : '360px'};
             margin: 0 auto;
-            padding: 4px;
+            padding: 10px 12px;
+            background: #ffffff;
           }
-          .header { text-align: center; margin-bottom: 6px; }
+          @media print {
+            html, body {
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .receipt-container, .kitchen-container {
+              width: 100% !important;
+              max-width: ${is58mm ? '50mm' : '74mm'} !important;
+              margin: 0 auto !important;
+              padding: 1.5mm 0.5mm !important;
+            }
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 6px;
+          }
           .logo-badge {
-            width: 32px; height: 32px; margin: 0 auto 4px auto;
-            background: #0f172a; color: #F5C877; border-radius: 50%;
-            font-weight: 900; font-size: 14px; line-height: 32px; text-align: center;
+            width: 34px;
+            height: 34px;
+            margin: 0 auto 4px auto;
+            background: #0f172a;
+            color: #F5C877;
+            border-radius: 50%;
+            font-weight: 900;
+            font-size: 14px;
+            line-height: 34px;
+            text-align: center;
           }
-          .brand-title { font-weight: 900; font-size: 12.5px; text-transform: uppercase; color: #020617; }
-          .brand-subtitle { font-size: 10px; font-weight: bold; color: #475569; }
-          .brand-sub { font-size: 9px; color: #475569; }
-          .tax-info { font-size: 8.5px; color: #64748b; margin-top: 2px; }
+          .brand-title {
+            font-weight: 900;
+            font-size: 15px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #000000;
+          }
+          .brand-subtitle {
+            font-size: 12px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-top: 2px;
+          }
+          .brand-sub {
+            font-size: 11px;
+            color: #334155;
+            margin-top: 1px;
+          }
+          .tax-info {
+            font-size: 10px;
+            color: #475569;
+            margin-top: 2px;
+          }
+          .dashed-line {
+            border-bottom: 1.5px dashed #475569;
+            margin: 6px 0;
+          }
+          .meta-section {
+            font-size: 11.5px;
+          }
+          .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 2px;
+          }
+          .meta-label {
+            font-weight: 700;
+            color: #334155;
+          }
+          .meta-val {
+            color: #0f172a;
+          }
+          .meta-val-bold {
+            font-weight: 900;
+            color: #000000;
+            font-size: 12px;
+          }
+          .items-table {
+            margin: 4px 0;
+          }
+          .table-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 900;
+            font-size: 11px;
+            color: #334155;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #94a3b8;
+            letter-spacing: 0.5px;
+          }
+          .item-block {
+            margin: 4px 0;
+          }
+          .item-title-row {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 800;
+            font-size: 12.5px;
+            color: #000000;
+          }
+          .item-name {
+            max-width: 75%;
+          }
+          .item-price {
+            font-weight: 900;
+            white-space: nowrap;
+          }
+          .gift-badge {
+            color: #dc2626;
+            font-size: 10px;
+            font-weight: 900;
+          }
+          .item-note {
+            font-size: 10.5px;
+            color: #475569;
+            margin-top: 1px;
+            padding-left: 6px;
+          }
+          .item-sub {
+            font-size: 10.5px;
+            color: #64748b;
+            margin-top: 1px;
+            padding-left: 6px;
+          }
+          .totals-section {
+            padding: 4px 0;
+            font-size: 12px;
+          }
+          .val-bold {
+            font-weight: 800;
+          }
+          .discount {
+            color: #047857;
+            font-weight: 800;
+          }
+          .grand-total {
+            font-weight: 900;
+            font-size: 15px;
+            color: #000000;
+            padding-top: 6px;
+            border-top: 2px solid #000000;
+            margin-top: 4px;
+          }
+          .grand-label {
+            font-weight: 900;
+          }
+          .grand-price {
+            font-size: 17px;
+            font-weight: 900;
+          }
+          .vat-section {
+            font-size: 10.5px;
+            color: #334155;
+            padding: 2px 0;
+          }
+          .vat-header {
+            font-weight: 900;
+            color: #1e293b;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 2px;
+          }
+          .vat-row {
+            margin-top: 2px;
+          }
+          .social-section {
+            font-size: 11px;
+            text-align: center;
+            color: #334155;
+            padding: 2px 0;
+          }
+          .social-line {
+            margin-bottom: 2px;
+          }
+          .footer-msg {
+            text-align: center;
+            font-weight: 900;
+            font-size: 12.5px;
+            color: #000000;
+            padding: 6px 0 4px 0;
+          }
+          .barcode-container {
+            text-align: center;
+            padding: 4px 0;
+          }
+          .barcode-bars {
+            height: 24px;
+          }
+          .barcode-text {
+            font-size: 9px;
+            font-family: monospace;
+            letter-spacing: 1.5px;
+            margin-top: 2px;
+          }
+          .zigzag-edge {
+            height: 8px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            margin-top: 6px;
+          }
+          .zigzag-tooth {
+            width: 8px;
+            height: 8px;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            transform: rotate(45deg) translateY(-4px);
+            flex-shrink: 0;
+            margin-right: 2px;
+          }
 
-          .dashed-line { border-bottom: 1px dashed #64748b; margin: 5px 0; }
-          .meta-section { font-size: 10px; }
-          .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-          .bold { font-weight: 900; color: #020617; }
-
-          .items-table { margin: 4px 0; }
-          .table-header { display: flex; justify-content: space-between; font-weight: 900; font-size: 9.5px; color: #475569; padding-bottom: 3px; border-bottom: 1px solid #cbd5e1; }
-          .item-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10.5px; }
-          .item-left { max-width: 75%; }
-          .item-name { font-weight: bold; color: #020617; }
-          .gift-badge { color: #dc2626; font-size: 9px; font-weight: 900; }
-          .item-sub { font-size: 9px; color: #64748b; margin-top: 1px; }
-          .item-right { font-weight: bold; white-space: nowrap; }
-
-          .totals-section { padding: 4px 0; border-bottom: 2px solid #0f172a; font-size: 11px; }
-          .discount { color: #047857; font-weight: bold; }
-          .grand-total { font-weight: 900; font-size: 13px; color: #020617; padding-top: 4px; border-top: 1px solid #cbd5e1; }
-          .grand-price { font-size: 14px; }
-
-          .vat-section { padding: 4px 0; border-bottom: 1px dashed #64748b; font-size: 8.5px; color: #475569; }
-          .vat-header { font-weight: bold; color: #334155; }
-          .vat-row { margin-top: 2px; }
-
-          .social-section { padding: 5px 0; border-bottom: 1px dashed #64748b; text-align: center; font-size: 9.5px; }
-          .social-line { margin-bottom: 2px; }
-          .mono { font-family: monospace; font-weight: bold; }
-
-          .footer-msg { text-align: center; padding: 6px 0 4px 0; font-weight: bold; font-size: 10.5px; color: #0f172a; }
-          .barcode-container { text-align: center; padding: 4px 0; }
-          .barcode-bars { height: 24px; }
-          .barcode-text { font-size: 8.5px; font-family: monospace; letter-spacing: 1.5px; margin-top: 2px; }
-
-          /* Mutfak Fişi Stilleri */
-          .kitchen-header { text-align: center; padding: 5px; background: #0f172a; color: #fff; border-radius: 4px; margin-bottom: 6px; }
-          .station-title { font-size: 13px; font-weight: 900; color: #F5C877; }
-          .chef-callout { font-size: 10.5px; font-weight: bold; margin-top: 1px; }
-          .kitchen-meta { border: 2px solid #0f172a; padding: 5px; border-radius: 4px; margin-bottom: 6px; }
-          .meta-table { font-size: 14px; font-weight: 900; color: #020617; }
-          .meta-info { display: flex; justify-content: space-between; font-size: 10.5px; margin-top: 2px; }
-          .order-no { font-size: 9.5px; font-weight: bold; color: #64748b; margin-top: 2px; }
-
-          .delivery-box { border: 1px dashed #ea580c; background: #fff7ed; padding: 4px; border-radius: 4px; margin-bottom: 6px; font-size: 9.5px; }
-          .delivery-title { font-weight: 900; color: #c2410c; }
-
-          .items-title { font-size: 10px; font-weight: 900; border-bottom: 2px solid #0f172a; padding-bottom: 2px; margin-bottom: 4px; }
-          .kitchen-item-card { border-bottom: 1px dashed #64748b; padding: 5px 0; }
-          .item-name-line { font-size: 14px; font-weight: 900; color: #020617; }
-          .station-badge { display: inline-block; background: #0f172a; color: #F5C877; font-size: 8.5px; font-weight: 900; padding: 1px 4px; border-radius: 3px; margin-top: 2px; }
-          .gift-callout { color: #dc2626; font-weight: 900; font-size: 9.5px; margin-top: 2px; }
-          .chef-note { background: #fef08a; border-left: 3px solid #ca8a04; padding: 2px 4px; margin-top: 3px; font-size: 9.5px; font-weight: 900; color: #854d0e; }
-          .order-note-box { border: 1.5px solid #dc2626; background: #fef2f2; padding: 4px; border-radius: 4px; margin-top: 5px; font-size: 10px; color: #991b1b; font-weight: bold; }
-
-          .zigzag-edge { height: 8px; overflow: hidden; display: flex; justify-content: center; margin-top: 6px; }
-          .zigzag-tooth { width: 8px; height: 8px; background: #fff; border: 1px solid #cbd5e1; transform: rotate(45deg) translateY(-4px); flex-shrink: 0; margin-right: 2px; }
-
-          .plain-raw { white-space: pre-wrap; font-family: monospace; font-size: 11px; }
+          /* KITCHEN SPECIFIC STYLES */
+          .additional-order-banner {
+            background: #dc2626;
+            color: #ffffff;
+            text-align: center;
+            padding: 6px 4px;
+            font-weight: 900;
+            font-size: 13.5px;
+            border-radius: 4px;
+            margin-bottom: 2px;
+            letter-spacing: 0.5px;
+          }
+          .additional-order-sub {
+            background: #b91c1c;
+            color: #fef2f2;
+            text-align: center;
+            padding: 2px 4px 4px 4px;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 0 0 4px 4px;
+            margin-bottom: 6px;
+          }
+          .kitchen-header {
+            text-align: center;
+            padding: 6px;
+            background: #0f172a;
+            color: #ffffff;
+            border-radius: 4px;
+            margin-bottom: 6px;
+          }
+          .station-title {
+            font-size: 14px;
+            font-weight: 900;
+            color: #F5C877;
+          }
+          .chef-callout {
+            font-size: 11px;
+            font-weight: bold;
+            margin-top: 2px;
+          }
+          .kitchen-meta {
+            border: 2px solid #0f172a;
+            padding: 6px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+          }
+          .meta-table {
+            font-size: 15px;
+            font-weight: 900;
+            color: #000000;
+          }
+          .meta-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11.5px;
+            margin-top: 3px;
+          }
+          .order-no {
+            font-size: 10px;
+            font-weight: bold;
+            color: #475569;
+            margin-top: 2px;
+          }
+          .delivery-box {
+            border: 1.5px dashed #ea580c;
+            background: #fff7ed;
+            padding: 5px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 10.5px;
+          }
+          .delivery-title {
+            font-weight: 900;
+            color: #c2410c;
+          }
+          .items-title {
+            font-size: 11px;
+            font-weight: 900;
+            border-bottom: 2px solid #0f172a;
+            padding-bottom: 3px;
+            margin-bottom: 4px;
+          }
+          .kitchen-item-card {
+            border-bottom: 1.5px dashed #64748b;
+            padding: 6px 0;
+          }
+          .item-name-line {
+            font-size: 15px;
+            font-weight: 900;
+            color: #000000;
+          }
+          .station-badge {
+            display: inline-block;
+            background: #0f172a;
+            color: #F5C877;
+            font-size: 10px;
+            font-weight: 900;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-top: 3px;
+          }
+          .gift-callout {
+            color: #dc2626;
+            font-weight: 900;
+            font-size: 10.5px;
+            margin-top: 3px;
+          }
+          .chef-note {
+            background: #fef08a;
+            border-left: 3px solid #ca8a04;
+            padding: 3px 6px;
+            margin-top: 4px;
+            font-size: 11px;
+            font-weight: 900;
+            color: #854d0e;
+          }
+          .order-note-box {
+            border: 1.5px solid #dc2626;
+            background: #fef2f2;
+            padding: 5px;
+            border-radius: 4px;
+            margin-top: 6px;
+            font-size: 11px;
+            color: #991b1b;
+            font-weight: bold;
+          }
+          .plain-raw {
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+          }
         </style>
       </head>
       <body>
@@ -774,13 +1104,16 @@ class PrinterService {
 
   /**
    * Kasa ve garsonlardan mutfağa gönderilen siparişleri
-   * ilgili mutfak/istasyon yazıcılarına (Fırın, Kebap Ocağı, Bar vb.) ayrı ayrı böler ve basar.
+   * ilgili mutfak/istasyon yazıcılarına (Fırın, Kebap Ocağı, Bar vb.) yönlendirir.
+   * AYNI ANDA GİRİLEN SİPARİŞLER AYNI YAZICI İÇİN TEK FİŞTE TOPLANIR.
+   * Sonradan girilen ilave siparişler ise ayrı fiş olarak basılır.
    */
   public async printKitchenTickets(
     table: { id: string; name: string; sectionId?: string; customerInfo?: any; order?: any },
     items: OrderItemState[],
     waiterName: string = 'Garson',
-    orderNote?: string
+    orderNote?: string,
+    isAdditionalOrder?: boolean
   ): Promise<{ success: boolean; dispatchedCount: number; details: string[] }> {
     if (!items || items.length === 0) {
       return { success: false, dispatchedCount: 0, details: ['Yazdırılacak ürün yok'] };
@@ -798,20 +1131,19 @@ class PrinterService {
     const tableSection = sections.find(s => s.id === table.sectionId);
     const fullTableName = tableSection ? `${tableSection.name} / ${table.name}` : table.name;
 
-    // İstasyon grupları
-    interface StationGroup {
-      stationKey: 'OCAK' | 'FIRIN' | 'MUTFAK';
-      stationTitle: string;
-      chefTitle: string;
+    // Yazıcı bazlı gruplama yapısı (Aynı yazıcıya gidenler TEK fişte toplanır)
+    interface PrinterGroup {
       targetPrinter: PrinterConfig;
+      stations: Set<string>;
       items: KitchenTicketItem[];
     }
 
-    const stationGroups = new Map<string, StationGroup>();
+    const printerGroups = new Map<string, PrinterGroup>();
 
-    // Yazıcıları rollerine göre eşle
+    // Varsayılan roller
     const ocakPrinter =
       printers.find(p => p.role?.toLowerCase().includes('ocak') || p.name.toLowerCase().includes('ocak')) ||
+      printers.find(p => p.assignedStations?.includes('OCAK')) ||
       printers.find(p => p.isKitchen) ||
       printers[0];
 
@@ -823,15 +1155,20 @@ class PrinterService {
           p.name.toLowerCase().includes('fırın') ||
           p.name.toLowerCase().includes('firin')
       ) ||
+      printers.find(p => p.assignedStations?.includes('FIRIN')) ||
+      printers.find(p => p.isKitchen) ||
+      printers[0];
+
+    const barPrinter =
+      printers.find(p => p.role?.toLowerCase().includes('bar') || p.name.toLowerCase().includes('bar')) ||
+      printers.find(p => p.assignedStations?.includes('BAR')) ||
       printers.find(p => p.isKitchen) ||
       printers[0];
 
     const mutfakPrinter =
-      printers.find(
-        p =>
-          p.role?.toLowerCase().includes('mutfak') ||
-          p.name.toLowerCase().includes('mutfak')
-      ) ||
+      printers.find(p => p.role?.toLowerCase().includes('mutfak') || p.name.toLowerCase().includes('mutfak')) ||
+      printers.find(p => p.assignedStations?.includes('MUTFAK')) ||
+      printers.find(p => p.printAllKitchen) ||
       printers.find(p => p.isKitchen) ||
       printers[0];
 
@@ -841,38 +1178,55 @@ class PrinterService {
 
       const stationInfo = determineStationForProduct(item.productName, cat?.name);
 
-      // Hedef yazıcı tespiti: Ürün özel yazıcısı > Kategori yazıcısı > İstasyon yazıcısı
+      // Hedef yazıcı belirleme sırası:
+      // 1. Ürün seviyesinde özel tanımlanmış yazıcı
       let assignedPrinter: PrinterConfig | undefined;
       if (prod?.printerId) {
         assignedPrinter = printers.find(p => p.id === prod.printerId);
       }
+
+      // 2. Kategori seviyesinde atanmış yazıcı
       if (!assignedPrinter && cat?.printerId) {
         assignedPrinter = printers.find(p => p.id === cat.printerId);
       }
+
+      // 3. Yazıcı ayarlarında atanmış kategoriler
+      if (!assignedPrinter && cat?.id) {
+        assignedPrinter = printers.find(p => p.assignedCategoryIds?.includes(cat.id));
+      }
+
+      // 4. Yazıcı ayarlarında atanmış istasyon (OCAK, FIRIN, BAR, MUTFAK)
+      if (!assignedPrinter) {
+        assignedPrinter = printers.find(p => p.assignedStations?.includes(stationInfo.stationKey as any));
+      }
+
+      // 5. İstasyon türüne göre eşleşme
       if (!assignedPrinter) {
         if (stationInfo.stationKey === 'OCAK') assignedPrinter = ocakPrinter;
         else if (stationInfo.stationKey === 'FIRIN') assignedPrinter = firinPrinter;
+        else if (stationInfo.stationKey === 'BAR') assignedPrinter = barPrinter;
         else assignedPrinter = mutfakPrinter;
       }
 
+      // 6. Genel mutfak yazıcısı veya ilk tanımlı yazıcı
       if (!assignedPrinter) {
-        assignedPrinter = printers.find(p => p.isKitchen) || printers[0];
+        assignedPrinter = printers.find(p => p.printAllKitchen) || printers.find(p => p.isKitchen) || printers[0];
       }
 
-      // Grup anahtarı: yazıcı ID'si + istasyon adı (ayrı fiş çıkması için)
-      const groupKey = `${assignedPrinter.id}_${stationInfo.stationKey}`;
+      // AYNI YAZICIYA GİDEN TÜM SİPARİŞLER TEK FİŞTE BİRLEŞİR
+      const groupKey = assignedPrinter.id;
 
-      if (!stationGroups.has(groupKey)) {
-        stationGroups.set(groupKey, {
-          stationKey: stationInfo.stationKey,
-          stationTitle: stationInfo.stationTitle,
-          chefTitle: stationInfo.chefTitle,
+      if (!printerGroups.has(groupKey)) {
+        printerGroups.set(groupKey, {
           targetPrinter: assignedPrinter,
+          stations: new Set<string>(),
           items: [],
         });
       }
 
-      stationGroups.get(groupKey)!.items.push({
+      const group = printerGroups.get(groupKey)!;
+      group.stations.add(stationInfo.stationKey);
+      group.items.push({
         name: item.productName,
         quantity: Number(item.quantity) || 1,
         note: item.note,
@@ -887,16 +1241,49 @@ class PrinterService {
     const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     const orderNumber = table.order?.orderNumber || 841;
 
-    for (const group of stationGroups.values()) {
+    for (const group of printerGroups.values()) {
+      let mainStation: 'OCAK' | 'FIRIN' | 'MUTFAK' | 'BAR' | 'GENEL' = 'GENEL';
+      let title = group.targetPrinter.name.toUpperCase();
+      let chefCallout = group.targetPrinter.name;
+
+      if (group.stations.size === 1) {
+        const s = Array.from(group.stations)[0];
+        if (s === 'OCAK') {
+          mainStation = 'OCAK';
+          title = 'OCAK / IZGARA SİPARİŞİ';
+          chefCallout = 'OCAKÇI VE IZGARA USTASI';
+        } else if (s === 'FIRIN') {
+          mainStation = 'FIRIN';
+          title = 'FIRIN / LAHMACUN SİPARİŞİ';
+          chefCallout = 'FIRIN VE PİDE USTASI';
+        } else if (s === 'BAR') {
+          mainStation = 'BAR';
+          title = 'BAR / İÇECEK SİPARİŞİ';
+          chefCallout = 'BAR & SERVİS';
+        } else {
+          mainStation = 'MUTFAK';
+          title = 'MUTFAK / MEZE SİPARİŞİ';
+          chefCallout = 'MUTFAK ŞEFİ';
+        }
+      } else {
+        title = `${group.targetPrinter.name.toUpperCase()} SİPARİŞİ`;
+        chefCallout = `${group.targetPrinter.name} USTASI`;
+      }
+
+      if (isAdditionalOrder) {
+        title = `[İLAVE] ${title}`;
+      }
+
       const ticketData: KitchenTicketData = {
-        ticketTitle: group.stationTitle,
-        chefStation: group.stationKey,
-        chefStationTitle: group.chefTitle,
+        ticketTitle: title,
+        chefStation: mainStation,
+        chefStationTitle: chefCallout,
         tableName: fullTableName,
         waiterName: waiterName || table.order?.waiterName || 'Mehmet Usta',
         orderTime: currentTime,
         orderNumber,
         orderNote: orderNote || table.order?.orderNote || '',
+        isAdditionalOrder,
         customerInfo: table.customerInfo,
         items: group.items,
       };
@@ -904,7 +1291,7 @@ class PrinterService {
       const result = await this.dispatchPrintJob(group.targetPrinter, 'KITCHEN', ticketData);
       if (result.success) {
         dispatchedCount++;
-        details.push(`${group.targetPrinter.name} - ${group.chefTitle} (${group.items.length} kalem)`);
+        details.push(`${group.targetPrinter.name} (${group.items.length} kalem)`);
       }
     }
 
@@ -1088,8 +1475,8 @@ class PrinterService {
 export const printerService = new PrinterService();
 
 // Garsonların mobilden girdiği siparişleri otomatik mutfak yazıcılarına yönlendir
-restaurantDataService.onKitchenOrderPrint((table, items, waiterName, orderNote) => {
-  printerService.printKitchenTickets(table, items, waiterName, orderNote);
+restaurantDataService.onKitchenOrderPrint((table, items, waiterName, orderNote, isAdditionalOrder) => {
+  printerService.printKitchenTickets(table, items, waiterName, orderNote, isAdditionalOrder);
 });
 
 // Garsonların mobilden hesap istediği masaların hesap fişini otomatik kasaya dök

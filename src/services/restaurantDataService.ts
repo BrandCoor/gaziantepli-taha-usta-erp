@@ -88,6 +88,7 @@ export interface DetailedReportResult {
   netCashFlow: number;
   operatingProfit?: number;
   orders: CompletedOrderArchive[];
+  cancelledOrders?: CompletedOrderArchive[];
   cancelLogs: Array<{
     id: string;
     tableName: string;
@@ -133,6 +134,10 @@ export interface CompletedOrderArchive {
   items: OrderItemState[];
   payments: PaymentRecord[];
   zReportId?: string;
+  status?: 'PAID' | 'CANCELLED';
+  cancelReason?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
 }
 
 export interface ZReport {
@@ -251,6 +256,10 @@ export interface PrinterConfig {
   copies?: number;
   isBillPrinter: boolean;
   isKitchen: boolean;
+  isDeliveryPrinter?: boolean;
+  printAllKitchen?: boolean;
+  assignedCategoryIds?: string[];
+  assignedStations?: ('OCAK' | 'FIRIN' | 'BAR' | 'MUTFAK')[];
 }
 
 export interface ReceiptSettingsConfig {
@@ -519,10 +528,10 @@ type ChangeListener = () => void;
 class RestaurantDataService {
   private listeners: Set<ChangeListener> = new Set();
   private pendingActivePosTableId: string | null = null;
-  private kitchenPrintCallback?: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string) => void;
+  private kitchenPrintCallback?: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void;
   private billPrintCallback?: (table: TableState, items: OrderItemState[]) => void;
 
-  public onKitchenOrderPrint(cb: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string) => void) {
+  public onKitchenOrderPrint(cb: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void) {
     this.kitchenPrintCallback = cb;
   }
 
@@ -549,16 +558,44 @@ class RestaurantDataService {
         }
       }
 
-      // Purge demo fake printers
+      // Clean and purge demo printers from PRINTERS
       const rawPrinters = localStorage.getItem(STORAGE_KEYS.PRINTERS);
+      const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-paket', 'pr-mutfak'];
       if (rawPrinters) {
-        const printers: PrinterConfig[] = JSON.parse(rawPrinters);
-        const demoPrinterIps = ['192.168.1.200', '192.168.1.201', '192.168.1.202', '192.168.1.203'];
-        const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-mutfak'];
-        const filtered = printers.filter(p => !demoPrinterIds.includes(p.id) && !demoPrinterIps.includes(p.ipAddress || ''));
-        if (filtered.length !== printers.length) {
-          localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(filtered));
+        try {
+          const printers: PrinterConfig[] = JSON.parse(rawPrinters);
+          const filteredPrinters = printers.filter(p => 
+            !demoPrinterIds.includes(p.id) &&
+            !p.name.includes('Kasa & Hesap Yazıcısı') &&
+            !p.name.includes('Fırın Yazıcısı') &&
+            !p.name.includes('Ocak & Izgara Yazıcısı') &&
+            !p.name.includes('Paket Servis Yazıcısı')
+          );
+          if (filteredPrinters.length !== printers.length) {
+            localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(filteredPrinters));
+          }
+        } catch {
+          localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify([]));
         }
+      } else {
+        localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify([]));
+      }
+
+      // Clean demo calls from CALL_LOGS
+      const rawCalls = localStorage.getItem(STORAGE_KEYS.CALL_LOGS);
+      if (rawCalls) {
+        try {
+          const calls: CallLogItem[] = JSON.parse(rawCalls);
+          const filteredCalls = calls.filter(c => 
+            !c.phone?.includes('0532 999 88 77') && 
+            !c.phone?.includes('05329998877') && 
+            !c.phone?.includes('05325554141') && 
+            !c.customerName?.includes('Müdavim Müşteri')
+          );
+          if (filteredCalls.length !== calls.length) {
+            localStorage.setItem(STORAGE_KEYS.CALL_LOGS, JSON.stringify(filteredCalls));
+          }
+        } catch (e) {}
       }
 
       // Purge demo printerId bindings from categories
@@ -626,7 +663,23 @@ class RestaurantDataService {
 
   public getRecentCalls(): CallLogItem[] {
     const data = localStorage.getItem(STORAGE_KEYS.CALL_LOGS);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    try {
+      const calls: CallLogItem[] = JSON.parse(data);
+      return calls.filter(c => 
+        !c.phone?.includes('0532 999 88 77') && 
+        !c.phone?.includes('05329998877') && 
+        !c.phone?.includes('05325554141') && 
+        !c.customerName?.includes('Müdavim Müşteri')
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  public clearCallLogs(): void {
+    localStorage.setItem(STORAGE_KEYS.CALL_LOGS, JSON.stringify([]));
+    this.notify();
   }
 
   public saveRecentCalls(calls: CallLogItem[]) {
@@ -753,7 +806,8 @@ class RestaurantDataService {
     // Garsonun mobilden girdiği yeni sipariş kalemlerini anında mutfak yazıcılarına bas
     if (newItems.length > 0 && this.kitchenPrintCallback) {
       const currentTable = this.getTables().find(t => t.id === incoming.tableId) || table;
-      this.kitchenPrintCallback(currentTable, newItems, incoming.waiterName || 'Garson', incoming.orderNote);
+      const isAdditionalOrder = existingItems.length > 0;
+      this.kitchenPrintCallback(currentTable, newItems, incoming.waiterName || 'Garson', incoming.orderNote, isAdditionalOrder);
     }
   }
 
@@ -923,7 +977,7 @@ class RestaurantDataService {
           ...i,
           price: Number(i.price) || 0,
           quantity: Number(i.quantity) || 1,
-          targetPrinter: i.targetPrinter || 'pr-ocak',
+          targetPrinter: i.targetPrinter || '',
           note: i.note || '',
           addedBy: i.addedBy || waiterName || 'Garson',
           addedAt: i.addedAt || currentTime,
@@ -965,10 +1019,55 @@ class RestaurantDataService {
     this.updateTableOrder(tableId, items, table.order.waiterName, table.customerInfo, table.order.orderNote);
   }
 
-  public cancelTableOrder(tableId: string, reason: string) {
+  public cancelTableOrder(tableId: string, reason: string, cancelledBy: string = 'Kasiyer') {
     const tables = this.getTables();
     const table = tables.find((t) => t.id === tableId);
     if (!table) return;
+
+    if (table.order && table.order.items && table.order.items.length > 0) {
+      const now = new Date();
+      const todayDate = now.toISOString().split('T')[0];
+      const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      const orderAmount = Number(table.order.totalAmount) || table.order.items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
+      const section = this.getSections().find(s => s.id === table.sectionId);
+
+      const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
+      completedOrders.push({
+        id: `arch-cancel-${Date.now()}`,
+        orderNumber: table.order.orderNumber || Math.floor(100 + Math.random() * 900),
+        tableName: table.name,
+        sectionName: section?.name || table.sectionId,
+        waiterName: table.order.waiterName || cancelledBy,
+        orderTime: table.order.orderTime || timeStr,
+        closedTime: `${todayDate} ${timeStr}`,
+        date: todayDate,
+        totalAmount: orderAmount,
+        items: table.order.items,
+        payments: [],
+        status: 'CANCELLED',
+        cancelReason: reason || 'Masa İptali',
+        cancelledBy: cancelledBy,
+        cancelledAt: new Date().toISOString(),
+      });
+      localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(completedOrders));
+
+      // Detaylı ürün iptal kayıtlarına da ekle
+      const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+      table.order.items.forEach(item => {
+        cancelLogs.push({
+          id: `cancel-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          tableName: table.name,
+          productName: item.productName,
+          quantity: item.quantity,
+          amount: (Number(item.price) || 0) * (Number(item.quantity) || 1),
+          reason: reason || 'Adisyon İptali',
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: cancelledBy,
+          orderNumber: table.order?.orderNumber
+        });
+      });
+      localStorage.setItem(STORAGE_KEYS.CANCEL_LOGS, JSON.stringify(cancelLogs));
+    }
 
     table.status = 'EMPTY';
     table.order = undefined;
@@ -1556,7 +1655,10 @@ class RestaurantDataService {
       prodCategoryMap[p.name] = cat?.name || 'Kebap & Izgara';
     });
 
-    orders.forEach(ord => {
+    const paidOrders = orders.filter(o => o.status !== 'CANCELLED');
+    const cancelledOrders = orders.filter(o => o.status === 'CANCELLED');
+
+    paidOrders.forEach(ord => {
       const ordAmt = Number(ord.totalAmount) || 0;
       grossTotal += ordAmt;
 
@@ -1620,7 +1722,7 @@ class RestaurantDataService {
     });
 
     const netTotal = grossTotal - discountTotal;
-    const totalOrders = orders.length;
+    const totalOrders = paidOrders.length;
     const avgOrderAmount = totalOrders > 0 ? grossTotal / totalOrders : 0;
 
     const allExpenses = dataService.getExpenses() || [];
@@ -1650,7 +1752,9 @@ class RestaurantDataService {
       if (filters.endDate && cDate > filters.endDate) return false;
       return true;
     });
-    const cancelTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
+    const cancelLogsTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
+    const cancelledOrdersTotal = cancelledOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
+    const cancelTotal = cancelLogsTotal + cancelledOrdersTotal;
 
     const vatRate = 10;
     const vatBase = netTotal / 1.10;
@@ -1687,6 +1791,7 @@ class RestaurantDataService {
       netCashFlow,
       operatingProfit,
       orders,
+      cancelledOrders,
       cancelLogs,
       giftLogs,
     };
@@ -1722,7 +1827,14 @@ class RestaurantDataService {
 
   public getPrinters(): PrinterConfig[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRINTERS);
-    return data ? JSON.parse(data) : DEFAULT_PRINTERS;
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) return parsed;
+      return [];
+    } catch {
+      return [];
+    }
   }
 
   public savePrinters(printers: PrinterConfig[]) {
