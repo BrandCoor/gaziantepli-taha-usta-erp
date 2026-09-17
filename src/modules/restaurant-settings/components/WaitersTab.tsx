@@ -770,15 +770,24 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                   <span>Linki Kopyala</span>
                 </button>
 
-                <a
-                  href={getWaiterConnectUrl(qrModalWaiter)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:brightness-110 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/20"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Yeni Sekmede Test Et</span>
-                </a>
+                {/* Bu bağlantı yalnızca garson uygulamasının GERÇEK adresi tanımlıysa
+                    gösterilir. Adres yokken kasa uygulamasının kendi dosya yolunu
+                    açıyor ve garson uygulaması yerine kasa penceresi geliyordu. */}
+                {/^https?:\/\//i.test(getWaiterConnectUrl(qrModalWaiter)) ? (
+                  <a
+                    href={getWaiterConnectUrl(qrModalWaiter)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:brightness-110 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/20"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Tarayıcıda Aç</span>
+                  </a>
+                ) : (
+                  <div className="py-2.5 px-3 bg-[#141416] border border-[#2C2C34] text-[#8E8E98] text-[10px] rounded-xl flex items-center justify-center text-center leading-tight">
+                    Garson uygulaması adresi tanımlanmadan bağlantı açılamaz
+                  </div>
+                )}
               </div>
             </div>
           </div>

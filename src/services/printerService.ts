@@ -465,7 +465,7 @@ class PrinterService {
    */
   public async dispatchPrintJob(
     printer: PrinterConfig,
-    jobType: 'KITCHEN' | 'BILL' | 'CANCEL' | 'Z_REPORT',
+    jobType: 'KITCHEN' | 'BILL' | 'CANCEL' | 'Z_REPORT' | 'COURIER',
     data: any
   ): Promise<{ success: boolean; message: string }> {
     // 1. Yazıcı sesli uyarı veriyorsa çal
@@ -1761,34 +1761,33 @@ class PrinterService {
       const isPlatformCourier = order.deliveryModel === 'PLATFORM_COURIER' || order.deliveryModel === 'PLATFORM';
       const cleanHandoverCode = order.handoverCode || (order.platformOrderId ? order.platformOrderId.replace(/[^0-9]/g, '').slice(-4) : '1842');
 
-      const billData: BillReceiptData = {
-        tableName: `${pTitle} (#${order.platformOrderId})`,
-        waiterName: isPlatformCourier ? 'Platform Kuryesi' : (order.assignedCourierName || 'Kendi Kuryemiz'),
-        orderTime: nowTime,
-        orderNumber: order.platformOrderId,
+      // Platform siparişi müşteri hesap fişi olarak değil, platforma uygun kurye
+      // fişi olarak basılır: platform adı, sipariş no, tahsilat durumu ve
+      // platform kuryesi ise teslim kodu öne çıkar.
+      const courierData = {
         platformName: pTitle,
-        isCourierTicket: !isPlatformCourier,
-        isHandoverTicket: isPlatformCourier,
-        courierName: isPlatformCourier ? (order.platformCourierName || `${pTitle} Kuryesi`) : (order.assignedCourierName || 'Kendi Kuryemiz'),
-        handoverCode: cleanHandoverCode,
+        platform: order.platform,
+        deliveryModel: order.deliveryModel,
+        platformOrderId: order.platformOrderId,
+        customerName: order.customerName,
+        phone: order.customerPhone || '',
+        address: order.address,
+        orderNote: order.orderNote || '',
+        courierName: isPlatformCourier
+          ? (order.platformCourierName || `${pTitle} Kuryesi`)
+          : (order.assignedCourierName || 'Kendi Kuryemiz'),
+        handoverCode: isPlatformCourier ? cleanHandoverCode : '',
         paymentMethod: order.paymentMethod,
-        customerInfo: {
-          name: order.customerName,
-          phone: order.customerPhone || 'Belirtilmedi',
-          address: order.address,
-          note: order.orderNote || 'Not yok',
-        },
+        time: nowTime,
         items: order.items.map(i => ({
           name: i.name,
           quantity: i.quantity,
           price: i.price || 0,
-          totalPrice: (i.quantity || 1) * (i.price || 0),
           note: i.note,
         })),
-        subtotal: order.totalAmount,
         totalAmount: order.totalAmount,
       };
-      await this.dispatchPrintJob(kuryePrinter, 'BILL', billData);
+      await this.dispatchPrintJob(kuryePrinter, 'COURIER', courierData);
       dispatchedCount++;
       if (isPlatformCourier) {
         details.push(`Paket Etiketi [${kuryePrinter.name}]: 4 Haneli Teslimat Kodu (#${cleanHandoverCode}) basıldı.`);

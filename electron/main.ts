@@ -5,6 +5,7 @@ import {
   generateKitchenReceipt,
   generateBillReceipt,
   generateCancelReceipt,
+  generateCourierReceipt,
   generateZReportReceipt,
   generateHardwareTestReceipt,
   sendToNetworkPrinter,
@@ -70,6 +71,8 @@ ipcMain.handle('print-network-ticket', async (event, { ip, port, ticketType, dat
       buffer = generateCancelReceipt(data);
     } else if (ticketType === 'Z_REPORT') {
       buffer = generateZReportReceipt(data);
+    } else if (ticketType === 'COURIER' || ticketType === 'PLATFORM') {
+      buffer = generateCourierReceipt(data);
     } else {
       buffer = generateKitchenReceipt(data);
     }

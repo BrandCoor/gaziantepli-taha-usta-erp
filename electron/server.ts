@@ -96,15 +96,20 @@ app.post('/api/printers/print-ticket', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Yazıcı bilgisi eksik' });
     }
 
+    // Satır genişliği kağıt boyutuna göre hesaplanır (80mm=48, 58mm=32 karakter).
+    const ticketData = { ...(data || {}), paperWidth: printer.paperWidth || 80 };
+
     let buffer: Buffer;
     if (jobType === 'BILL') {
-      buffer = generateBillReceipt(data);
+      buffer = generateBillReceipt(ticketData);
     } else if (jobType === 'CANCEL') {
-      buffer = generateCancelReceipt(data);
+      buffer = generateCancelReceipt(ticketData);
     } else if (jobType === 'Z_REPORT') {
-      buffer = generateZReportReceipt(data);
+      buffer = generateZReportReceipt(ticketData);
+    } else if (jobType === 'COURIER' || jobType === 'PLATFORM') {
+      buffer = generateCourierReceipt(ticketData);
     } else {
-      buffer = generateKitchenReceipt(data);
+      buffer = generateKitchenReceipt(ticketData);
     }
 
     if (printer.type === 'NETWORK' && printer.ipAddress) {
