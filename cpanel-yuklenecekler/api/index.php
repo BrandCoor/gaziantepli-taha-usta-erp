@@ -52,7 +52,7 @@ if (empty($action) && isset($inputData['action'])) {
 }
 
 // Cihaz eşleme ve kimlik doğrulama işlemleri doğrudan auth.php tarafından ele alınır
-if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status'])) {
+if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status'])) {
     require __DIR__ . '/auth.php';
     exit;
 }
@@ -1099,12 +1099,35 @@ if ($action === 'get_live_state') {
             }
         }
 
+        $defaultCategories = [
+            ['id' => 'cat-kebap', 'name' => 'Kebaplar & Izgaralar', 'color' => '#ef4444'],
+            ['id' => 'cat-firin', 'name' => 'Pide & Lahmacun', 'color' => '#f59e0b'],
+            ['id' => 'cat-corba', 'name' => 'Çorbalar & Mezeler', 'color' => '#3b82f6'],
+            ['id' => 'cat-icecek', 'name' => 'İçecekler & Meşrubat', 'color' => '#10b981'],
+            ['id' => 'cat-tatli', 'name' => 'Tatlılar & Meyve', 'color' => '#8b5cf6']
+        ];
+        $defaultProducts = [
+            ['id' => 'p-1', 'name' => 'Adana Kebap (Porsiyon)', 'categoryId' => 'cat-kebap', 'price' => 320, 'isAvailable' => true, 'preparationMin' => 15],
+            ['id' => 'p-2', 'name' => 'Urfa Kebap (Porsiyon)', 'categoryId' => 'cat-kebap', 'price' => 320, 'isAvailable' => true, 'preparationMin' => 15],
+            ['id' => 'p-3', 'name' => 'Kuzu Şiş Kebap', 'categoryId' => 'cat-kebap', 'price' => 380, 'isAvailable' => true, 'preparationMin' => 18],
+            ['id' => 'p-4', 'name' => 'Ali Nazik Kebap', 'categoryId' => 'cat-kebap', 'price' => 390, 'isAvailable' => true, 'preparationMin' => 20],
+            ['id' => 'p-5', 'name' => 'Antep Lahmacun', 'categoryId' => 'cat-firin', 'price' => 110, 'isAvailable' => true, 'preparationMin' => 10],
+            ['id' => 'p-6', 'name' => 'Kuşbaşılı Kaşarlı Pide', 'categoryId' => 'cat-firin', 'price' => 280, 'isAvailable' => true, 'preparationMin' => 15],
+            ['id' => 'p-7', 'name' => 'Kıymalı Kaşarlı Pide', 'categoryId' => 'cat-firin', 'price' => 260, 'isAvailable' => true, 'preparationMin' => 15],
+            ['id' => 'p-8', 'name' => 'Açık Yayık Ayranı', 'categoryId' => 'cat-icecek', 'price' => 40, 'isAvailable' => true, 'preparationMin' => 2],
+            ['id' => 'p-9', 'name' => 'Kutu Meşrubat / Şalgam', 'categoryId' => 'cat-icecek', 'price' => 45, 'isAvailable' => true, 'preparationMin' => 2],
+            ['id' => 'p-10', 'name' => 'Antep Fıstıklı Katmer', 'categoryId' => 'cat-tatli', 'price' => 220, 'isAvailable' => true, 'preparationMin' => 12]
+        ];
+
+        $categories = !empty($db['categories']) ? $db['categories'] : $defaultCategories;
+        $products = !empty($db['products']) ? $db['products'] : $defaultProducts;
+
         echo json_encode([
             'success' => true,
             'sections' => $sections,
             'tables' => $tables,
-            'products' => $db['products'] ?? [],
-            'categories' => $db['categories'] ?? [],
+            'products' => $products,
+            'categories' => $categories,
             'last_updated' => $db['last_updated'] ?? 0,
             'mode' => 'JSON'
         ], JSON_UNESCAPED_UNICODE);

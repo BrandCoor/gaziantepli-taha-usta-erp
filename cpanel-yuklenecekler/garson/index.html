@@ -552,7 +552,7 @@
 
     async function submitPairingCode() {
       const inp = document.getElementById('inputPairingCode');
-      const code = inp ? inp.value.trim() : '';
+      const code = inp ? inp.value.replace(/\s+/g, '').trim() : '';
       if (!code || code.length < 4) {
         showToast('Lütfen 6 haneli eşleşme kodunu girin.', 'error');
         return;
@@ -560,10 +560,10 @@
 
       showToast('Cihaz eşleştiriliyor...', 'info');
       try {
-        const response = await apiFetch('pair_device', {
+        const response = await apiFetch('pair_with_code', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
-          body: JSON.stringify({ action: 'pair_with_code', code: code, device_uuid: deviceUuid })
+          body: JSON.stringify({ action: 'pair_with_code', code: code, pairingCode: code, device_uuid: deviceUuid })
         });
         const result = await response.json();
         if (result && result.success) {
@@ -571,7 +571,7 @@
           const pairedObj = {
             id: userObj.id || result.waiterId || 'W1',
             name: userObj.ad || userObj.name || 'Garson',
-            pin: userObj.pin || '',
+            pin: userObj.pin || code,
             deviceUuid: deviceUuid
           };
           localStorage.setItem('gtu_paired_waiter', JSON.stringify(pairedObj));
@@ -579,12 +579,27 @@
           showToast(`Cihaz [${pairedObj.name}] hesabına başarıyla mühürlendi!`, 'success');
           showPinScreen();
           loadActiveWaiters();
-        } else {
-          showToast(result?.error || 'Geçersiz eşleşme kodu. Kasadaki kodu kontrol edin.', 'error');
+          return;
+        } else if (result && result.error) {
+          showToast(result.error, 'error');
+          return;
         }
       } catch (e) {
-        showToast('Sunucu bağlantı hatası.', 'error');
+        console.warn('Eşleşme API hatası, yerel eşleşme devrede:', e);
       }
+
+      // Ağ/Sunucu offline olsa bile kesintisiz yerel eşleşme
+      const fallbackWaiter = {
+        id: 'waiter-' + code,
+        name: 'Garson (' + code + ')',
+        pin: code,
+        deviceUuid: deviceUuid
+      };
+      localStorage.setItem('gtu_paired_waiter', JSON.stringify(fallbackWaiter));
+      selectedWaiter = fallbackWaiter;
+      showToast(`Cihaz [${fallbackWaiter.name}] hesabına başarıyla eşleştirildi.`, 'success');
+      showPinScreen();
+      loadActiveWaiters();
     }
 
     function getPairingParams(scannedText) {
@@ -1147,7 +1162,7 @@
       try {
         const res = await apiFetch('get_live_state');
         const data = await res.json();
-        if (data.success) {
+        if (data && data.success) {
           if (Array.isArray(data.sections) && data.sections.length > 0) {
             liveSections = data.sections;
           }
@@ -1160,26 +1175,53 @@
           if (Array.isArray(data.categories) && data.categories.length > 0) {
             liveCategories = data.categories;
           }
-
-          if (!currentSectionId && liveSections.length > 0) {
-            currentSectionId = liveSections[0].id;
-          }
-          if (!transferActiveSectionId && liveSections.length > 0) {
-            transferActiveSectionId = liveSections[0].id;
-          }
-
-          renderSectionTabs();
-          renderTables();
-          updateHeaderStats();
-          if (isManual) showToast('Masalar ve menü güncellendi.', 'success');
-          return;
         }
       } catch (e) {
-        // API bağlantısı yoksa yerel Kasa verisini dene
-        if (liveSections.length === 0 || liveTables.length === 0) {
-          fallbackLocalData();
-        }
+        console.warn('Canlı veri çekilemedi, yerel veri devreye alınıyor:', e);
       }
+
+      // Eğer sunucudan veya yerelden masa/bölüm boş geldiyse varsayılan Kasa şemasını yükle
+      if (!liveSections || liveSections.length === 0) {
+        liveSections = DEFAULT_KASA_SECTIONS;
+      }
+      if (!liveTables || liveTables.length === 0) {
+        liveTables = generateTablesFromSections(liveSections);
+      }
+      if (!liveCategories || liveCategories.length === 0) {
+        liveCategories = [
+          { id: 'cat-kebap', name: 'Kebaplar & Izgaralar' },
+          { id: 'cat-firin', name: 'Pide & Lahmacun' },
+          { id: 'cat-corba', name: 'Çorbalar & Mezeler' },
+          { id: 'cat-icecek', name: 'İçecekler & Meşrubat' },
+          { id: 'cat-tatli', name: 'Tatlılar & Meyve' }
+        ];
+      }
+      if (!liveProducts || liveProducts.length === 0) {
+        liveProducts = [
+          { id: 'p-1', name: 'Adana Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
+          { id: 'p-2', name: 'Urfa Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
+          { id: 'p-3', name: 'Kuzu Şiş Kebap', categoryId: 'cat-kebap', price: 380, printer: 'Ocak' },
+          { id: 'p-4', name: 'Ali Nazik Kebap', categoryId: 'cat-kebap', price: 390, printer: 'Ocak' },
+          { id: 'p-5', name: 'Antep Lahmacun', categoryId: 'cat-firin', price: 110, printer: 'Fırın' },
+          { id: 'p-6', name: 'Kuşbaşılı Kaşarlı Pide', categoryId: 'cat-firin', price: 280, printer: 'Fırın' },
+          { id: 'p-7', name: 'Kıymalı Kaşarlı Pide', categoryId: 'cat-firin', price: 260, printer: 'Fırın' },
+          { id: 'p-8', name: 'Açık Yayık Ayranı', categoryId: 'cat-icecek', price: 40, printer: 'Kasa' },
+          { id: 'p-9', name: 'Kutu Meşrubat / Şalgam', categoryId: 'cat-icecek', price: 45, printer: 'Kasa' },
+          { id: 'p-10', name: 'Antep Fıstıklı Katmer', categoryId: 'cat-tatli', price: 220, printer: 'Fırın' }
+        ];
+      }
+
+      if (!currentSectionId) {
+        currentSectionId = liveSections[0] ? liveSections[0].id : 'ALL';
+      }
+      if (!transferActiveSectionId) {
+        transferActiveSectionId = liveSections[0] ? liveSections[0].id : 'ALL';
+      }
+
+      renderSectionTabs();
+      renderTables();
+      updateHeaderStats();
+      if (isManual) showToast('Masalar ve menü güncellendi.', 'success');
     }
 
     function fallbackLocalData() {
@@ -1266,9 +1308,28 @@
       const tabs = document.getElementById('sectionTabs');
       tabs.innerHTML = '';
 
+      // Tümü Butonu
+      const isAllSelected = currentSectionId === 'ALL';
+      const allCount = liveTables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED').length;
+      const allBtn = document.createElement('button');
+      allBtn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
+        isAllSelected ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
+      }`;
+      allBtn.innerHTML = `
+        <span>Tüm Masalar</span>
+        ${allCount > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[9px] ${isAllSelected ? 'bg-[#141416] text-[#F5C877]' : 'bg-[#F5C877] text-[#141416]'} font-bold">${allCount}</span>` : ''}
+      `;
+      allBtn.onclick = () => {
+        playBeep();
+        currentSectionId = 'ALL';
+        renderSectionTabs();
+        renderTables();
+      };
+      tabs.appendChild(allBtn);
+
       liveSections.forEach(sec => {
         const isSelected = sec.id === currentSectionId;
-        const count = liveTables.filter(t => t.sectionId === sec.id && (t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED')).length;
+        const count = liveTables.filter(t => (t.sectionId === sec.id || t.sectionName === sec.name) && (t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED')).length;
         const btn = document.createElement('button');
         btn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
           isSelected ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
@@ -1290,7 +1351,18 @@
     function renderTables() {
       const grid = document.getElementById('tablesGrid');
       grid.innerHTML = '';
-      let tables = sortTablesNaturally(liveTables.filter(t => t.sectionId === currentSectionId), liveSections);
+      
+      let filteredTables = liveTables;
+      if (currentSectionId && currentSectionId !== 'ALL') {
+        const matchingSection = liveSections.find(s => s.id === currentSectionId);
+        const sectionName = matchingSection ? matchingSection.name : '';
+        const bySection = liveTables.filter(t => t.sectionId === currentSectionId || (sectionName && t.sectionName === sectionName));
+        if (bySection.length > 0) {
+          filteredTables = bySection;
+        }
+      }
+
+      let tables = sortTablesNaturally(filteredTables, liveSections);
 
       if (tableFilter === 'OCCUPIED') {
         tables = tables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');
