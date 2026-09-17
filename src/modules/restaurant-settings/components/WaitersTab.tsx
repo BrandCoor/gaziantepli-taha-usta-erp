@@ -681,8 +681,37 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                 />
               </div>
             ) : (
-              <div className="p-5 rounded-3xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-xs font-bold">
-                Sunucudan geçerli eşleştirme tokenı alınamadı.
+              <div className="p-4 rounded-3xl border border-rose-500/40 bg-rose-500/10 text-left space-y-2.5">
+                <p className="text-xs font-black text-rose-200">
+                  QR kod üretilemiyor: garson uygulamasının adresi tanımlı değil.
+                </p>
+                <p className="text-[10px] text-[#C4C4CC] leading-relaxed">
+                  Garson uygulamasını yüklediğiniz adresi girin. Telefon bu adresi okutarak eşleşecek.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={customDomainInput}
+                    onChange={(e) => setCustomDomainInput(e.target.value)}
+                    placeholder="https://alanadiniz.com.tr/garson"
+                    className="flex-1 px-3 py-2 bg-[#141416] border border-[#383844] focus:border-[#F5C877] rounded-xl text-[11px] font-mono text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const value = customDomainInput.trim();
+                      if (!value) {
+                        notify.error('Adres Gerekli', 'Lütfen garson uygulamasının adresini girin.');
+                        return;
+                      }
+                      setPublicBaseUrl(value);
+                      setCustomDomainInput(getPublicBaseUrl());
+                      notify.success('Adres Kaydedildi', 'QR kod bu adrese yönlendirecek şekilde güncellendi.');
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-[11px] cursor-pointer"
+                  >
+                    Kaydet
+                  </button>
+                </div>
               </div>
             )}
 
