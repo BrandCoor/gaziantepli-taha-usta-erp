@@ -91,6 +91,23 @@ export const SectionsTablesTab: React.FC<SectionsTablesTabProps> = ({ sections, 
 
   const handleQuickAdjustTables = (s: SectionConfig, delta: number) => {
     const newCount = Math.max(1, s.tableCount + delta);
+
+    if (newCount < s.tableCount) {
+      const blocked = restaurantDataService.getTables().filter((t) => {
+        if (t.sectionId !== s.id) return false;
+        if (!t.order || (t.order.items?.length || 0) === 0) return false;
+        const index = Number(t.id.split('-').pop());
+        return Number.isFinite(index) && index > newCount;
+      });
+
+      if (blocked.length > 0) {
+        return notify.error(
+          'İşlem Engellendi',
+          `${blocked.map((t) => t.name).join(', ')} masasında açık hesap var. Masa sayısını azaltmadan önce bu hesapları kapatın.`
+        );
+      }
+    }
+
     restaurantDataService.updateSection(s.id, { tableCount: newCount });
     restaurantDataService.playAudioAlert('beep');
     onRefresh();

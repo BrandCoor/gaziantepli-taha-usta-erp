@@ -686,7 +686,7 @@ const DEFAULT_RECEIPT_SETTINGS: ReceiptSettingsConfig = {
   taxOffice: 'Şehitkamil V.D.',
   mersisNo: '012345678900001',
   wifiName: 'TahaUsta_Misafir',
-  wifiPassword: 'anteplilezzetleri',
+  wifiPassword: '',
   instagram: '@gazianteplitahausta',
   footerMessage: 'Afiyet Olsun. Yine Bekleriz!',
   showWaiterName: true,
@@ -1282,6 +1282,17 @@ class RestaurantDataService {
       }
     });
 
+    // Açık adisyonu olan bir masa, bölümün masa sayısı düşürülmüş (veya bölüm silinmiş)
+    // olsa bile listeden çıkarılmaz. Aksi halde ödenmemiş hesap, uyarı ve arşiv kaydı
+    // olmadan tamamen kaybolur.
+    const keptIds = new Set(updatedTables.map((t) => t.id));
+    for (const t of existingTables) {
+      if (keptIds.has(t.id)) continue;
+      if (t.order && (t.order.items?.length || 0) > 0) {
+        updatedTables.push(t);
+      }
+    }
+
     const sorted = sortTablesNaturally(updatedTables, sections);
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(sorted));
     return sorted;
@@ -1470,10 +1481,20 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []) {
+  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []): boolean {
     const tables = this.getTables();
     const table = tables.find((t) => t.id === tableId);
-    if (!table || !table.order) return;
+    if (!table || !table.order) return false;
+
+    // Tahsil edilen tutar hesabı karşılamıyorsa masa kapatılmaz. Aksi halde ödenmemiş
+    // bir hesap "tamamlandı" olarak arşivlenir ve gün sonunda kasa açığı olarak çıkar.
+    const dueAmount = Number(table.order.totalAmount) || 0;
+    if (payments.length > 0) {
+      const collected = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      if (collected + 0.01 < dueAmount) {
+        return false;
+      }
+    }
 
     const now = new Date();
     const todayDate = now.toISOString().split('T')[0];
@@ -1501,6 +1522,7 @@ class RestaurantDataService {
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
+    return true;
   }
 
   public getAllCompletedOrders(): CompletedOrderArchive[] {
@@ -1759,7 +1781,7 @@ class RestaurantDataService {
     // KASADA KALAN NET NAKİT = (Nakit Satış) - (Kasadan Çıkan Nakit Giderler) - (Kasadan Toptancıya Ödenen Nakitler)
     const netCashInRegister = cashSales - cashExpenses - supplierCashPayments;
 
-    const netTotal = grossTotal - discountTotal;
+    const netTotal = grossTotal - discountTotal - giftTotal;
     const vatRate = 10;
     const vatBase = netTotal / 1.10;
     const vatAmount = netTotal - vatBase;
@@ -2114,7 +2136,7 @@ class RestaurantDataService {
       });
     });
 
-    const netTotal = grossTotal - discountTotal;
+    const netTotal = grossTotal - discountTotal - giftTotal;
     const totalOrders = paidOrders.length;
     const avgOrderAmount = totalOrders > 0 ? grossTotal / totalOrders : 0;
 

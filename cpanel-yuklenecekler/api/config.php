@@ -5,12 +5,25 @@
  * Bu dosyayı cPanel / Hosting veritabanı bilgilerinizle düzenleyiniz.
  */
 
-// 1. VERİTABANI BAĞLANTI BİLGİLERİ (cPanel -> MySQL Veritabanları)
-define('DB_HOST', 'localhost');                  // Hosting sunucusu
-define('DB_PORT', '3306');                       // MySQL varsayılan port
-define('DB_NAME', 'ngsiteyo_tahausta_pos');      // cPanel Veritabanı Adı
-define('DB_USER', 'ngsiteyo_tahausta_user');     // cPanel Veritabanı Kullanıcısı
-define('DB_PASS', 'Tahausta2727');               // Veritabanı Şifresi
+// 1. VERİTABANI BAĞLANTI BİLGİLERİ
+// Bu bilgiler dosyaya YAZILMAZ; bu dosya git deposunda tutulduğu için buraya yazılan
+// şifre herkesle paylaşılmış olur. Okuma sırası:
+//   1) Ortam değişkenleri: TAHA_DB_HOST, TAHA_DB_PORT, TAHA_DB_NAME, TAHA_DB_USER, TAHA_DB_PASS
+//   2) Bu klasörde oluşturulacak ve git'e girmeyen config.local.php
+//      (şablon: config.local.example.php)
+$localDbConfig = [];
+if (is_readable(__DIR__ . '/config.local.php')) {
+    $loadedDbConfig = require __DIR__ . '/config.local.php';
+    if (is_array($loadedDbConfig)) {
+        $localDbConfig = $loadedDbConfig;
+    }
+}
+
+define('DB_HOST', getenv('TAHA_DB_HOST') ?: ($localDbConfig['host'] ?? 'localhost'));
+define('DB_PORT', getenv('TAHA_DB_PORT') ?: ($localDbConfig['port'] ?? '3306'));
+define('DB_NAME', getenv('TAHA_DB_NAME') ?: ($localDbConfig['name'] ?? ''));
+define('DB_USER', getenv('TAHA_DB_USER') ?: ($localDbConfig['user'] ?? ''));
+define('DB_PASS', getenv('TAHA_DB_PASS') ?: ($localDbConfig['pass'] ?? ''));
 define('DB_CHARSET', 'utf8mb4');
 
 // PATRON PANELİ ŞİFRESİ

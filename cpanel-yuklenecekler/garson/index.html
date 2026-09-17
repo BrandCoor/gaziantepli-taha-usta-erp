@@ -928,7 +928,9 @@
 
       // 2. Çevrimdışı / Yerel Eşleşme Doğrulaması (Sunucuya ulaşılamadığında kesintisiz giriş)
       if (!loginSuccessful) {
-        if (waiterTarget && (waiterTarget.pin === pinVal || !waiterTarget.pin || pinVal === '1234' || pinVal === '1453')) {
+        // Sabit '1234'/'1453' kodları ve PIN'i olmayan garsona serbest giriş kaldırıldı:
+        // sunucuya ulaşılamadığında herkesin bildiği kodlarla giriş yapılabiliyordu.
+        if (waiterTarget && waiterTarget.pin && waiterTarget.pin === pinVal) {
           loginSuccessful = true;
           authenticatedWaiter = {
             id: waiterTarget.id || 'w1',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   UtensilsCrossed, 
   Users, 
@@ -114,6 +114,10 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   // HIZLI NOT MODALI STATE
   const [itemNoteModal, setItemNoteModal] = useState<{ open: boolean; itemIndex: number; noteText: string }>({ open: false, itemIndex: -1, noteText: '' });
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [isSendingToKitchen, setIsSendingToKitchen] = useState(false);
+  // State asenkron güncellendiği için aynı tick içindeki ikinci tıklamayı engellemez;
+  // mükerrer mutfak fişine karşı senkron okunabilen bir kilit gerekiyor.
+  const sendingToKitchenRef = useRef(false);
   const [calcInput, setCalcInput] = useState<string>('');
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [selectedPayItemIndices, setSelectedPayItemIndices] = useState<number[]>([]);
@@ -393,41 +397,51 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   // MUTFAĞA GÖNDERME
   const handleSendToKitchen = async () => {
     if (!selectedTable) return;
+    if (sendingToKitchenRef.current) return;
+
     const pendingItems = orderItems.filter(i => i.status === 'PENDING');
     if (pendingItems.length === 0) {
       return notify.warning('Yeni Ürün Yok', 'Masada mutfağa gönderilecek yeni bir ilave ürün bulunmuyor!');
     }
 
-    const alreadySentItems = orderItems.filter(i => i.status !== 'PENDING');
-    const isAdditionalOrder = alreadySentItems.length > 0;
+    sendingToKitchenRef.current = true;
+    setIsSendingToKitchen(true);
 
-    const updatedItems: OrderItemState[] = orderItems.map(i => ({ ...i, status: 'SENT_TO_KITCHEN' }));
-    restaurantDataService.updateTableOrder(selectedTable.id, updatedItems, 'Taha Usta', selectedTable.customerInfo, generalOrderNote);
+    try {
+      const alreadySentItems = orderItems.filter(i => i.status !== 'PENDING');
+      const isAdditionalOrder = alreadySentItems.length > 0;
 
-    // Mutfak / Ocak / Fırın İstasyon Yazıcılarına Otomatik Fiş Dökümü
-    const printResult = await printerService.printKitchenTickets(
-      selectedTable,
-      pendingItems,
-      'Taha Usta',
-      generalOrderNote,
-      isAdditionalOrder
-    );
+      const updatedItems: OrderItemState[] = orderItems.map(i => ({ ...i, status: 'SENT_TO_KITCHEN' }));
+      restaurantDataService.updateTableOrder(selectedTable.id, updatedItems, 'Taha Usta', selectedTable.customerInfo, generalOrderNote);
 
-    if (selectedTable.customerInfo) {
-      notify.success(
-        '🛵 Paket Siparişi Mutfağa İletildi',
-        `Müşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}\n${printResult.success ? 'Yazıcılara fiş basıldı (' + printResult.details.join(', ') + ')' : 'Mutfak fişi gönderildi.'}`
+      // Mutfak / Ocak / Fırın İstasyon Yazıcılarına Otomatik Fiş Dökümü
+      const printResult = await printerService.printKitchenTickets(
+        selectedTable,
+        pendingItems,
+        'Taha Usta',
+        generalOrderNote,
+        isAdditionalOrder
       );
-    } else {
-      notify.success(
-        'Mutfak Fişleri Basıldı',
-        printResult.success
-          ? `${selectedTable.name} siparişi ilgili istasyon yazıcılarına iletildi: ${printResult.details.join(', ')}`
-          : `${selectedTable.name} siparişi mutfağa iletildi.`
-      );
+
+      if (selectedTable.customerInfo) {
+        notify.success(
+          '🛵 Paket Siparişi Mutfağa İletildi',
+          `Müşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}\n${printResult.success ? 'Yazıcılara fiş basıldı (' + printResult.details.join(', ') + ')' : 'Mutfak fişi gönderildi.'}`
+        );
+      } else {
+        notify.success(
+          'Mutfak Fişleri Basıldı',
+          printResult.success
+            ? `${selectedTable.name} siparişi ilgili istasyon yazıcılarına iletildi: ${printResult.details.join(', ')}`
+            : `${selectedTable.name} siparişi mutfağa iletildi.`
+        );
+      }
+
+      setSelectedTable(null);
+    } finally {
+      sendingToKitchenRef.current = false;
+      setIsSendingToKitchen(false);
     }
-
-    setSelectedTable(null);
   };
 
   const handleConfirmTableCancel = () => {
@@ -624,6 +638,14 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       return;
     }
 
+    // Masa önce kapatılır: kapatma reddedilirse veresiye kaydı da oluşturulmamalıdır,
+    // aksi halde müşteriye kapanmamış bir hesap için borç yazılır.
+    const closed = restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı', paymentEntries);
+    if (!closed) {
+      notify.error('Hesap Kapanamaz', 'Tahsil edilen tutar hesap tutarını karşılamıyor. Lütfen ödeme satırlarını kontrol edin.');
+      return;
+    }
+
     const cariPayments = paymentEntries.filter(p => Boolean(p.customerId));
     cariPayments.forEach(cp => {
       if (cp.customerId) {
@@ -637,7 +659,6 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       }
     });
 
-    restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı', paymentEntries);
     setCustomers(dataService.getCustomers());
 
     if (printReceipt) {
@@ -1393,7 +1414,8 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
                     {/* Mutfağa Gönder Butonu */}
                     <button
                       onClick={handleSendToKitchen}
-                      className={`py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md ${
+                      disabled={isSendingToKitchen}
+                      className={`py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none ${
                         orderItems.some(i => i.status === 'PENDING')
                           ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 text-slate-950 shadow-orange-500/20 active:scale-95 animate-pulse'
                           : 'bg-[#282830] text-[#8E8E98] hover:text-white'
