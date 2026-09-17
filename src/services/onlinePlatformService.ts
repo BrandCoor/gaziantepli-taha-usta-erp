@@ -7,6 +7,7 @@
 
 import { notify } from './notificationService';
 import { printerService } from './printerService';
+import { restaurantDataService } from './restaurantDataService';
 
 export type OnlinePlatformCode = 'YEMEKSEPETI' | 'TRENDYOL' | 'GETIR';
 export type StoreAvailabilityStatus = 'OPEN' | 'BUSY' | 'CLOSED';
@@ -264,10 +265,31 @@ class OnlinePlatformService {
   /**
    * Platform Teslimat Modelini Değiştirir (Restoran Kuryesi vs. Platform Kuryesi)
    */
+  /**
+   * Kurye modeli iki ayrı yerde tutuluyordu: burada ('RESTAURANT_COURIER'/
+   * 'PLATFORM_COURIER') ve restaurantDataService içindeki FoodPlatformsConfig'de
+   * ('RESTAURANT'/'PLATFORM'). Ayar ekranı yalnızca buraya yazdığı için sipariş
+   * ekranı eski değeri gösteriyor ve iki ekran birbiriyle çelişiyordu.
+   * Değişiklik artık her iki depoya birden yazılır.
+   */
+  private mirrorDeliveryModelToRestaurantConfig(code: OnlinePlatformCode, deliveryModel: DeliveryModel): void {
+    try {
+      const simple = deliveryModel === 'RESTAURANT_COURIER' ? 'RESTAURANT' : 'PLATFORM';
+      const config = restaurantDataService.getFoodPlatformsConfig();
+      const key = code === 'TRENDYOL' ? 'trendyol' : code === 'GETIR' ? 'getir' : 'yemeksepeti';
+      if (config[key].deliveryModel === simple) return;
+      restaurantDataService.saveFoodPlatformsConfig({
+        ...config,
+        [key]: { ...config[key], deliveryModel: simple }
+      });
+    } catch (e) {}
+  }
+
   public async setDeliveryModel(code: OnlinePlatformCode, deliveryModel: DeliveryModel): Promise<boolean> {
     if (this.platforms[code]) {
       this.platforms[code].deliveryModel = deliveryModel;
       this.saveLocalPlatforms();
+      this.mirrorDeliveryModelToRestaurantConfig(code, deliveryModel);
     }
 
     try {
@@ -296,6 +318,7 @@ class OnlinePlatformService {
         },
       };
       this.saveLocalPlatforms();
+      this.mirrorDeliveryModelToRestaurantConfig(code, this.platforms[code].deliveryModel);
     }
 
     try {
@@ -321,7 +344,9 @@ class OnlinePlatformService {
    * yapılandırılan senkronizasyon sunucusunun yanındaki webhook.php'den türetilir.
    */
   public getWebhookUrl(code: OnlinePlatformCode): string {
-    const base = this.getApiUrl().replace(/index\.php.*$/, '');
+    const apiUrl = this.getApiUrl();
+    if (!apiUrl) return '';
+    const base = apiUrl.replace(/index\.php.*$/, '');
     return `${base}online/webhook.php?platform=${code}`;
   }
 

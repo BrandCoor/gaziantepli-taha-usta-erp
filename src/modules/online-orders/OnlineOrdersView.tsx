@@ -645,10 +645,14 @@ export const OnlineOrdersView: React.FC = () => {
             const isBusy = p.storeStatus === 'BUSY';
             const isClosed = p.storeStatus === 'CLOSED';
             const brandColor = p.badgeColor?.pill || (p.code === 'TRENDYOL' ? '#f97316' : p.code === 'GETIR' ? '#9333ea' : '#e11d48');
-            const deliveryLabel = 
-              p.code === 'TRENDYOL' ? (platformConfig.trendyol.deliveryModel === 'RESTAURANT' ? 'Restoran Kuryesi' : 'Trendyol GO') :
-              p.code === 'GETIR' ? (platformConfig.getir.deliveryModel === 'RESTAURANT' ? 'Restoran Getirsin' : 'Getir Kuryesi') :
-              (platformConfig.yemeksepeti.deliveryModel === 'RESTAURANT' ? 'Kendi Kuryem' : 'Vale');
+            // Kurye modeli, ayar ekranının YAZDIĞI kaynaktan okunur. Önceden burada
+            // ikinci bir depo (FoodPlatformsConfig) okunuyordu; ayarlar ekranı ise
+            // onlinePlatformService'e yazdığı için iki ekran birbiriyle çelişiyordu.
+            const isRestaurantCourier = p.deliveryModel === 'RESTAURANT_COURIER';
+            const deliveryLabel =
+              p.code === 'TRENDYOL' ? (isRestaurantCourier ? 'Restoran Kuryesi' : 'Trendyol GO') :
+              p.code === 'GETIR' ? (isRestaurantCourier ? 'Restoran Getirsin' : 'Getir Kuryesi') :
+              (isRestaurantCourier ? 'Kendi Kuryem' : 'Vale');
 
             return (
               <div 

@@ -55,7 +55,11 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
     setPlatforms(onlinePlatformService.getPlatforms());
   }, []);
 
-  const getWebhookUrl = (code: OnlinePlatformCode) => onlinePlatformService.getWebhookUrl(code);
+  // Senkronizasyon sunucusu tanımlı değilse gerçek bir webhook adresi üretilemez;
+  // yarım bir adres göstermek yerine ne yapılması gerektiği yazılır.
+  const getWebhookUrl = (code: OnlinePlatformCode) =>
+    onlinePlatformService.getWebhookUrl(code) ||
+    'Önce Ayarlar > Sistem & Yedekleme bölümünden kendi sunucu adresinizi girin';
 
   const handleSaveAll = async () => {
     // 1. restaurantDataService kaydı
@@ -214,10 +218,10 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
           <div>
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <span>Online Yemek Platformları Entegrasyon Merkezi</span>
-              <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-black uppercase">Canlı API & Webhook</span>
             </h3>
             <p className="text-xs text-[#8E8E98] mt-0.5">
-              Yemeksepeti (Delivery Hero), Trendyol Yemek ve GetirYemek resmi API standartlarında çift yönlü senkronize edilir.
+              Platform kimlik bilgilerinizi ve kurye modelini burada tanımlarsınız. Siparişlerin akması
+              için platformun kendi satıcı panelinde de webhook adresinin tanımlı olması gerekir.
             </p>
           </div>
         </div>
