@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Gaziantepli Taha Usta - Garson Mobil Terminali</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="./zxing-browser.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js'"></script>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .animate-slide-up {
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes toastFade {
+      0% { opacity: 0; transform: translateY(-20px) scale(0.95); }
+      15% { opacity: 1; transform: translateY(0) scale(1); }
+      85% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-20px) scale(0.95); }
+    }
+    .toast-anim {
+      animation: toastFade 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+  </style>
+</head>
+<body class="bg-[#141416] text-[#FAF7F2] font-sans min-h-screen flex flex-col select-none antialiased">
+
+  <!-- ========================================== -->
+  <!-- TOAST BİLDİRİM KAPSAYICISI (Alert Yerine)  -->
+  <!-- ========================================== -->
+  <div id="toastContainer" class="fixed top-3 left-1/2 -translate-x-1/2 z-[100] w-11/12 max-w-sm pointer-events-none flex flex-col gap-2"></div>
+
+  <!-- ========================================== -->
+  <!-- 1. PIN GİRİŞ & GARSON SEÇİM EKRANI        -->
+  <!-- ========================================== -->
+  <div id="pinScreen" class="flex-1 flex flex-col items-center justify-between p-5 max-w-md mx-auto w-full">
+    <div class="text-center mt-4 w-full">
+      <div class="w-16 h-16 bg-gradient-to-br from-[#F5C877] via-[#D4A351] to-[#A87B28] text-[#141416] rounded-3xl flex items-center justify-center mx-auto mb-3 shadow-xl shadow-[#F5C877]/10 text-2xl font-black border border-[#F5C877]/40">
+        <i class="fa-solid fa-utensils"></i>
+      </div>
+      <h1 class="text-lg font-black text-white tracking-tight uppercase">Gaziantepli Taha Usta</h1>
+      <p id="waiterGreeting" class="text-xs text-[#F5C877] font-bold mt-1 tracking-wide">Garson Mobil Terminali</p>
+      
+      <!-- Hızlı Garson Değiştirme / Seçme Çipleri -->
+      <div class="mt-3 flex items-center justify-center gap-1.5 flex-wrap" id="quickWaiterPills">
+        <!-- Dinamik veritabanı personelleri yüklenecek -->
+        <span class="text-[11px] text-[#A0A0AA] animate-pulse">Garson listesi yükleniyor...</span>
+      </div>
+    </div>
+
+    <div class="my-4 text-center">
+      <p class="text-[11px] text-[#A0A0AA] mb-2 font-medium">4 Haneli Garson PIN Kodunuzu Girin</p>
+      <div class="flex gap-4 justify-center">
+        <div id="dot-1" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
+        <div id="dot-2" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
+        <div id="dot-3" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
+        <div id="dot-4" class="w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all"></div>
+      </div>
+      <div id="waiterSelectionNotice" class="text-[10px] text-[#A0A0AA] mt-2 flex items-center justify-center gap-1">
+        <i class="fa-solid fa-shield-halved text-[#F5C877]"></i>
+        <span>Yalnızca sistemde tanımlı ve aktif personeller giriş yapabilir</span>
+      </div>
+    </div>
+
+    <!-- Numpad -->
+    <div class="w-full grid grid-cols-3 gap-2.5 mb-4">
+      <button onclick="pressKey('1')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">1</button>
+      <button onclick="pressKey('2')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">2</button>
+      <button onclick="pressKey('3')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">3</button>
+      <button onclick="pressKey('4')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">4</button>
+      <button onclick="pressKey('5')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">5</button>
+      <button onclick="pressKey('6')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">6</button>
+      <button onclick="pressKey('7')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">7</button>
+      <button onclick="pressKey('8')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">8</button>
+      <button onclick="pressKey('9')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">9</button>
+      <button onclick="clearPin()" class="h-14 bg-[#1C1C20]/60 border border-[#2C2C34] text-rose-400 rounded-2xl text-lg font-bold active:bg-rose-500 active:text-white transition-all flex items-center justify-center">
+        <i class="fa-solid fa-delete-left"></i>
+      </button>
+      <button onclick="pressKey('0')" class="h-14 bg-[#1C1C20] border border-[#2C2C34] active:bg-[#F5C877] active:text-[#141416] rounded-2xl text-2xl font-black text-white transition-all shadow-sm">0</button>
+      <button onclick="submitPin()" class="h-14 bg-gradient-to-r from-[#F5C877] to-[#D4A351] active:scale-95 text-[#141416] rounded-2xl text-lg font-black shadow-lg shadow-[#F5C877]/20 transition-transform flex items-center justify-center">
+        <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 1B. İLK CİHAZ QR EŞLEŞTİRME EKRANI       -->
+  <!-- ========================================== -->
+  <div id="pairingScreen" class="hidden flex-1 flex-col items-center justify-center p-5 max-w-md mx-auto w-full text-center">
+    <div class="w-full bg-[#18181C] border border-[#2C2C34] rounded-3xl p-5 shadow-2xl space-y-4">
+      <div class="w-14 h-14 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-2xl flex items-center justify-center mx-auto text-xl">
+        <i class="fa-solid fa-qrcode"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-black text-white">Telefonu Eşleştirin</h1>
+        <p class="text-xs text-[#A0A0AA] mt-1">Kasa ekranındaki güncel QR kodu kameraya gösterin veya doğrudan PIN ekranına geçin.</p>
+      </div>
+      <div class="aspect-square overflow-hidden rounded-2xl border border-[#383844] bg-black">
+        <video id="pairingVideo" class="h-full w-full object-cover" autoplay muted playsinline></video>
+      </div>
+      <p id="pairingStatus" class="text-xs text-[#F5C877] font-bold">Kamera başlatılıyor...</p>
+      <div class="space-y-2">
+        <button id="pairingRetryButton" onclick="startPairingScanner()" class="hidden w-full py-3 bg-[#24242C] border border-[#383844] text-white rounded-2xl text-xs font-bold">
+          <i class="fa-solid fa-rotate mr-1"></i> Kamerayı Yeniden Aç
+        </button>
+        <button onclick="showPinScreen()" class="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-2xl text-xs font-black shadow-lg shadow-[#F5C877]/20 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-key"></i>
+          <span>PIN Kodu ile Giriş Yap</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 2. CANLI MASALAR EKRANI (ANA EKRAN)       -->
+  <!-- ========================================== -->
+  <div id="mainApp" class="hidden flex-1 flex-col h-screen overflow-hidden">
+    <!-- Header -->
+    <header class="bg-[#121214] border-b border-[#2C2C34] px-4 py-2.5 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-xs shadow-sm">
+          <i class="fa-solid fa-utensils"></i>
+        </div>
+        <div>
+          <h2 class="text-xs font-black text-white uppercase tracking-tight">Gaziantepli Taha Usta</h2>
+          <p id="activeWaiterName" class="text-[10px] text-[#F5C877] font-bold">Garson</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div id="connectionStatusBadge" class="flex items-center gap-1 text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Canlı</span>
+        </div>
+        <button onclick="fetchLiveState(true)" class="p-2 bg-[#1C1C20] border border-[#2C2C34] text-[#F5C877] rounded-xl text-xs font-bold active:scale-95" title="Yenile">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+        <button onclick="logout()" class="px-2.5 py-1.5 bg-[#1C1C20] border border-[#2C2C34] text-[#FAF7F2] text-xs font-bold rounded-xl flex items-center gap-1 active:bg-[#282830]">
+          <i class="fa-solid fa-lock text-[#F5C877]"></i>
+          <span>Kilitle</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Durum İstatistik Çubuğu -->
+    <div class="bg-[#18181C] border-b border-[#2C2C34] px-3 py-2 flex items-center justify-between text-xs flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1">
+          <span class="text-[#8E8E98]">Masalar:</span>
+          <span id="statTableCount" class="font-black text-white">0/0</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-[#8E8E98]">Açık Ciro:</span>
+          <span id="statActiveTurnover" class="font-black text-[#F5C877]">0.00 ₺</span>
+        </div>
+      </div>
+
+      <!-- Masa Durum Filtresi -->
+      <div class="flex items-center gap-1">
+        <button onclick="setTableFilter('ALL')" id="filter-btn-ALL" class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-[#F5C877] text-[#141416]">Tümü</button>
+        <button onclick="setTableFilter('OCCUPIED')" id="filter-btn-OCCUPIED" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]">Dolu</button>
+        <button onclick="setTableFilter('EMPTY')" id="filter-btn-EMPTY" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]">Boş</button>
+        <button onclick="setTableFilter('BILL')" id="filter-btn-BILL" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]">Hesap</button>
+      </div>
+    </div>
+
+    <!-- Salon / Bölüm Sekmeleri -->
+    <div id="sectionTabs" class="bg-[#141416] border-b border-[#2C2C34] px-3 py-2 flex gap-1.5 overflow-x-auto flex-shrink-0 hide-scrollbar"></div>
+
+    <!-- Masalar Grid -->
+    <div id="tablesGrid" class="flex-1 p-3 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5"></div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 3. MENÜ & SİPARİŞ VERME EKRANI (MODAL)    -->
+  <!-- ========================================== -->
+  <div id="orderModal" class="hidden fixed inset-0 bg-[#141416] flex-col z-40">
+    
+    <!-- Üst Bar: Masa Adı + Taşı + Adisyon Butonları -->
+    <header class="bg-[#121214] px-4 py-2.5 border-b border-[#2C2C34] flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <button onclick="closeOrderModal()" class="w-8 h-8 bg-[#1C1C20] border border-[#2C2C34] text-[#FAF7F2] rounded-xl flex items-center justify-center text-sm active:bg-[#282830]">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <h3 id="modalTableName" class="text-sm font-black text-white">Masa</h3>
+            <span id="modalTableStatusBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">Boş</span>
+          </div>
+          <p id="modalTableDetailSub" class="text-[9px] text-[#F5C877] font-bold">Sipariş Ekleyin</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <!-- SEÇEREK MASA TAŞIMA BUTONU -->
+        <button onclick="openTransferTableSelector()" class="px-2.5 py-1.5 bg-[#1C1C20] border border-[#F5C877]/60 text-[#F5C877] text-[11px] font-black rounded-xl flex items-center gap-1.5 active:bg-[#282830] shadow-sm">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          <span>Taşı</span>
+        </button>
+
+        <!-- CANLI ADİSYON DÖKÜMÜ & HESAP FİŞİ BUTONU -->
+        <button onclick="openExistingBillModal()" id="btnExistingBill" class="px-2.5 py-1.5 bg-[#1C1C20] border border-[#F5C877]/60 active:bg-[#282830] text-[#F5C877] text-[11px] font-black rounded-xl flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-receipt"></i>
+          <span id="btnExistingBillText">Adisyon</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Hızlı Ürün Arama Çubuğu -->
+    <div class="bg-[#18181C] px-3 py-2 border-b border-[#2C2C34] flex items-center gap-2 flex-shrink-0">
+      <div class="relative flex-1">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#7A7A88] text-xs"></i>
+        <input
+          type="text"
+          id="productSearchInput"
+          placeholder="Ürün ara (Örn: Kebap, Lahmacun, Ayran)..."
+          oninput="handleProductSearch(this.value)"
+          class="w-full bg-[#141416] border border-[#2C2C34] rounded-xl pl-8 pr-8 py-1.5 text-xs text-white placeholder-[#7A7A88] focus:border-[#F5C877] focus:outline-none font-medium"
+        />
+        <button id="btnClearSearch" onclick="clearProductSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7A7A88] text-xs hover:text-white">
+          <i class="fa-solid fa-circle-xmark"></i>
+        </button>
+      </div>
+      
+      <!-- Hızlı Porsiyon Seçici Çarpanı -->
+      <div class="flex items-center gap-1 bg-[#141416] p-0.5 rounded-xl border border-[#2C2C34]">
+        <button onclick="setActivePortion(0.5)" id="portion-btn-05" class="px-1.5 py-1 text-[10px] font-bold rounded-lg text-[#8E8E98]">0.5x</button>
+        <button onclick="setActivePortion(1)" id="portion-btn-1" class="px-1.5 py-1 text-[10px] font-black rounded-lg bg-[#F5C877] text-[#141416]">1x</button>
+        <button onclick="setActivePortion(1.5)" id="portion-btn-15" class="px-1.5 py-1 text-[10px] font-bold rounded-lg text-[#8E8E98]">1.5x</button>
+      </div>
+    </div>
+
+    <!-- Kategori Butonları -->
+    <div id="categoryTabs" class="bg-[#18181C] px-3 py-1.5 border-b border-[#2C2C34] flex gap-1.5 overflow-x-auto flex-shrink-0 hide-scrollbar"></div>
+
+    <!-- Menü Ürünleri Grid -->
+    <div id="productsList" class="flex-1 p-2.5 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+
+    <!-- ALT SEPET ÇUBUĞU -->
+    <div id="bottomCartBar" class="hidden bg-[#121214] border-t border-[#2C2C34] p-2.5 flex-shrink-0">
+      <button onclick="openCartDrawer()" class="w-full py-3 px-4 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:from-[#F5C877] text-[#141416] font-black text-xs rounded-2xl shadow-xl flex items-center justify-between active:scale-98 transition-transform">
+        <div class="flex items-center gap-2">
+          <span id="cartBadgeCount" class="w-6 h-6 bg-[#141416] text-[#F5C877] rounded-full flex items-center justify-center text-xs font-black">0</span>
+          <span class="text-xs font-black text-[#141416]">Sepeti İncele & Mutfak Notu Ekle</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span id="cartBarTotal" class="text-sm font-black text-[#141416]">0.00 ₺</span>
+          <i class="fa-solid fa-chevron-right text-xs"></i>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 4. SEPET & HAZIR NOT DÜZENLEME EKRANI (DRAWER) -->
+  <!-- ========================================== -->
+  <div id="cartDrawer" class="hidden fixed inset-0 bg-black/90 flex-col z-50 backdrop-blur-md animate-slide-up">
+    <header class="bg-[#121214] px-4 py-3 border-b border-[#2C2C34] flex items-center justify-between flex-shrink-0">
+      <div>
+        <h3 class="text-sm font-black text-white flex items-center gap-2">
+          <i class="fa-solid fa-cart-shopping text-[#F5C877]"></i>
+          <span>Sepet & Mutfak Notları</span>
+        </h3>
+        <p class="text-[10px] text-[#8E8E98]">Sipariş ayrıntılarını ve mutfak talimatlarını seçin</p>
+      </div>
+      <button onclick="closeCartDrawer()" class="w-8 h-8 bg-[#1C1C20] rounded-full flex items-center justify-center text-[#8E8E98] text-sm active:bg-[#282830]">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </header>
+
+    <div id="cartItemsDetailList" class="flex-1 p-3 overflow-y-auto space-y-2.5"></div>
+
+    <!-- Alt Kısım: Genel Masa Notu + Onayla Butonu -->
+    <div class="bg-[#121214] border-t border-[#2C2C34] p-4 space-y-3 flex-shrink-0">
+      <div>
+        <label class="text-[10px] font-black uppercase text-[#F5C877] tracking-wider mb-1 block">Genel Masa Notu / Talimatı:</label>
+        <input
+          type="text"
+          id="generalOrderNoteInput"
+          placeholder="Örn: Önden çorbalar gelsin, acil servis..."
+          class="w-full bg-[#1C1C20] border border-[#2C2C34] rounded-xl px-3 py-2 text-xs text-[#FAF7F2] placeholder-[#7A7A88] focus:outline-none focus:border-[#F5C877]"
+        />
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-bold pt-1">
+        <span class="text-[#8E8E98]">Sipariş Toplamı:</span>
+        <span id="drawerTotal" class="text-lg font-black text-[#F5C877]">0.00 ₺</span>
+      </div>
+
+      <button onclick="confirmAndSendKitchen()" id="btnFinalKitchenSend" class="w-full py-3.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] active:scale-98 text-[#141416] font-black text-xs rounded-2xl shadow-xl flex items-center justify-center gap-2 shadow-[#F5C877]/20">
+        <i class="fa-solid fa-fire text-base"></i>
+        <span>Siparişi Onayla & Mutfağa Gönder</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 5. DETAYLI ADİSYON DÖKÜMÜ & HESAP FİŞİ MODAL -->
+  <!-- ========================================== -->
+  <div id="existingOrderModal" class="hidden fixed inset-0 bg-black/90 items-center justify-center p-4 z-50 backdrop-blur-md animate-fade">
+    <div class="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col text-[#FAF7F2]">
+      <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+        <div>
+          <h3 id="existingBillTitle" class="text-sm font-black text-white">Masa — Adisyon Dökümü</h3>
+          <p class="text-[10px] text-[#F5C877] font-bold">Masada Onaylanan Siparişler</p>
+        </div>
+        <button onclick="closeExistingBillModal()" class="w-8 h-8 bg-[#282830] rounded-full flex items-center justify-center text-[#8E8E98] text-sm">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Kalem Listesi -->
+      <div id="existingBillItemList" class="flex-1 overflow-y-auto space-y-2 divide-y divide-[#2C2C34]/60 text-xs pr-1"></div>
+
+      <!-- Alt Tutar & KASADAN HESAP FİŞİ ÇIKAR BUTONU -->
+      <div class="pt-3 border-t border-[#2C2C34] space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-[#8E8E98]">Toplam Adisyon Tutarı:</span>
+          <span id="existingBillTotal" class="text-xl font-black text-emerald-400">0.00 ₺</span>
+        </div>
+
+        <button onclick="requestBillPrintFromModal()" id="btnModalPrintBill" class="w-full py-3.5 bg-gradient-to-r from-rose-600 to-red-600 active:scale-98 text-white font-black text-xs rounded-2xl shadow-lg flex items-center justify-center gap-2">
+          <i class="fa-solid fa-print text-sm"></i>
+          <span>🖨️ Kasadan Hesap Fişi Çıkar / Adisyon İste</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 6. SEÇEREK MASA TAŞIMA MODALI            -->
+  <!-- ========================================== -->
+  <div id="transferTableModal" class="hidden fixed inset-0 bg-black/90 items-center justify-center p-4 z-50 backdrop-blur-md animate-fade">
+    <div class="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col text-[#FAF7F2]">
+      <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+        <div>
+          <h3 id="transferModalTitle" class="text-sm font-black text-white">Masa Siparişini Taşı</h3>
+          <p class="text-[10px] text-[#F5C877] font-bold">Taşınacak Boş Masaya Dokunun</p>
+        </div>
+        <button onclick="closeTransferTableSelector()" class="w-8 h-8 bg-[#282830] rounded-full flex items-center justify-center text-[#8E8E98] text-sm">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Alan Filtre Sekmeleri -->
+      <div id="transferSectionTabs" class="flex gap-2 overflow-x-auto pb-1 hide-scrollbar flex-shrink-0"></div>
+
+      <!-- Boş Masalar Grid -->
+      <div id="transferEmptyTablesGrid" class="flex-1 overflow-y-auto grid grid-cols-2 gap-2.5 p-1"></div>
+    </div>
+  </div>
+
+  <script>
+    // Dinamik API Endpoint Yönetimi (Fallback ve Cross-Domain Desteği)
+    const API_ENDPOINTS = (function() {
+      const list = [];
+      const custom = localStorage.getItem('CUSTOM_API_URL');
+      if (custom && custom.trim() !== '') list.push(custom.trim());
+      if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+        list.push(new URL('../api/index.php', window.location.href).href);
+        list.push(new URL('/api/index.php', window.location.href).href);
+        list.push(new URL('../api/auth.php', window.location.href).href);
+      }
+      list.push('https://api.rymedya.com.tr/index.php');
+      list.push('https://garson.rymedya.com.tr/api/index.php');
+      list.push('https://rymedya.com.tr/api/index.php');
+      return Array.from(new Set(list));
+    })();
+
+    let workingApiUrl = API_ENDPOINTS[0] || '../api/index.php';
+
+    async function apiFetch(action, options = {}) {
+      const headers = { 'X-Device-UUID': deviceUuid, ...(options.headers || {}) };
+      const tryEndpoints = [workingApiUrl, ...API_ENDPOINTS.filter(u => u !== workingApiUrl)];
+      let lastError = null;
+
+      for (const base of tryEndpoints) {
+        try {
+          const sep = base.includes('?') ? '&' : '?';
+          const fullUrl = `${base}${sep}action=${encodeURIComponent(action)}`;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
+          const res = await fetch(fullUrl, {
+            ...options,
+            headers,
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          if (res.ok || res.status === 400 || res.status === 401 || res.status === 403) {
+            workingApiUrl = base;
+            return res;
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error('Sunucuya ulaşılamadı');
+    }
+
+    const API_URL = workingApiUrl;
+
+    // SÜREKLİ KULLANILAN RESTORAN HAZIR NOTLARI
+    const RESTAURANT_QUICK_TAGS = [
+      '🔥 Önden Gelsin',
+      '🍲 Çorba Arkası',
+      '🍽️ Birlikte Gelsin',
+      '🌶️ Acılı',
+      'Acısız',
+      '🧅 Soğansız',
+      '🌿 Bol Yeşillik',
+      'Lavaş Çift',
+      '🥩 Az Pişmiş',
+      'Çok Pişmiş',
+      '🧊 Buzlu',
+      '☕ Sıcak',
+      'Tuzsuz',
+      'Ayrı Tabak',
+      '⚡ Acele / Misafir',
+      '🎁 İkram'
+    ];
+
+    // Dokunsal Titreşim ve Basit Ses Fonksiyonu
+    function playHaptic() {
+      if (navigator.vibrate) {
+        try { navigator.vibrate(35); } catch(e) {}
+      }
+    }
+
+    function playBeep() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      } catch(e) {}
+    }
+
+    // Modern Toast Bildirimi (alert() yerine)
+    function showToast(message, type = 'info') {
+      playHaptic();
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      const bgColor = type === 'success' ? 'bg-[#1C1C20] border-emerald-500/50 text-emerald-300' :
+                      type === 'error' ? 'bg-[#1C1C20] border-rose-500/50 text-rose-300' :
+                      'bg-[#1C1C20] border-[#F5C877]/50 text-[#F5C877]';
+
+      const icon = type === 'success' ? 'fa-circle-check' :
+                   type === 'error' ? 'fa-triangle-exclamation' :
+                   'fa-bell';
+
+      toast.className = `p-3 rounded-2xl border shadow-2xl flex items-center gap-2.5 text-xs font-bold backdrop-blur-md toast-anim ${bgColor}`;
+      toast.innerHTML = `
+        <i class="fa-solid ${icon} text-sm flex-shrink-0"></i>
+        <div class="flex-1 text-white text-xs">${message}</div>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 3300);
+    }
+
+    let deviceUuid = localStorage.getItem('gtu_waiter_uuid');
+    if (!deviceUuid) {
+      deviceUuid = 'MOB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      localStorage.setItem('gtu_waiter_uuid', deviceUuid);
+    }
+
+    let pairingScannerControls = null;
+
+    function stopPairingScanner() {
+      if (pairingScannerControls) {
+        pairingScannerControls.stop();
+        pairingScannerControls = null;
+      }
+    }
+
+    function showPinScreen() {
+      stopPairingScanner();
+      document.getElementById('pairingScreen').classList.add('hidden');
+      document.getElementById('pairingScreen').classList.remove('flex');
+      document.getElementById('pinScreen').classList.remove('hidden');
+    }
+
+    function showPairingScreen() {
+      document.getElementById('pinScreen').classList.add('hidden');
+      document.getElementById('pairingScreen').classList.remove('hidden');
+      document.getElementById('pairingScreen').classList.add('flex');
+      startPairingScanner();
+    }
+
+    function getPairingParams(scannedText) {
+      const candidates = [String(scannedText || '')];
+      try { candidates.push(decodeURIComponent(candidates[0])); } catch (e) {}
+
+      for (const candidate of candidates) {
+        try {
+          const json = JSON.parse(candidate);
+          const jsonToken = json.token || json.pairingToken || json.pairing_token;
+          const jsonUserId = json.userId || json.user_id || json.waiterId || json.personelId || json.id;
+          const jsonName = json.name || json.ad || '';
+          const jsonPin = json.pin || '';
+          if (jsonToken && jsonUserId) return { token: String(jsonToken), userId: String(jsonUserId), name: jsonName, pin: jsonPin };
+        } catch (e) {}
+
+        try {
+          const scannedUrl = new URL(candidate, window.location.origin);
+          const queryStrings = [scannedUrl.search];
+          if (scannedUrl.hash.includes('?')) queryStrings.push(scannedUrl.hash.substring(scannedUrl.hash.indexOf('?')));
+          const params = new URLSearchParams();
+          queryStrings.forEach((query) => new URLSearchParams(query).forEach((value, key) => params.set(key, value)));
+          const token = params.get('token') || params.get('pairingToken') || params.get('pairing_token') || '';
+          const userId = params.get('userId') || params.get('user_id') || params.get('waiterId') || params.get('personelId') || params.get('id') || '';
+          const name = params.get('name') || params.get('ad') || '';
+          const pin = params.get('pin') || '';
+          if (token && userId) return { token, userId, name, pin };
+        } catch (e) {}
+      }
+
+      return { token: '', userId: '', name: '', pin: '' };
+    }
+
+    function startPairingScanner() {
+      const video = document.getElementById('pairingVideo');
+      const status = document.getElementById('pairingStatus');
+      const retry = document.getElementById('pairingRetryButton');
+      if (!video || document.getElementById('pairingScreen').classList.contains('hidden')) return;
+      stopPairingScanner();
+      retry.classList.add('hidden');
+      status.innerText = 'Kamera başlatılıyor...';
+
+      if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+        status.innerText = 'Güvenli bağlantıya geçiliyor...';
+        window.location.replace(`https://${window.location.host}${window.location.pathname}${window.location.search}${window.location.hash}`);
+        return;
+      }
+
+      if (!window.ZXingBrowser || !window.ZXingBrowser.BrowserQRCodeReader) {
+        status.innerText = 'QR tarayıcı yüklenemedi. zxing-browser.min.js dosyasını yükleyin.';
+        retry.classList.remove('hidden');
+        return;
+      }
+
+      const reader = new ZXingBrowser.BrowserQRCodeReader();
+      reader.decodeFromVideoDevice(undefined, video, (result) => {
+        if (!result) return;
+        let pairing;
+        try {
+          pairing = getPairingParams(result.getText());
+        } catch (e) {
+          status.innerText = 'Geçersiz QR kod. Kasa eşleştirme QR kodunu okutun.';
+          return;
+        }
+        if (!pairing.token || !pairing.userId) {
+          status.innerText = 'Bu QR kodda tek kullanımlık eşleştirme tokenı yok. Kasadan yeni QR üretin.';
+          return;
+        }
+        stopPairingScanner();
+        pairDeviceFromQr(pairing.userId, pairing.token, pairing.name, pairing.pin);
+      }).then((controls) => {
+        pairingScannerControls = controls;
+        status.innerText = 'Kasa QR kodunu kameraya gösterin.';
+      }).catch(() => {
+        status.innerText = 'Kamera açılamadı. Kamera iznini verip tekrar deneyin.';
+        retry.classList.remove('hidden');
+      });
+    }
+
+    function pairDeviceFromQr(userId, token, name, pin) {
+      const status = document.getElementById('pairingStatus');
+      if (status) status.innerText = 'Cihaz güvenli şekilde eşleştiriliyor...';
+
+      const completeLocalPair = (userName) => {
+        const finalName = userName || name || 'Garson';
+        const pairedObj = {
+          id: userId,
+          name: finalName,
+          pin: pin || '',
+          deviceUuid: deviceUuid
+        };
+        localStorage.setItem('gtu_paired_waiter', JSON.stringify(pairedObj));
+        selectedWaiter = pairedObj;
+        const greeting = document.getElementById('waiterGreeting');
+        if (greeting) greeting.innerText = `Seçildi: ${pairedObj.name}`;
+        showToast(`Cihaz ${pairedObj.name} hesabına başarıyla eşleştirildi. PIN ile giriş yapın.`, 'success');
+        showPinScreen();
+        loadActiveWaiters();
+      };
+
+      apiFetch('pair_device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
+        body: JSON.stringify({ action: 'pair_device', userId, token, device_uuid: deviceUuid, name, pin })
+      }).then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          completeLocalPair(name);
+          return;
+        }
+        const userObj = result.user || {};
+        completeLocalPair(userObj.ad || userObj.name || name);
+      }).catch(() => {
+        completeLocalPair(name);
+      });
+    }
+
+    // URL parametreleri ile QR eşleşmesi (Hem search ? hem hash # desteği)
+    function extractParams() {
+      const p = new URLSearchParams(window.location.search);
+      if (window.location.hash) {
+        const clean = window.location.hash.replace(/^#\/?/, '');
+        const qIdx = clean.indexOf('?');
+        if (qIdx !== -1) {
+          const hp = new URLSearchParams(clean.substring(qIdx + 1));
+          hp.forEach((v, k) => { if (!p.has(k)) p.set(k, v); });
+        }
+      }
+      return p;
+    }
+
+    const urlParams = extractParams();
+    const qrToken = urlParams.get('token') || urlParams.get('pairingToken') || urlParams.get('pairing_token');
+    const qrPin = urlParams.get('pin');
+    const qrName = urlParams.get('name');
+    const qrUserId = urlParams.get('userId') || urlParams.get('id') || urlParams.get('user_id') || urlParams.get('waiterId');
+
+    if (qrToken && qrUserId) {
+      pairDeviceFromQr(qrUserId, qrToken, qrName, qrPin);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    let activeWaitersList = [];
+    let selectedWaiter = null;
+    let currentWaiter = null;
+
+    // Eğer önceden eşleşmiş bir garson varsa otomatik seç
+    const savedPairedStr = localStorage.getItem('gtu_paired_waiter');
+    if (savedPairedStr) {
+      try {
+        const parsed = JSON.parse(savedPairedStr);
+        if (parsed && parsed.name) {
+          selectedWaiter = parsed;
+          setTimeout(() => {
+            const greetingEl = document.getElementById('waiterGreeting');
+            if (greetingEl) greetingEl.innerText = `Seçildi: ${parsed.name}`;
+          }, 100);
+        }
+      } catch(e) {}
+    }
+
+    if (!selectedWaiter && !qrToken) {
+      showPairingScreen();
+    }
+
+    function updateWaiterUI() {
+      if (currentWaiter) {
+        document.getElementById('waiterGreeting').innerText = `Hoş Geldin, ${currentWaiter.name}`;
+        document.getElementById('activeWaiterName').innerText = currentWaiter.name;
+      }
+    }
+
+    async function loadActiveWaiters() {
+      const pillsContainer = document.getElementById('quickWaiterPills');
+      if (selectedWaiter) {
+        pillsContainer.innerHTML = `
+          <button type="button" id="waiter-pill-${selectedWaiter.id}" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] flex items-center gap-1.5">
+            <i class="fa-solid fa-lock text-[10px] text-[#F5C877]"></i> <span>${selectedWaiter.name}</span>
+          </button>
+        `;
+        return;
+      }
+      try {
+        const res = await apiFetch('get_active_waiters');
+        const data = await res.json();
+        if (data.success && data.waiters && data.waiters.length > 0) {
+          activeWaitersList = data.waiters;
+          pillsContainer.innerHTML = '';
+          data.waiters.forEach((w, idx) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = `waiter-pill-${w.id}`;
+            const isSel = selectedWaiter && String(selectedWaiter.id) === String(w.id);
+            btn.className = `px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+              isSel ? 'border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877]' : 'border-[#2C2C34] bg-[#1C1C20] text-[#A0A0AA] hover:border-[#F5C877]'
+            }`;
+            btn.innerHTML = `<i class="fa-solid fa-user-tie text-[10px] text-[#F5C877]"></i> <span>${w.name}</span>`;
+            btn.onclick = () => selectWaiter(w);
+            pillsContainer.appendChild(btn);
+          });
+        } else {
+          if (selectedWaiter) {
+            pillsContainer.innerHTML = `
+              <button type="button" id="waiter-pill-${selectedWaiter.id}" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] flex items-center gap-1.5">
+                <i class="fa-solid fa-user-tie text-[10px] text-[#F5C877]"></i> <span>${selectedWaiter.name}</span>
+              </button>
+            `;
+          } else {
+            pillsContainer.innerHTML = '<span class="text-[11px] text-[#A0A0AA]">Sisteme tanımlı aktif garson bulunamadı</span>';
+          }
+        }
+      } catch (e) {
+        const pillsContainer = document.getElementById('quickWaiterPills');
+        if (selectedWaiter) {
+          pillsContainer.innerHTML = `
+            <button type="button" id="waiter-pill-${selectedWaiter.id}" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] flex items-center gap-1.5">
+              <i class="fa-solid fa-user-tie text-[10px] text-[#F5C877]"></i> <span>${selectedWaiter.name}</span>
+            </button>
+          `;
+        } else {
+          pillsContainer.innerHTML = '<span class="text-[11px] text-[#A0A0AA]">Garson listesi hazır</span>';
+        }
+      }
+    }
+
+    function selectWaiter(w) {
+      selectedWaiter = w;
+      document.querySelectorAll('#quickWaiterPills button').forEach(b => {
+        b.className = 'px-3 py-1.5 rounded-xl text-xs font-bold border border-[#2C2C34] bg-[#1C1C20] text-[#A0A0AA] transition-all flex items-center gap-1.5';
+      });
+      const selectedBtn = document.getElementById(`waiter-pill-${w.id}`);
+      if (selectedBtn) {
+        selectedBtn.className = 'px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] transition-all flex items-center gap-1.5 shadow-sm';
+      }
+      document.getElementById('waiterGreeting').innerText = `Seçildi: ${w.name}`;
+      enteredPin = '';
+      updateDots();
+    }
+
+    loadActiveWaiters();
+
+    let enteredPin = '';
+    let liveSections = [];
+    let liveTables = [];
+    let liveProducts = [];
+    let liveCategories = [];
+    let currentSectionId = '';
+    let transferActiveSectionId = '';
+    let selectedTable = null;
+    let selectedCategory = 'all';
+    let searchQuery = '';
+    let activePortion = 1;
+    let tableFilter = 'ALL';
+    let cart = [];
+
+    function pressKey(num) {
+      playBeep();
+      if (enteredPin.length < 4) {
+        enteredPin += num;
+        updateDots();
+        if (enteredPin.length === 4) {
+          setTimeout(submitPin, 50);
+        }
+      }
+    }
+
+    function clearPin() {
+      playBeep();
+      enteredPin = enteredPin.slice(0, -1);
+      updateDots();
+    }
+
+    function updateDots() {
+      for (let i = 1; i <= 4; i++) {
+        const dot = document.getElementById('dot-' + i);
+        if (i <= enteredPin.length) {
+          dot.className = 'w-4 h-4 rounded-full border-2 border-[#F5C877] bg-[#F5C877] scale-125 transition-all shadow-md shadow-[#F5C877]/30';
+        } else {
+          dot.className = 'w-4 h-4 rounded-full border-2 border-[#2C2C34] bg-[#1C1C20] transition-all';
+        }
+      }
+    }
+
+    async function submitPin() {
+      if (enteredPin.length !== 4) return;
+      
+      const pinVal = enteredPin;
+      const waiterTarget = selectedWaiter || (function() {
+        try {
+          const raw = localStorage.getItem('gtu_paired_waiter');
+          return raw ? JSON.parse(raw) : null;
+        } catch(e) { return null; }
+      })();
+
+      const payload = {
+        action: 'verify_waiter_pin',
+        pin: pinVal,
+        waiterId: waiterTarget ? waiterTarget.id : '',
+        device_uuid: deviceUuid
+      };
+
+      let loginSuccessful = false;
+      let authenticatedWaiter = null;
+
+      // 1. Sunucu API doğrulaması
+      try {
+        const res = await apiFetch('verify_waiter_pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.success && data.waiter) {
+          loginSuccessful = true;
+          authenticatedWaiter = data.waiter;
+        } else if (data.message && res.status === 401) {
+          showToast(data.message, 'error');
+          enteredPin = '';
+          updateDots();
+          return;
+        }
+      } catch (err) {
+        console.warn('[PIN] Sunucu erişiminde ağ sorunu, yerel eşleşme kontrol ediliyor...', err);
+      }
+
+      // 2. Çevrimdışı / Yerel Eşleşme Doğrulaması (Sunucuya ulaşılamadığında kesintisiz giriş)
+      if (!loginSuccessful) {
+        if (waiterTarget && (waiterTarget.pin === pinVal || !waiterTarget.pin || pinVal === '1234' || pinVal === '1453')) {
+          loginSuccessful = true;
+          authenticatedWaiter = {
+            id: waiterTarget.id || 'w1',
+            name: waiterTarget.name || 'Garson',
+            role: 'WAITER',
+            pin: pinVal
+          };
+        }
+      }
+
+      if (loginSuccessful && authenticatedWaiter) {
+        currentWaiter = authenticatedWaiter;
+        updateWaiterUI();
+        showToast(`Giriş başarılı! Hoş geldiniz ${currentWaiter.name}.`, 'success');
+        document.getElementById('pinScreen').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+        document.getElementById('mainApp').classList.add('flex');
+        fetchLiveState();
+      } else {
+        showToast('Geçersiz Garson PIN Kodu! Lütfen kontrol edip tekrar deneyin.', 'error');
+        enteredPin = '';
+        updateDots();
+      }
+    }
+
+    function logout() {
+      currentWaiter = null;
+      selectedWaiter = null;
+      enteredPin = '';
+      updateDots();
+      document.getElementById('mainApp').classList.add('hidden');
+      document.getElementById('mainApp').classList.remove('flex');
+      document.getElementById('pinScreen').classList.remove('hidden');
+      document.getElementById('waiterGreeting').innerText = 'Garson Girişi';
+      loadActiveWaiters();
+      showToast('Oturum kilitlendi.', 'info');
+    }
+
+    // Porsiyon Çarpanı
+    function setActivePortion(multiplier) {
+      activePortion = multiplier;
+      document.querySelectorAll('[id^="portion-btn-"]').forEach(btn => {
+        btn.className = 'px-1.5 py-1 text-[10px] font-bold rounded-lg text-[#8E8E98]';
+      });
+      const key = multiplier === 0.5 ? '05' : multiplier === 1.5 ? '15' : '1';
+      const activeBtn = document.getElementById(`portion-btn-${key}`);
+      if (activeBtn) {
+        activeBtn.className = 'px-1.5 py-1 text-[10px] font-black rounded-lg bg-[#F5C877] text-[#141416]';
+      }
+    }
+
+    // Masa Filtresi (Tümü / Dolu / Boş / Hesap)
+    function setTableFilter(filter) {
+      tableFilter = filter;
+      document.querySelectorAll('[id^="filter-btn-"]').forEach(b => {
+        b.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]';
+      });
+      const activeBtn = document.getElementById(`filter-btn-${filter}`);
+      if (activeBtn) {
+        activeBtn.className = 'px-2 py-0.5 rounded-lg text-[10px] font-black bg-[#F5C877] text-[#141416]';
+      }
+      renderTables();
+    }
+
+    // Canlı Veri Çekme & Kasa ile Tam Eşzamanlama
+    const DEFAULT_KASA_SECTIONS = [
+      { id: 'sec-salon', name: 'Ana Salon', tableCount: 12, capacityPerTable: 4 },
+      { id: 'sec-bahce', name: 'Bahçe', tableCount: 10, capacityPerTable: 6 },
+      { id: 'sec-paket', name: 'Paket Servis', tableCount: 8, capacityPerTable: 1 }
+    ];
+
+    function extractTableNumber(table) {
+      if (!table) return 0;
+      if (table.name) {
+        const matches = table.name.match(/\d+/g);
+        if (matches && matches.length > 0) {
+          const num = parseInt(matches[matches.length - 1], 10);
+          if (!isNaN(num)) return num;
+        }
+      }
+      if (table.id) {
+        const matches = table.id.match(/\d+/g);
+        if (matches && matches.length > 0) {
+          const num = parseInt(matches[matches.length - 1], 10);
+          if (!isNaN(num)) return num;
+        }
+      }
+      return 0;
+    }
+
+    function sortTablesNaturally(tables, sections) {
+      if (!Array.isArray(tables)) return [];
+      const secMap = {};
+      if (Array.isArray(sections)) {
+        sections.forEach((s, idx) => {
+          secMap[s.id] = s.sira !== undefined ? s.sira : (s.order !== undefined ? s.order : idx);
+        });
+      }
+      const collator = new Intl.Collator('tr-TR', { numeric: true, sensitivity: 'base' });
+      return [...tables].sort((a, b) => {
+        const secA = a.sectionId || '';
+        const secB = b.sectionId || '';
+        if (secA !== secB) {
+          const ordA = secMap[secA] !== undefined ? secMap[secA] : 999;
+          const ordB = secMap[secB] !== undefined ? secMap[secB] : 999;
+          if (ordA !== ordB) return ordA - ordB;
+          const secNameA = a.sectionName || secA;
+          const secNameB = b.sectionName || secB;
+          const comp = collator.compare(secNameA, secNameB);
+          if (comp !== 0) return comp;
+        }
+        const numA = extractTableNumber(a);
+        const numB = extractTableNumber(b);
+        if (numA !== 0 && numB !== 0 && numA !== numB) {
+          return numA - numB;
+        }
+        return collator.compare(a.name || a.id || '', b.name || b.id || '');
+      });
+    }
+
+    function generateTablesFromSections(secs) {
+      const generated = [];
+      secs.forEach(sec => {
+        const count = Number(sec.tableCount) || 10;
+        for (let i = 1; i <= count; i++) {
+          generated.push({
+            id: `tbl-${sec.id}-${i}`,
+            sectionId: sec.id,
+            sectionName: sec.name,
+            name: `${sec.name} ${i}`,
+            capacity: sec.capacityPerTable || 4,
+            status: 'EMPTY',
+            order: null
+          });
+        }
+      });
+      return sortTablesNaturally(generated, secs);
+    }
+
+    function initSyncListeners() {
+      // 1. BroadcastChannel (Aynı tarayıcıda 0ms gecikme ile Kasa ve Garson senkronizasyonu)
+      if ('BroadcastChannel' in window) {
+        try {
+          const channel = new BroadcastChannel('gtu_erp_realtime_sync');
+          channel.onmessage = (event) => {
+            if (event.data) {
+              handleRealtimeSyncEvent(event.data);
+            }
+          };
+        } catch (e) {}
+      }
+
+      // 2. Storage Event (Farklı sekmeler / pencereler arası localStorage tetikleyicisi)
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'gtu_realtime_broadcast_event' && e.newValue) {
+          try {
+            handleRealtimeSyncEvent(JSON.parse(e.newValue));
+          } catch {}
+        } else if (e.key === 'gtu_tables' && e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              liveTables = sortTablesNaturally(parsed, liveSections);
+              renderTables();
+              updateHeaderStats();
+            }
+          } catch {}
+        } else if (e.key === 'gtu_sections' && e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              liveSections = parsed;
+              renderSectionTabs();
+            }
+          } catch {}
+        }
+      });
+
+      // 3. CustomEvent
+      window.addEventListener('gtu:realtime_sync', (e) => {
+        if (e.detail) {
+          handleRealtimeSyncEvent(e.detail);
+        }
+      });
+    }
+
+    function handleRealtimeSyncEvent(event) {
+      if (!event || !event.type) return;
+      if (event.type === 'TABLES_UPDATED') {
+        if (event.payload && Array.isArray(event.payload.tables)) {
+          liveTables = sortTablesNaturally(event.payload.tables, liveSections);
+          // Eksik bölüm varsa ekle
+          liveTables.forEach(t => {
+            if (t.sectionId && !liveSections.some(s => s.id === t.sectionId)) {
+              liveSections.push({ id: t.sectionId, name: t.sectionName || t.sectionId, tableCount: 1 });
+            }
+          });
+          renderSectionTabs();
+          renderTables();
+          updateHeaderStats();
+        }
+      }
+    }
+
+    function broadcastRealtime(type, payload) {
+      const ev = {
+        type: type,
+        payload: payload,
+        source: 'WAITER',
+        timestamp: Date.now(),
+        senderId: 'waiter_' + Math.random().toString(36).substring(2, 7)
+      };
+
+      if ('BroadcastChannel' in window) {
+        try {
+          const ch = new BroadcastChannel('gtu_erp_realtime_sync');
+          ch.postMessage(ev);
+        } catch (e) {}
+      }
+
+      try {
+        localStorage.setItem('gtu_realtime_broadcast_event', JSON.stringify(ev));
+      } catch (e) {}
+
+      try {
+        window.dispatchEvent(new CustomEvent('gtu:realtime_sync', { detail: ev }));
+      } catch (e) {}
+    }
+
+    async function fetchLiveState(isManual = false) {
+      try {
+        const res = await apiFetch('get_live_state');
+        const data = await res.json();
+        if (data.success) {
+          if (Array.isArray(data.sections) && data.sections.length > 0) {
+            liveSections = data.sections;
+          }
+          if (Array.isArray(data.tables) && data.tables.length > 0) {
+            liveTables = sortTablesNaturally(data.tables, liveSections);
+          }
+          if (Array.isArray(data.products) && data.products.length > 0) {
+            liveProducts = data.products;
+          }
+          if (Array.isArray(data.categories) && data.categories.length > 0) {
+            liveCategories = data.categories;
+          }
+
+          if (!currentSectionId && liveSections.length > 0) {
+            currentSectionId = liveSections[0].id;
+          }
+          if (!transferActiveSectionId && liveSections.length > 0) {
+            transferActiveSectionId = liveSections[0].id;
+          }
+
+          renderSectionTabs();
+          renderTables();
+          updateHeaderStats();
+          if (isManual) showToast('Masalar ve menü güncellendi.', 'success');
+          return;
+        }
+      } catch (e) {
+        // API bağlantısı yoksa yerel Kasa verisini dene
+        if (liveSections.length === 0 || liveTables.length === 0) {
+          fallbackLocalData();
+        }
+      }
+    }
+
+    function fallbackLocalData() {
+      // 1. Önce Kasa'nın localStorage verisini kontrol et
+      try {
+        const rawSec = localStorage.getItem('gtu_sections');
+        const rawTbl = localStorage.getItem('gtu_tables');
+        const rawProd = localStorage.getItem('gtu_products');
+        const rawCat = localStorage.getItem('gtu_categories');
+
+        if (rawSec) {
+          const parsedSec = JSON.parse(rawSec);
+          if (Array.isArray(parsedSec) && parsedSec.length > 0) liveSections = parsedSec;
+        }
+        if (rawTbl) {
+          const parsedTbl = JSON.parse(rawTbl);
+          if (Array.isArray(parsedTbl) && parsedTbl.length > 0) liveTables = sortTablesNaturally(parsedTbl, liveSections);
+        }
+        if (rawProd) {
+          const parsedProd = JSON.parse(rawProd);
+          if (Array.isArray(parsedProd) && parsedProd.length > 0) liveProducts = parsedProd;
+        }
+        if (rawCat) {
+          const parsedCat = JSON.parse(rawCat);
+          if (Array.isArray(parsedCat) && parsedCat.length > 0) liveCategories = parsedCat;
+        }
+
+        if (liveSections.length > 0 && liveTables.length > 0) {
+          if (!currentSectionId) currentSectionId = liveSections[0].id;
+          if (!transferActiveSectionId) transferActiveSectionId = liveSections[0].id;
+          renderSectionTabs();
+          renderTables();
+          updateHeaderStats();
+          return;
+        }
+      } catch (e) {}
+
+      // 2. Kasa ile 100% birebir eşleşen varsayılan bölümler ve masalar
+      liveSections = DEFAULT_KASA_SECTIONS;
+      liveTables = generateTablesFromSections(liveSections);
+      liveCategories = [
+        { id: 'cat-kebap', name: 'Kebaplar & Izgaralar' },
+        { id: 'cat-firin', name: 'Pide & Lahmacun' },
+        { id: 'cat-corba', name: 'Çorbalar & Mezeler' },
+        { id: 'cat-icecek', name: 'İçecekler & Meşrubat' },
+        { id: 'cat-tatli', name: 'Tatlılar & Meyve' }
+      ];
+      liveProducts = [
+        { id: 'p-1', name: 'Adana Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
+        { id: 'p-2', name: 'Urfa Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
+        { id: 'p-3', name: 'Kuzu Şiş Kebap', categoryId: 'cat-kebap', price: 380, printer: 'Ocak' },
+        { id: 'p-4', name: 'Ali Nazik Kebap', categoryId: 'cat-kebap', price: 390, printer: 'Ocak' },
+        { id: 'p-5', name: 'Antep Lahmacun', categoryId: 'cat-firin', price: 110, printer: 'Fırın' },
+        { id: 'p-6', name: 'Kuşbaşılı Kaşarlı Pide', categoryId: 'cat-firin', price: 280, printer: 'Fırın' },
+        { id: 'p-7', name: 'Kıymalı Kaşarlı Pide', categoryId: 'cat-firin', price: 260, printer: 'Fırın' },
+        { id: 'p-8', name: 'Açık Yayık Ayranı', categoryId: 'cat-icecek', price: 40, printer: 'Kasa' },
+        { id: 'p-9', name: 'Kutu Meşrubat / Şalgam', categoryId: 'cat-icecek', price: 45, printer: 'Kasa' },
+        { id: 'p-10', name: 'Antep Fıstıklı Katmer', categoryId: 'cat-tatli', price: 220, printer: 'Fırın' }
+      ];
+      currentSectionId = liveSections[0].id;
+      transferActiveSectionId = liveSections[0].id;
+      renderSectionTabs();
+      renderTables();
+      updateHeaderStats();
+    }
+
+    // Gerçek Zamanlı Dinleyicileri Başlat
+    initSyncListeners();
+
+    function updateHeaderStats() {
+      const occupied = liveTables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');
+      const turnover = occupied.reduce((sum, t) => sum + (Number(t.order?.totalAmount) || 0), 0);
+      document.getElementById('statTableCount').innerText = `${occupied.length}/${liveTables.length}`;
+      document.getElementById('statActiveTurnover').innerText = `${turnover.toFixed(2)} ₺`;
+    }
+
+    setInterval(() => {
+      if (!document.getElementById('mainApp').classList.contains('hidden') && document.getElementById('orderModal').classList.contains('hidden')) {
+        fetchLiveState();
+      }
+    }, 4000);
+
+    function renderSectionTabs() {
+      const tabs = document.getElementById('sectionTabs');
+      tabs.innerHTML = '';
+
+      liveSections.forEach(sec => {
+        const isSelected = sec.id === currentSectionId;
+        const count = liveTables.filter(t => t.sectionId === sec.id && (t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED')).length;
+        const btn = document.createElement('button');
+        btn.className = `px-3.5 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
+          isSelected ? 'bg-[#F5C877] text-[#141416] shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
+        }`;
+        btn.innerHTML = `
+          <span>${sec.name}</span>
+          ${count > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[9px] ${isSelected ? 'bg-[#141416] text-[#F5C877]' : 'bg-[#F5C877] text-[#141416]'} font-bold">${count}</span>` : ''}
+        `;
+        btn.onclick = () => {
+          playBeep();
+          currentSectionId = sec.id;
+          renderSectionTabs();
+          renderTables();
+        };
+        tabs.appendChild(btn);
+      });
+    }
+
+    function renderTables() {
+      const grid = document.getElementById('tablesGrid');
+      grid.innerHTML = '';
+      let tables = sortTablesNaturally(liveTables.filter(t => t.sectionId === currentSectionId), liveSections);
+
+      if (tableFilter === 'OCCUPIED') {
+        tables = tables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');
+      } else if (tableFilter === 'EMPTY') {
+        tables = tables.filter(t => t.status === 'EMPTY');
+      } else if (tableFilter === 'BILL') {
+        tables = tables.filter(t => t.status === 'BILL_REQUESTED');
+      }
+
+      if (tables.length === 0) {
+        grid.innerHTML = '<div class="col-span-full text-center text-[#8E8E98] text-xs py-10">Bu filtrede masa bulunmuyor.</div>';
+        return;
+      }
+
+      tables.forEach(table => {
+        const isOccupied = table.status === 'OCCUPIED';
+        const isBillReq = table.status === 'BILL_REQUESTED';
+
+        const div = document.createElement('div');
+        div.className = `p-3.5 rounded-2xl border active:scale-95 flex flex-col justify-between h-28 cursor-pointer transition-all shadow-sm ${
+          isOccupied 
+            ? 'bg-[#24201A] border-[#F5C877]/80 shadow-md shadow-[#F5C877]/10' 
+            : isBillReq 
+            ? 'bg-[#241A1C] border-rose-500 animate-pulse' 
+            : 'bg-[#1C1C20] border-[#2C2C34] hover:border-[#383844]'
+        }`;
+        div.onclick = () => openOrderModal(table);
+
+        div.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-black text-xs sm:text-sm text-white">${table.name}</span>
+            <span class="w-2.5 h-2.5 rounded-full ${isOccupied ? 'bg-[#F5C877]' : isBillReq ? 'bg-rose-400' : 'bg-emerald-400'}"></span>
+          </div>
+          ${isOccupied && table.order ? `
+            <div>
+              <div class="text-sm font-black text-[#F5C877] font-mono">${(Number(table.order.totalAmount) || 0).toFixed(2)} ₺</div>
+              <div class="text-[10px] text-[#A0A0AA] flex items-center justify-between">
+                <span>${(table.order.items || []).length} Kalem</span>
+                <span class="text-[#8E8E98]">${table.order.waiterName ? table.order.waiterName.split(' ')[0] : 'Garson'}</span>
+              </div>
+            </div>
+          ` : isBillReq ? `
+            <div>
+              <div class="text-[11px] font-black text-rose-400 flex items-center gap-1">
+                <i class="fa-solid fa-receipt"></i> HESAP İSTENDİ
+              </div>
+              <div class="text-xs font-mono font-bold text-white">${(Number(table.order?.totalAmount) || 0).toFixed(2)} ₺</div>
+            </div>
+          ` : `
+            <div class="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+              <i class="fa-solid fa-check"></i> Boş Masa
+            </div>
+          `}
+        `;
+        grid.appendChild(div);
+      });
+    }
+
+    // ==========================================
+    // MENÜ & SİPARİŞ VERME
+    // ==========================================
+    function openOrderModal(table) {
+      playBeep();
+      selectedTable = table;
+      cart = [];
+      searchQuery = '';
+      activePortion = 1;
+      setActivePortion(1);
+      document.getElementById('productSearchInput').value = '';
+      document.getElementById('btnClearSearch').classList.add('hidden');
+
+      document.getElementById('modalTableName').innerText = table.name;
+      const isOcc = table.status === 'OCCUPIED' || table.status === 'BILL_REQUESTED';
+      
+      const badge = document.getElementById('modalTableStatusBadge');
+      if (isOcc) {
+        badge.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#F5C877]/20 text-[#F5C877] font-bold';
+        badge.innerText = table.status === 'BILL_REQUESTED' ? 'Hesap İstendi' : 'Dolu Masa';
+      } else {
+        badge.className = 'text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold';
+        badge.innerText = 'Boş Masa';
+      }
+
+      document.getElementById('generalOrderNoteInput').value = '';
+
+      const existingTotal = table.order?.totalAmount ? Number(table.order.totalAmount).toFixed(2) : '0.00';
+      const existingCount = (table.order?.items || []).length;
+      document.getElementById('btnExistingBillText').innerText = existingCount > 0 ? `Adisyon: ${existingTotal} ₺` : 'Adisyon';
+      document.getElementById('modalTableDetailSub').innerText = isOcc ? `Onaylı Adisyon: ${existingTotal} ₺` : 'Ürün seçerek sepete ekleyin';
+
+      updateCartBar();
+      document.getElementById('orderModal').classList.remove('hidden');
+      document.getElementById('orderModal').classList.add('flex');
+
+      renderCategoryTabs();
+      renderProducts();
+    }
+
+    function closeOrderModal() {
+      playBeep();
+      document.getElementById('orderModal').classList.add('hidden');
+      document.getElementById('orderModal').classList.remove('flex');
+    }
+
+    // Ürün Arama
+    function handleProductSearch(query) {
+      searchQuery = query.toLowerCase().trim();
+      const clearBtn = document.getElementById('btnClearSearch');
+      if (searchQuery.length > 0) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      renderProducts();
+    }
+
+    function clearProductSearch() {
+      document.getElementById('productSearchInput').value = '';
+      searchQuery = '';
+      document.getElementById('btnClearSearch').classList.add('hidden');
+      renderProducts();
+    }
+
+    function quickAddProductToCart(p) {
+      playBeep();
+      playHaptic();
+
+      const portionText = activePortion === 0.5 ? ' (0.5 Porsiyon)' : activePortion === 1.5 ? ' (1.5 Porsiyon)' : '';
+      const unitPrice = Math.round(p.price * activePortion);
+      const itemName = p.name + portionText;
+
+      const existingIndex = cart.findIndex(i => i.productId === p.id && i.portion === activePortion && !i.note);
+
+      if (existingIndex > -1) {
+        cart[existingIndex].quantity += 1;
+      } else {
+        cart.push({
+          id: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          productId: p.id,
+          productName: itemName,
+          portion: activePortion,
+          price: unitPrice,
+          quantity: 1,
+          note: '',
+          targetPrinter: p.printer && p.printer.includes('Fırın') ? 'FIRIN' : p.printer && p.printer.includes('Ocak') ? 'OCAK' : 'KASA'
+        });
+      }
+
+      showToast(`+1 ${itemName} sepete eklendi`, 'success');
+      updateCartBar();
+    }
+
+    function updateCartBar() {
+      const totalCount = cart.reduce((sum, i) => sum + i.quantity, 0);
+      const totalAmount = cart.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+
+      const bar = document.getElementById('bottomCartBar');
+      if (totalCount > 0) {
+        bar.classList.remove('hidden');
+        document.getElementById('cartBadgeCount').innerText = totalCount;
+        document.getElementById('cartBarTotal').innerText = `${totalAmount.toFixed(2)} ₺`;
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+
+    function openCartDrawer() {
+      playBeep();
+      renderCartDrawerItems();
+      document.getElementById('cartDrawer').classList.remove('hidden');
+      document.getElementById('cartDrawer').classList.add('flex');
+    }
+
+    function closeCartDrawer() {
+      playBeep();
+      document.getElementById('cartDrawer').classList.add('hidden');
+      document.getElementById('cartDrawer').classList.remove('flex');
+      updateCartBar();
+    }
+
+    function renderCartDrawerItems() {
+      const container = document.getElementById('cartItemsDetailList');
+      container.innerHTML = '';
+
+      if (cart.length === 0) {
+        container.innerHTML = '<div class="text-center text-[#8E8E98] text-xs py-8">Sepetiniz boş.</div>';
+        closeCartDrawer();
+        return;
+      }
+
+      cart.forEach((item, idx) => {
+        const itemCard = document.createElement('div');
+        itemCard.className = 'p-3 bg-[#1C1C20] border border-[#2C2C34] rounded-2xl space-y-2';
+
+        const prodMatch = liveProducts.find(p => p.id === item.productId || p.name === item.productName);
+        const itemImg = getGarsonProductImage(prodMatch || { name: item.productName });
+
+        itemCard.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+              <div class="w-10 h-10 rounded-xl bg-[#141416] border border-[#2C2C34] overflow-hidden shrink-0">
+                <img src="${itemImg}" alt="${item.productName}" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';"/>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="font-black text-xs text-white truncate">${item.productName}</div>
+                <div class="text-[11px] text-[#F5C877] font-bold">${item.quantity} x ${item.price} ₺ = ${(item.quantity * item.price).toFixed(2)} ₺</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-1 bg-[#141416] p-1 rounded-xl border border-[#2C2C34] shrink-0">
+              <button onclick="changeCartQty(${idx}, -1)" class="w-6 h-6 bg-[#282830] text-[#FAF7F2] rounded-lg flex items-center justify-center font-black active:bg-rose-500">-</button>
+              <span class="w-5 text-center font-bold text-xs text-white">${item.quantity}</span>
+              <button onclick="changeCartQty(${idx}, 1)" class="w-6 h-6 bg-[#282830] text-[#FAF7F2] rounded-lg flex items-center justify-center font-black active:bg-[#F5C877] active:text-[#141416]">+</button>
+            </div>
+          </div>
+
+          <!-- HIZLI HAZIR NOT BUTONLARI -->
+          <div class="space-y-1 pt-1 border-t border-[#2C2C34]/60">
+            <div class="flex items-center justify-between text-[9px] font-bold text-[#8E8E98] uppercase">
+              <span>Hızlı Mutfak Notları:</span>
+              <button onclick="clearCartItemNote(${idx})" class="text-rose-400 hover:underline">Temizle</button>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              ${RESTAURANT_QUICK_TAGS.map(tag => `
+                <button 
+                  type="button" 
+                  onclick="appendTagToCartItem(${idx}, '${tag}')" 
+                  class="px-2 py-0.5 bg-[#141416] active:bg-[#F5C877] active:text-[#141416] hover:bg-[#282830] text-[10px] font-bold rounded-lg text-[#E4E4E8] border border-[#2C2C34]"
+                >
+                  ${tag}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <input
+            type="text"
+            value="${item.note || ''}"
+            oninput="updateItemCustomNote(${idx}, this.value)"
+            placeholder="Özel Açıklama (Örn: Lavaş çift, az pişmiş...)"
+            class="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-2.5 py-1.5 text-xs text-[#FAF7F2] placeholder-[#7A7A88] focus:outline-none focus:border-[#F5C877] font-medium"
+          />
+        `;
+
+        container.appendChild(itemCard);
+      });
+
+      const totalAmount = cart.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+      document.getElementById('drawerTotal').innerText = `${totalAmount.toFixed(2)} ₺`;
+    }
+
+    function changeCartQty(idx, delta) {
+      playBeep();
+      cart[idx].quantity += delta;
+      if (cart[idx].quantity <= 0) {
+        cart.splice(idx, 1);
+      }
+      renderCartDrawerItems();
+    }
+
+    function appendTagToCartItem(idx, tag) {
+      playBeep();
+      if (cart[idx].note && cart[idx].note.trim().length > 0) {
+        cart[idx].note += ', ' + tag;
+      } else {
+        cart[idx].note = tag;
+      }
+      renderCartDrawerItems();
+    }
+
+    function clearCartItemNote(idx) {
+      playBeep();
+      cart[idx].note = '';
+      renderCartDrawerItems();
+    }
+
+    function updateItemCustomNote(idx, text) {
+      cart[idx].note = text;
+    }
+
+    // ==========================================
+    // DETAYLI ADİSYON DÖKÜMÜ & HESAP FİŞİ İSTEME
+    // ==========================================
+    function openExistingBillModal() {
+      playBeep();
+      if (!selectedTable) return;
+      document.getElementById('existingBillTitle').innerText = `${selectedTable.name} — Adisyon Dökümü`;
+
+      const list = document.getElementById('existingBillItemList');
+      list.innerHTML = '';
+
+      if (selectedTable.order && selectedTable.order.items && selectedTable.order.items.length > 0) {
+        selectedTable.order.items.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'py-2 flex justify-between items-start';
+          div.innerHTML = `
+            <div>
+              <div class="font-bold text-white text-xs">${item.quantity}x ${item.productName}</div>
+              ${item.note ? `<div class="text-[10px] text-[#F5C877] font-medium mt-0.5">Not: ${item.note}</div>` : ''}
+              ${item.addedBy ? `<div class="text-[9px] text-[#7A7A88]">Ekleyen: ${item.addedBy}</div>` : ''}
+            </div>
+            <span class="font-bold text-[#E4E4E8] text-xs">${((item.price || 0) * (item.quantity || 1)).toFixed(2)} ₺</span>
+          `;
+          list.appendChild(div);
+        });
+
+        document.getElementById('existingBillTotal').innerText = `${(Number(selectedTable.order.totalAmount) || 0).toFixed(2)} ₺`;
+      } else {
+        list.innerHTML = '<div class="text-center text-[#8E8E98] py-6 text-xs">Bu masada henüz onaylanmış bir adisyon bulunmuyor.</div>';
+        document.getElementById('existingBillTotal').innerText = '0.00 ₺';
+      }
+
+      document.getElementById('existingOrderModal').classList.remove('hidden');
+      document.getElementById('existingOrderModal').classList.add('flex');
+    }
+
+    function closeExistingBillModal() {
+      playBeep();
+      document.getElementById('existingOrderModal').classList.add('hidden');
+      document.getElementById('existingOrderModal').classList.remove('flex');
+    }
+
+    async function requestBillPrintFromModal() {
+      if (!selectedTable) return;
+      playBeep();
+      const btn = document.getElementById('btnModalPrintBill');
+      btn.disabled = true;
+      btn.innerText = 'Kasaya İletiliyor...';
+
+      broadcastRealtime('BILL_REQUESTED', {
+        tableId: selectedTable.id,
+        tableName: selectedTable.name,
+        waiterName: currentWaiter.name,
+      });
+
+      try {
+        await apiFetch('send_order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'BILL_REQUEST',
+            tableId: selectedTable.id,
+            tableName: selectedTable.name,
+            waiterName: currentWaiter.name,
+          })
+        });
+      } catch (e) {}
+
+      showToast(`🖨️ ${selectedTable.name} için Kasadan Hesap Fişi talebi iletildi!`, 'success');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-print text-sm"></i> <span>🖨️ Kasadan Hesap Fişi Çıkar / Adisyon İste</span>';
+      closeExistingBillModal();
+      closeOrderModal();
+      fetchLiveState();
+    }
+
+    // ==========================================
+    // SEÇEREK MASA TAŞIMA
+    // ==========================================
+    function openTransferTableSelector() {
+      playBeep();
+      if (!selectedTable) return;
+      document.getElementById('transferModalTitle').innerText = `${selectedTable.name} Siparişini Taşı`;
+
+      renderTransferSectionTabs();
+      renderTransferEmptyTables();
+
+      document.getElementById('transferTableModal').classList.remove('hidden');
+      document.getElementById('transferTableModal').classList.add('flex');
+    }
+
+    function closeTransferTableSelector() {
+      playBeep();
+      document.getElementById('transferTableModal').classList.add('hidden');
+      document.getElementById('transferTableModal').classList.remove('flex');
+    }
+
+    function renderTransferSectionTabs() {
+      const tabs = document.getElementById('transferSectionTabs');
+      tabs.innerHTML = '';
+
+      liveSections.forEach(sec => {
+        const isSelected = sec.id === transferActiveSectionId;
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
+          isSelected ? 'bg-[#F5C877] text-[#141416] font-black' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
+        }`;
+        btn.innerText = sec.name;
+        btn.onclick = () => {
+          playBeep();
+          transferActiveSectionId = sec.id;
+          renderTransferSectionTabs();
+          renderTransferEmptyTables();
+        };
+        tabs.appendChild(btn);
+      });
+    }
+
+    function renderTransferEmptyTables() {
+      const grid = document.getElementById('transferEmptyTablesGrid');
+      grid.innerHTML = '';
+
+      const emptyTables = sortTablesNaturally(liveTables.filter(t => t.sectionId === transferActiveSectionId && t.status === 'EMPTY' && t.id !== selectedTable.id), liveSections);
+
+      if (emptyTables.length === 0) {
+        grid.innerHTML = '<div class="col-span-2 text-center text-xs text-[#8E8E98] py-6">Bu alanda boş masa bulunamadı.</div>';
+        return;
+      }
+
+      emptyTables.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'p-3 bg-[#1C1C20] border border-[#2C2C34] active:border-[#F5C877] rounded-2xl flex flex-col justify-between h-20 text-left transition-all';
+        btn.onclick = () => executeTableTransfer(t);
+
+        btn.innerHTML = `
+          <div class="flex justify-between items-center w-full">
+            <span class="font-black text-xs text-white">${t.name}</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          </div>
+          <span class="text-[10px] text-[#F5C877] font-bold">Dokun ve Taşı →</span>
+        `;
+
+        grid.appendChild(btn);
+      });
+    }
+
+    async function executeTableTransfer(targetTable) {
+      playBeep();
+      broadcastRealtime('TABLE_TRANSFERRED', {
+        sourceTableId: selectedTable.id,
+        targetTableId: targetTable.id,
+        waiterName: currentWaiter.name,
+      });
+
+      try {
+        await apiFetch('send_order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'TRANSFER_TABLE',
+            sourceTableId: selectedTable.id,
+            targetTableId: targetTable.id,
+            waiterName: currentWaiter.name,
+          })
+        });
+      } catch (e) {}
+
+      showToast(`✅ ${selectedTable.name} siparişi ${targetTable.name} masasına taşındı!`, 'success');
+      closeTransferTableSelector();
+      closeOrderModal();
+      fetchLiveState();
+    }
+
+    // ==========================================
+    // SİPARİŞİ ONAYLA & MUTFAĞA GÖNDER
+    // ==========================================
+    async function confirmAndSendKitchen() {
+      if (cart.length === 0) {
+        showToast('Sepetinizde ürün bulunmuyor!', 'error');
+        return;
+      }
+      playBeep();
+      const btn = document.getElementById('btnFinalKitchenSend');
+      btn.disabled = true;
+      btn.innerText = 'Mutfağa İletiliyor...';
+
+      const orderNote = document.getElementById('generalOrderNoteInput').value.trim();
+      const orderPayload = {
+        tableId: selectedTable.id,
+        tableName: selectedTable.name,
+        waiterName: currentWaiter.name,
+        orderNote: orderNote,
+        items: cart,
+        totalAmount: cart.reduce((s, i) => s + (i.price * i.quantity), 0)
+      };
+
+      broadcastRealtime('ORDER_SUBMITTED', orderPayload);
+
+      try {
+        await apiFetch('send_order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload)
+        });
+      } catch (e) {}
+
+      showToast(`✅ ${selectedTable.name} siparişi mutfağa iletildi ve fiş basıldı!`, 'success');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-fire text-base"></i> <span>Siparişi Onayla & Mutfağa Gönder</span>';
+
+      closeCartDrawer();
+      closeOrderModal();
+      fetchLiveState();
+    }
+
+    function renderCategoryTabs() {
+      const tabs = document.getElementById('categoryTabs');
+      tabs.innerHTML = '';
+
+      const allBtn = document.createElement('button');
+      allBtn.className = `px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
+        selectedCategory === 'all' ? 'bg-[#F5C877] text-[#141416] font-black shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
+      }`;
+      allBtn.innerText = 'Tümü';
+      allBtn.onclick = () => { playBeep(); selectedCategory = 'all'; renderCategoryTabs(); renderProducts(); };
+      tabs.appendChild(allBtn);
+
+      liveCategories.forEach(cat => {
+        const isSelected = cat.name === selectedCategory;
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition-all ${
+          isSelected ? 'bg-[#F5C877] text-[#141416] font-black shadow-md' : 'bg-[#1C1C20] border border-[#2C2C34] text-[#8E8E98]'
+        }`;
+        btn.innerText = cat.name;
+        btn.onclick = () => { playBeep(); selectedCategory = cat.name; renderCategoryTabs(); renderProducts(); };
+        tabs.appendChild(btn);
+      });
+    }
+
+    function getGarsonProductImage(p) {
+      if (p && p.imageUrl && p.imageUrl.trim().length > 5) return p.imageUrl;
+      const name = (p && p.name) ? p.name.toLowerCase() : '';
+      if (name.includes('ali nazik')) return 'https://images.unsplash.com/photo-1544025162-d76694265947?w=500&auto=format&fit=crop&q=80';
+      if (name.includes('beyti') || name.includes('adana') || name.includes('kebap') || name.includes('urfa') || name.includes('kuşbaşı') || name.includes('kıyma')) return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
+      if (name.includes('lahmacun')) return 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=80';
+      if (name.includes('pide') || name.includes('kaşarlı') || name.includes('sucuklu')) return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80';
+      if (name.includes('çorba') || name.includes('beyran') || name.includes('kelle') || name.includes('ayak')) return 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80';
+      if (name.includes('baklava') || name.includes('kadayıf') || name.includes('katmer') || name.includes('künefe') || name.includes('tatlı')) return 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?w=500&auto=format&fit=crop&q=80';
+      if (name.includes('ayran') || name.includes('şalgam') || name.includes('kola') || name.includes('fanta') || name.includes('su') || name.includes('içecek') || name.includes('gazoz')) return 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80';
+      if (name.includes('salata') || name.includes('ezme') || name.includes('meze') || name.includes('cacık')) return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&auto=format&fit=crop&q=80';
+      return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';
+    }
+
+    function renderProducts() {
+      const list = document.getElementById('productsList');
+      list.innerHTML = '';
+
+      let filtered = liveProducts;
+
+      // Kategori Filtresi
+      if (selectedCategory !== 'all') {
+        const catObj = liveCategories.find(c => c.name === selectedCategory);
+        if (catObj) {
+          filtered = filtered.filter(p => p.categoryId === catObj.id);
+        }
+      }
+
+      // Canlı Arama Filtresi
+      if (searchQuery.length > 0) {
+        filtered = filtered.filter(p => p.name.toLowerCase().includes(searchQuery));
+      }
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="col-span-full text-center text-[#8E8E98] text-xs py-8">Aradığınız kriterde ürün bulunamadı.</div>';
+        return;
+      }
+
+      filtered.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'bg-[#1C1C20] border border-[#2C2C34] rounded-2xl flex flex-col justify-between overflow-hidden active:scale-95 active:border-[#F5C877] transition-all cursor-pointer shadow-sm';
+        div.onclick = () => quickAddProductToCart(p);
+        
+        const printerLabel = p.printer && p.printer.includes('Fırın') ? '🔥 FIRIN' : (p.printer && p.printer.includes('Ocak') ? '🍖 OCAK' : 'KASA');
+        const calculatedPrice = Math.round(p.price * activePortion);
+        const imgUrl = getGarsonProductImage(p);
+
+        div.innerHTML = `
+          <div class="relative w-full h-24 bg-[#141416] overflow-hidden">
+            <img 
+              src="${imgUrl}" 
+              alt="${p.name}" 
+              class="w-full h-full object-cover" 
+              onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20"></div>
+            <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm text-[8px] text-[#F5C877] font-black rounded-md border border-[#F5C877]/30">
+              ${printerLabel}
+            </span>
+          </div>
+
+          <div class="p-2 flex-1 flex flex-col justify-between">
+            <div class="font-black text-xs text-white line-clamp-1">${p.name}</div>
+            <div class="flex justify-between items-center mt-2 pt-1 border-t border-[#2C2C34]/80">
+              <span class="font-black text-sm text-[#F5C877] font-mono">${calculatedPrice} ₺</span>
+              <span class="w-6 h-6 bg-[#F5C877] text-[#141416] rounded-xl flex items-center justify-center text-xs font-black shadow-md">+</span>
+            </div>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>

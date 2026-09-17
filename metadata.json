@@ -1,0 +1,6 @@
+{
+  "name": "Gaziantepli Taha Usta ERP",
+  "description": "Gaziantepli Taha Usta Restoran, Cari, Kasa ve Personel Yönetim Sistemi",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

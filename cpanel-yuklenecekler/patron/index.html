@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>👑 Gaziantepli Taha Usta - Patron Canlı Takip & Yönetim Paneli</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.05); }
+    }
+    .pulse-glow { animation: pulseGlow 2s infinite ease-in-out; }
+    @media print {
+      body * { visibility: hidden; }
+      #printableArea, #printableArea * { visibility: visible; }
+      #printableArea { position: absolute; left: 0; top: 0; width: 100%; color: black !important; }
+    }
+  </style>
+</head>
+<body class="bg-[#121214] text-[#FAF7F2] font-sans min-h-screen flex flex-col justify-between p-3 sm:p-5 selection:bg-[#F5C877] selection:text-black antialiased">
+
+  <!-- ========================================== -->
+  <!-- A. PATRON GÜVENLİK GİRİŞ EKRANI            -->
+  <!-- ========================================== -->
+  <div id="passwordScreen" class="flex-1 flex flex-col items-center justify-center p-4 max-w-sm mx-auto w-full">
+    <div class="text-center mb-6">
+      <div class="w-16 h-16 bg-gradient-to-br from-[#F5C877] via-[#D4A351] to-[#A87B28] text-[#141416] rounded-3xl flex items-center justify-center mx-auto mb-3 shadow-2xl shadow-[#F5C877]/20 text-3xl font-black border border-[#F5C877]/50">
+        👑
+      </div>
+      <h1 class="text-xl font-black text-white uppercase tracking-tight">Gaziantepli Taha Usta</h1>
+      <p class="text-xs text-[#F5C877] font-bold mt-1 tracking-wide">Patron Güvenli Yönetim Paneli</p>
+    </div>
+
+    <div class="w-full bg-[#18181C] border border-[#2C2C34] rounded-3xl p-5 space-y-4 shadow-2xl">
+      <div>
+        <label class="text-[10px] font-black text-[#8E8E98] uppercase tracking-wider block mb-2">Patron Parolası</label>
+        <div class="relative">
+          <input 
+            id="bossPasswordInput" 
+            type="password" 
+            placeholder="••••" 
+            maxlength="16"
+            onkeydown="if(event.key==='Enter') submitBossPassword()"
+            class="w-full bg-[#121214] border border-[#2C2C34] rounded-2xl p-3.5 text-center text-2xl font-mono text-[#F5C877] tracking-[0.3em] focus:border-[#F5C877] outline-none"
+          >
+        </div>
+      </div>
+
+      <div id="loginError" class="text-rose-400 text-xs text-center font-bold hidden bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20"></div>
+
+      <button onclick="submitBossPassword()" id="btnLoginSubmit" class="w-full py-3.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-2xl font-black text-xs shadow-lg shadow-[#F5C877]/20 active:scale-95 transition-all flex items-center justify-center gap-2">
+        <i class="fa-solid fa-lock text-xs"></i>
+        <span>GÜVENLİ GİRİŞ YAP</span>
+      </button>
+
+      <div class="pt-2 border-t border-[#2C2C34]/60 flex items-center justify-between text-[10px] text-[#7A7A88]">
+        <span class="flex items-center gap-1"><i class="fa-solid fa-shield-check text-[#F5C877]"></i> Veritabanı Korumalı</span>
+        <span id="displayDeviceFp" class="font-mono truncate max-w-[120px]" title="Cihaz Kimliği">PATRON-...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- B. PATRON CANLI KONTROL MERKEZİ (DASHBOARD) -->
+  <!-- ========================================== -->
+  <div id="dashboardScreen" class="hidden max-w-6xl mx-auto w-full space-y-5">
+    
+    <!-- Üst Bar -->
+    <header class="bg-[#18181C] border border-[#2C2C34] rounded-3xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 bg-gradient-to-br from-[#F5C877] via-[#D4A351] to-[#A87B28] text-[#141416] rounded-2xl flex items-center justify-center text-xl font-black shadow-md flex-shrink-0">
+          👑
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-black text-white tracking-tight uppercase">Gaziantepli Taha Usta</h1>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#F5C877]/20 text-[#F5C877] border border-[#F5C877]/30">PATRON PANELİ</span>
+          </div>
+          <p class="text-[11px] text-[#8E8E98]">Canlı Kasa Cirosu & Restoran Durumu & Veritabanı ERP</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+        <div class="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-[11px] font-bold flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Veritabanı Canlı</span>
+        </div>
+
+        <button onclick="loadBossData(true)" class="p-2 bg-[#222228] border border-[#2C2C34] hover:border-[#F5C877] text-[#F5C877] rounded-xl text-xs font-bold active:scale-95 transition-all" title="Verileri Güncelle">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+
+        <button onclick="openChangePasswordModal()" class="p-2 bg-[#222228] border border-[#2C2C34] text-[#FAF7F2] hover:text-[#F5C877] rounded-xl text-xs font-bold active:scale-95 transition-all" title="Parolamı Değiştir">
+          <i class="fa-solid fa-key"></i>
+        </button>
+
+        <button onclick="logoutBoss()" class="px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5" title="Güvenli Çıkış">
+          <i class="fa-solid fa-lock"></i>
+          <span>Kilitle</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- TAB MENÜSÜ -->
+    <div class="flex items-center gap-2 border-b border-[#2C2C34] pb-2 overflow-x-auto hide-scrollbar">
+      <button onclick="switchTab('live')" id="tabBtn-live" class="px-4 py-2 rounded-2xl text-xs font-black bg-[#F5C877] text-[#141416] flex items-center gap-2 shadow-sm transition-all whitespace-nowrap">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>Canlı Durum & Masalar</span>
+      </button>
+
+      <button onclick="switchTab('zreports')" id="tabBtn-zreports" class="px-4 py-2 rounded-2xl text-xs font-bold bg-[#18181C] border border-[#2C2C34] text-[#A0A0AA] hover:text-white flex items-center gap-2 transition-all whitespace-nowrap">
+        <i class="fa-solid fa-file-invoice text-[#F5C877]"></i>
+        <span>Mali Z Raporları & Filtreleme</span>
+      </button>
+
+      <button onclick="switchTab('customers')" id="tabBtn-customers" class="px-4 py-2 rounded-2xl text-xs font-bold bg-[#18181C] border border-[#2C2C34] text-[#A0A0AA] hover:text-white flex items-center gap-2 transition-all whitespace-nowrap">
+        <i class="fa-solid fa-users text-[#F5C877]"></i>
+        <span>Müşteriler & Cariler</span>
+      </button>
+
+      <button onclick="switchTab('employees')" id="tabBtn-employees" class="px-4 py-2 rounded-2xl text-xs font-bold bg-[#18181C] border border-[#2C2C34] text-[#A0A0AA] hover:text-white flex items-center gap-2 transition-all whitespace-nowrap">
+        <i class="fa-solid fa-user-tie text-[#F5C877]"></i>
+        <span>Personeller & Maaş / Mesai</span>
+      </button>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- TAB 1: CANLI RESTORAN DURUMU & MASALAR                   -->
+    <!-- ======================================================== -->
+    <div id="tabContent-live" class="space-y-5">
+      <!-- 1. ANA METRİKLER (KPI CARDS) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        
+        <!-- Ciro Kartı -->
+        <div class="p-4 bg-[#18181C] border border-[#2C2C34] rounded-3xl space-y-1 relative overflow-hidden shadow-lg">
+          <div class="text-[10px] text-[#8E8E98] font-bold uppercase tracking-wider flex items-center justify-between">
+            <span>Canlı Toplam Ciro</span>
+            <i class="fa-solid fa-vault text-[#F5C877]"></i>
+          </div>
+          <div id="valTurnover" class="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">0.00 ₺</div>
+          <div class="text-[10px] text-[#7A7A88]">Masa adisyonları dahil anlık toplam</div>
+        </div>
+
+        <!-- Masa Doluluk Kartı -->
+        <div class="p-4 bg-[#18181C] border border-[#2C2C34] rounded-3xl space-y-1 relative overflow-hidden shadow-lg">
+          <div class="text-[10px] text-[#8E8E98] font-bold uppercase tracking-wider flex items-center justify-between">
+            <span>Masa Doluluk Oranı</span>
+            <i class="fa-solid fa-chair text-[#F5C877]"></i>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <div id="valTables" class="text-2xl sm:text-3xl font-black text-[#F5C877] font-mono">0 / 0</div>
+            <span id="valOccupancyRate" class="text-xs font-bold text-amber-300">%0</span>
+          </div>
+          <div class="text-[10px] text-[#7A7A88]">Aktif servis verilen masalar</div>
+        </div>
+
+        <!-- Toplam Sipariş Kartı -->
+        <div class="p-4 bg-[#18181C] border border-[#2C2C34] rounded-3xl space-y-1 relative overflow-hidden shadow-lg">
+          <div class="text-[10px] text-[#8E8E98] font-bold uppercase tracking-wider flex items-center justify-between">
+            <span>Bugünkü Adisyon</span>
+            <i class="fa-solid fa-receipt text-[#F5C877]"></i>
+          </div>
+          <div id="valOrders" class="text-2xl sm:text-3xl font-black text-sky-400 font-mono">0 Adet</div>
+          <div class="text-[10px] text-[#7A7A88]">İşlem gören toplam sipariş</div>
+        </div>
+
+        <!-- Ortalama Masa Tutarı -->
+        <div class="p-4 bg-[#18181C] border border-[#2C2C34] rounded-3xl space-y-1 relative overflow-hidden shadow-lg">
+          <div class="text-[10px] text-[#8E8E98] font-bold uppercase tracking-wider flex items-center justify-between">
+            <span>Ortalama Masa Sepeti</span>
+            <i class="fa-solid fa-chart-line text-[#F5C877]"></i>
+          </div>
+          <div id="valAvgTicket" class="text-2xl sm:text-3xl font-black text-purple-400 font-mono">0.00 ₺</div>
+          <div class="text-[10px] text-[#7A7A88]">Masa başına düşen ortalama harcama</div>
+        </div>
+
+      </div>
+
+      <!-- 2. ANLIK DOLU MASALAR VE ÇOK SATANLAR -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        
+        <!-- Sol 2 Kolon: Anlık Açık Masalar Listesi -->
+        <div class="lg:col-span-2 bg-[#18181C] border border-[#2C2C34] rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
+          <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-utensils text-[#F5C877]"></i>
+              <h2 class="text-xs sm:text-sm font-black text-white uppercase tracking-wider">Canlı Açık Masalar</h2>
+            </div>
+            <span id="activeTablesCountBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#24201A] text-[#F5C877] border border-[#F5C877]/30">0 Aktif</span>
+          </div>
+
+          <div id="occupiedTablesList" class="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+            <!-- Dinamik açık masalar -->
+          </div>
+        </div>
+
+        <!-- Sağ 1 Kolon: Günün En Çok Satan 5 Ürünü -->
+        <div class="bg-[#18181C] border border-[#2C2C34] rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+              <div class="flex items-center gap-2">
+                <i class="fa-solid fa-fire text-[#F5C877]"></i>
+                <h2 class="text-xs sm:text-sm font-black text-white uppercase tracking-wider">En Çok Satanlar (Top 5)</h2>
+              </div>
+              <span class="text-[10px] text-[#8E8E98] font-bold">Bugün</span>
+            </div>
+
+            <div id="topProductsList" class="space-y-2 mt-3 max-h-[280px] overflow-y-auto">
+              <!-- Dinamik top ürünler -->
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-[#2C2C34] text-[11px] text-[#8E8E98] flex items-center justify-between">
+            <span>Veri Kaynağı:</span>
+            <span class="text-white font-bold">Canlı Veritabanı</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- TAB 2: MALİ Z RAPORLARI & DETAYLI FİLTRELEME             -->
+    <!-- ======================================================== -->
+    <div id="tabContent-zreports" class="hidden space-y-4">
+      <!-- Filtreleme Çubuğu -->
+      <div class="bg-[#18181C] border border-[#2C2C34] rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
+        <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-filter text-[#F5C877]"></i>
+            <h2 class="text-xs sm:text-sm font-black text-white uppercase tracking-wider">Z Raporu Detaylı Filtreleme</h2>
+          </div>
+          <div class="flex items-center gap-1 text-xs">
+            <button onclick="setZDateFilter('today')" class="px-2.5 py-1 rounded-xl bg-[#222228] hover:bg-[#2C2C34] text-[#F5C877] font-bold border border-[#2C2C34]">Bugün</button>
+            <button onclick="setZDateFilter('yesterday')" class="px-2.5 py-1 rounded-xl bg-[#222228] hover:bg-[#2C2C34] text-white font-bold border border-[#2C2C34]">Dün</button>
+            <button onclick="setZDateFilter('thisMonth')" class="px-2.5 py-1 rounded-xl bg-[#222228] hover:bg-[#2C2C34] text-white font-bold border border-[#2C2C34]">Bu Ay</button>
+            <button onclick="setZDateFilter('all')" class="px-2.5 py-1 rounded-xl bg-[#222228] hover:bg-[#2C2C34] text-white font-bold border border-[#2C2C34]">Tümü</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="text-[10px] font-bold text-[#8E8E98] uppercase block mb-1">Başlangıç Tarihi</label>
+            <input type="date" id="zStartDate" class="w-full bg-[#121214] border border-[#2C2C34] rounded-xl p-2.5 text-xs text-white focus:border-[#F5C877] outline-none">
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-[#8E8E98] uppercase block mb-1">Bitiş Tarihi</label>
+            <input type="date" id="zEndDate" class="w-full bg-[#121214] border border-[#2C2C34] rounded-xl p-2.5 text-xs text-white focus:border-[#F5C877] outline-none">
+          </div>
+          <div class="flex items-end">
+            <button onclick="fetchZReports()" class="w-full py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-xl font-black text-xs shadow-md active:scale-95 transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <span>FİLTRELE & LİSTELE</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filtre Finansal Özet Kartları -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="p-3 bg-[#18181C] border border-[#2C2C34] rounded-2xl">
+          <span class="text-[10px] text-[#8E8E98] block">Toplam Filtre Cirosu</span>
+          <span id="zSummaryRevenue" class="text-lg font-black text-emerald-400 font-mono">0.00 ₺</span>
+        </div>
+        <div class="p-3 bg-[#18181C] border border-[#2C2C34] rounded-2xl">
+          <span class="text-[10px] text-[#8E8E98] block">Nakit Toplamı</span>
+          <span id="zSummaryCash" class="text-lg font-black text-white font-mono">0.00 ₺</span>
+        </div>
+        <div class="p-3 bg-[#18181C] border border-[#2C2C34] rounded-2xl">
+          <span class="text-[10px] text-[#8E8E98] block">Kredi Kartı / POS</span>
+          <span id="zSummaryPos" class="text-lg font-black text-sky-400 font-mono">0.00 ₺</span>
+        </div>
+        <div class="p-3 bg-[#18181C] border border-[#2C2C34] rounded-2xl">
+          <span class="text-[10px] text-[#8E8E98] block">Veresiye / Açık Hesap</span>
+          <span id="zSummaryOpen" class="text-lg font-black text-amber-400 font-mono">0.00 ₺</span>
+        </div>
+      </div>
+
+      <!-- Z Raporları Tablosu -->
+      <div class="bg-[#18181C] border border-[#2C2C34] rounded-3xl p-4 sm:p-5 shadow-xl">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-[#2C2C34] text-[#8E8E98] uppercase text-[10px]">
+                <th class="py-2.5 px-3">Z No</th>
+                <th class="py-2.5 px-3">Tarih / Saat</th>
+                <th class="py-2.5 px-3">Kapatan</th>
+                <th class="py-2.5 px-3 text-right">Adisyon</th>
+                <th class="py-2.5 px-3 text-right">Nakit</th>
+                <th class="py-2.5 px-3 text-right">POS</th>
+                <th class="py-2.5 px-3 text-right">Veresiye</th>
+                <th class="py-2.5 px-3 text-right">Toplam Ciro</th>
+                <th class="py-2.5 px-3 text-center">İşlem</th>
+              </tr>
+            </thead>
+            <tbody id="zReportsTableBody" class="divide-y divide-[#2C2C34]/50">
+              <tr>
+                <td colspan="9" class="text-center text-[#8E8E98] py-8">Yükleniyor...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- TAB 3: MÜŞTERİLER & CARİLER                              -->
+    <!-- ======================================================== -->
+    <div id="tabContent-customers" class="hidden space-y-4">
+      <div class="bg-[#18181C] border border-[#2C2C34] rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
+        <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-users text-[#F5C877]"></i>
+            <h2 class="text-xs sm:text-sm font-black text-white uppercase tracking-wider">Müşteri Cari Hesapları & Bakiyeler</h2>
+          </div>
+          <button onclick="fetchCustomersOverview()" class="px-3 py-1.5 bg-[#222228] text-[#F5C877] rounded-xl text-xs font-bold border border-[#2C2C34] active:scale-95">
+            <i class="fa-solid fa-rotate mr-1"></i> Güncelle
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-[#2C2C34] text-[#8E8E98] uppercase text-[10px]">
+                <th class="py-2.5 px-3">Müşteri Adı</th>
+                <th class="py-2.5 px-3">Telefon</th>
+                <th class="py-2.5 px-3">Adres</th>
+                <th class="py-2.5 px-3 text-right">Cari Bakiye</th>
+              </tr>
+            </thead>
+            <tbody id="customersTableBody" class="divide-y divide-[#2C2C34]/50">
+              <tr>
+                <td colspan="4" class="text-center text-[#8E8E98] py-6">Müşteri listesi alınıyor...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- TAB 4: PERSONELLER & MAAŞ / MESAİ                        -->
+    <!-- ======================================================== -->
+    <div id="tabContent-employees" class="hidden space-y-4">
+      <div class="bg-[#18181C] border border-[#2C2C34] rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
+        <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-user-tie text-[#F5C877]"></i>
+            <h2 class="text-xs sm:text-sm font-black text-white uppercase tracking-wider">Personel Kadrosu, Maaş & Mesai Takibi</h2>
+          </div>
+          <button onclick="fetchEmployeesOverview()" class="px-3 py-1.5 bg-[#222228] text-[#F5C877] rounded-xl text-xs font-bold border border-[#2C2C34] active:scale-95">
+            <i class="fa-solid fa-rotate mr-1"></i> Güncelle
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-[#2C2C34] text-[#8E8E98] uppercase text-[10px]">
+                <th class="py-2.5 px-3">Personel</th>
+                <th class="py-2.5 px-3">Rol / Görev</th>
+                <th class="py-2.5 px-3">Telefon</th>
+                <th class="py-2.5 px-3">Durum</th>
+                <th class="py-2.5 px-3 text-right">Net Maaş</th>
+                <th class="py-2.5 px-3 text-right">Cari Bakiye</th>
+              </tr>
+            </thead>
+            <tbody id="employeesTableBody" class="divide-y divide-[#2C2C34]/50">
+              <tr>
+                <td colspan="6" class="text-center text-[#8E8E98] py-6">Personel verileri yükleniyor...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alt Bilgilendirme ve Otomatik Yenileme Barı -->
+    <div class="p-3 bg-[#18181C] border border-[#2C2C34] rounded-2xl flex flex-col sm:flex-row items-center justify-between text-[11px] text-[#7A7A88] gap-2">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>Son Veri Senkronizasyonu: <strong id="valLastTime" class="text-white font-mono">--:--:--</strong></span>
+      </div>
+      <div>Veritabanı anlık senkronize çalışır.</div>
+    </div>
+
+  </div>
+
+  <!-- ========================================== -->
+  <!-- C. Z RAPORU DETAY VE YAZDIRMA MODALI       -->
+  <!-- ========================================== -->
+  <div id="zReportModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md">
+    <div class="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-5 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] flex flex-col text-[#FAF7F2]">
+      <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+        <div>
+          <h3 class="text-sm font-black text-white flex items-center gap-2">
+            <i class="fa-solid fa-file-invoice text-[#F5C877]"></i>
+            <span>GÜN SONU MALİ Z RAPORU</span>
+          </h3>
+          <p class="text-[10px] text-[#8E8E98]">Gaziantepli Taha Usta Restoran Özeti</p>
+        </div>
+        <button onclick="closeZReportModal()" class="w-8 h-8 bg-[#282830] rounded-full flex items-center justify-center text-[#8E8E98] text-sm hover:text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div id="printableArea" class="flex-1 overflow-y-auto space-y-3 font-mono text-xs pr-1 divide-y divide-[#2C2C34]/60">
+        <div class="space-y-1 pt-1">
+          <div class="flex justify-between text-[#8E8E98]">
+            <span>Tarih & Saat:</span>
+            <span id="zRepDateTime" class="text-white">--</span>
+          </div>
+          <div class="flex justify-between text-[#8E8E98]">
+            <span>Z No:</span>
+            <span id="zRepNo" class="text-white">Z-001</span>
+          </div>
+          <div class="flex justify-between text-[#8E8E98]">
+            <span>Kapatan Kasiyer:</span>
+            <span id="zRepClosedBy" class="text-white">Patron</span>
+          </div>
+          <div class="flex justify-between text-[#8E8E98]">
+            <span>Toplam Adisyon:</span>
+            <span id="zRepOrderCount" class="text-white">0</span>
+          </div>
+        </div>
+
+        <div class="space-y-1.5 pt-2">
+          <div class="text-[10px] font-bold text-[#F5C877] uppercase font-sans">Satış ve Gelir Dağılımı</div>
+          <div class="flex justify-between">
+            <span class="text-[#8E8E98]">Nakit Tahsilat:</span>
+            <span id="zRepCash" class="text-white font-bold">0.00 ₺</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#8E8E98]">Kredi Kartı (POS):</span>
+            <span id="zRepCredit" class="text-white font-bold">0.00 ₺</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#8E8E98]">Veresiye / Açık Cari:</span>
+            <span id="zRepOpenAccount" class="text-white font-bold">0.00 ₺</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#8E8E98]">Yemek Kartı / Diğer:</span>
+            <span id="zRepMealCard" class="text-white font-bold">0.00 ₺</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#8E8E98]">İkram Toplamı:</span>
+            <span id="zRepIkram" class="text-white">0.00 ₺</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#8E8E98]">İndirim Toplamı:</span>
+            <span id="zRepDiscount" class="text-white">0.00 ₺</span>
+          </div>
+          <div class="flex justify-between pt-1 border-t border-[#2C2C34] text-emerald-400 font-black text-sm">
+            <span>NET TOPLAM CİRO:</span>
+            <span id="zRepGrandTotal">0.00 ₺</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-[#2C2C34] flex gap-2">
+        <button onclick="window.print()" class="flex-1 py-3 bg-[#282830] hover:bg-[#34343E] text-white rounded-xl text-xs font-black flex items-center justify-center gap-2">
+          <i class="fa-solid fa-print"></i>
+          <span>Raporu Yazdır</span>
+        </button>
+        <button onclick="closeZReportModal()" class="flex-1 py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-xl text-xs font-black">
+          Kapat
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- D. MASA ADİSYON DETAY MODALI               -->
+  <!-- ========================================== -->
+  <div id="tableDetailModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md">
+    <div class="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col text-[#FAF7F2]">
+      <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+        <div>
+          <h3 id="tableDetailTitle" class="text-sm font-black text-white">Masa Detayı</h3>
+          <p id="tableDetailWaiter" class="text-[10px] text-[#F5C877] font-bold">Garson</p>
+        </div>
+        <button onclick="closeTableDetailModal()" class="w-8 h-8 bg-[#282830] rounded-full flex items-center justify-center text-[#8E8E98] text-sm hover:text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div id="tableDetailItemList" class="flex-1 overflow-y-auto space-y-2 text-xs divide-y divide-[#2C2C34]/60 pr-1"></div>
+
+      <div class="pt-3 border-t border-[#2C2C34] flex items-center justify-between">
+        <span class="text-xs text-[#8E8E98] font-bold">Masa Toplam Tutarı:</span>
+        <span id="tableDetailTotal" class="text-lg font-black text-emerald-400 font-mono">0.00 ₺</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- E. PATRON PAROLA DEĞİŞTİRME MODALI         -->
+  <!-- ========================================== -->
+  <div id="passwordChangeModal" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md">
+    <div class="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-[#2C2C34] pb-3">
+        <h3 class="text-sm font-black text-white flex items-center gap-2">
+          <i class="fa-solid fa-key text-[#F5C877]"></i>
+          <span>Patron Parolasını Değiştir</span>
+        </h3>
+        <button onclick="closeChangePasswordModal()" class="w-8 h-8 bg-[#282830] rounded-full flex items-center justify-center text-[#8E8E98] text-sm hover:text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-[10px] font-bold text-[#8E8E98] block mb-1">Mevcut Parola</label>
+          <input type="password" id="curPassInput" class="w-full bg-[#121214] border border-[#2C2C34] rounded-xl p-2.5 text-xs text-white focus:border-[#F5C877] outline-none">
+        </div>
+        <div>
+          <label class="text-[10px] font-bold text-[#8E8E98] block mb-1">Yeni Parola</label>
+          <input type="password" id="newPassInput" class="w-full bg-[#121214] border border-[#2C2C34] rounded-xl p-2.5 text-xs text-white focus:border-[#F5C877] outline-none">
+        </div>
+        <div id="passChangeStatus" class="text-xs text-center font-bold hidden p-2 rounded-xl"></div>
+      </div>
+
+      <button onclick="saveNewPassword()" id="btnSavePass" class="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-xl font-black text-xs shadow-md">
+        Parolayı Güncelle & Kaydet
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = (function() {
+      const custom = localStorage.getItem('CUSTOM_API_URL');
+      if (custom && custom.trim() !== '') return custom.trim();
+      if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+        return new URL('../api/index.php', window.location.href).href;
+      }
+      return '../api/index.php';
+    })();
+
+    let deviceFp = localStorage.getItem('gtu_boss_device_fp');
+    if (!deviceFp) {
+      deviceFp = 'PATRON-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+      localStorage.setItem('gtu_boss_device_fp', deviceFp);
+    }
+    const fpEl = document.getElementById('displayDeviceFp');
+    if (fpEl) fpEl.innerText = deviceFp;
+
+    let currentBossSummary = null;
+    let autoRefreshTimer = null;
+
+    function checkAuth() {
+      // Güvenlik kuralı: Her yeni girişte parola doğrulanır!
+      const sessionActive = sessionStorage.getItem('gtu_boss_active_session');
+      if (sessionActive === 'true') {
+        showDashboard();
+      } else {
+        document.getElementById('passwordScreen').classList.remove('hidden');
+        document.getElementById('dashboardScreen').classList.add('hidden');
+      }
+    }
+
+    async function submitBossPassword() {
+      const pwd = document.getElementById('bossPasswordInput').value.trim();
+      const errEl = document.getElementById('loginError');
+      errEl.classList.add('hidden');
+
+      if (!pwd) {
+        errEl.innerText = 'Lütfen patron parolasını girin!';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const btn = document.getElementById('btnLoginSubmit');
+      btn.disabled = true;
+      btn.innerHTML = '<span>Kontrol Ediliyor...</span>';
+
+      try {
+        const res = await fetch(API_URL + '?action=boss_login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceFingerprint: deviceFp, password: pwd })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          sessionStorage.setItem('gtu_boss_active_session', 'true');
+          sessionStorage.setItem('gtu_boss_token', data.token);
+          showDashboard();
+        } else {
+          errEl.innerText = data.message || 'Hatalı Parola!';
+          errEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        errEl.innerText = 'Sunucu bağlantı hatası! Lütfen internetinizi kontrol edin.';
+        errEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-lock text-xs"></i> <span>GÜVENLİ GİRİŞ YAP</span>';
+      }
+    }
+
+    function showDashboard() {
+      document.getElementById('passwordScreen').classList.add('hidden');
+      document.getElementById('dashboardScreen').classList.remove('hidden');
+      loadBossData();
+      if (!autoRefreshTimer) {
+        autoRefreshTimer = setInterval(loadBossData, 8000);
+      }
+    }
+
+    function switchTab(tabId) {
+      ['live', 'zreports', 'customers', 'employees'].forEach(t => {
+        const content = document.getElementById('tabContent-' + t);
+        const btn = document.getElementById('tabBtn-' + t);
+        if (t === tabId) {
+          if (content) content.classList.remove('hidden');
+          if (btn) {
+            btn.className = 'px-4 py-2 rounded-2xl text-xs font-black bg-[#F5C877] text-[#141416] flex items-center gap-2 shadow-sm transition-all whitespace-nowrap';
+          }
+        } else {
+          if (content) content.classList.add('hidden');
+          if (btn) {
+            btn.className = 'px-4 py-2 rounded-2xl text-xs font-bold bg-[#18181C] border border-[#2C2C34] text-[#A0A0AA] hover:text-white flex items-center gap-2 transition-all whitespace-nowrap';
+          }
+        }
+      });
+
+      if (tabId === 'zreports') fetchZReports();
+      if (tabId === 'customers') fetchCustomersOverview();
+      if (tabId === 'employees') fetchEmployeesOverview();
+    }
+
+    async function loadBossData(isManual = false) {
+      try {
+        const res = await fetch(API_URL + '?action=get_boss_summary');
+        const data = await res.json();
+        if (data.success) {
+          currentBossSummary = data;
+          updateDashboardUI(data);
+        }
+      } catch (e) {
+        console.warn('Veri çekme hatası:', e);
+      }
+    }
+
+    function updateDashboardUI(data) {
+      const turnover = Number(data.totalTurnover) || 0;
+      const totalTables = Number(data.totalTables) || 1;
+      const occupiedTables = Number(data.occupiedTables) || 0;
+      const orderCount = Number(data.orderCount) || 0;
+      const occPercent = Math.round((occupiedTables / totalTables) * 100);
+      const avgTicket = occupiedTables > 0 ? (turnover / occupiedTables) : 0;
+
+      document.getElementById('valTurnover').innerText = turnover.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+      document.getElementById('valTables').innerText = `${occupiedTables} / ${totalTables}`;
+      document.getElementById('valOccupancyRate').innerText = `%${occPercent} Doluluk`;
+      document.getElementById('valOrders').innerText = `${orderCount} Adet`;
+      document.getElementById('valAvgTicket').innerText = avgTicket.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+      document.getElementById('valLastTime').innerText = data.lastUpdated || new Date().toLocaleTimeString('tr-TR');
+
+      const occupiedList = data.occupiedList || [];
+      const tablesContainer = document.getElementById('occupiedTablesList');
+      const badge = document.getElementById('activeTablesCountBadge');
+      badge.innerText = `${occupiedList.length} Aktif Masa`;
+
+      tablesContainer.innerHTML = '';
+      if (occupiedList.length === 0) {
+        tablesContainer.innerHTML = `
+          <div class="text-center text-[#8E8E98] text-xs py-10">
+            <i class="fa-solid fa-chair text-2xl mb-2 block opacity-40"></i>
+            Şu anda açık adisyon veya oturan masa bulunmuyor.
+          </div>
+        `;
+      } else {
+        occupiedList.forEach(t => {
+          const isBillReq = t.status === 'BILL_REQUESTED';
+          const card = document.createElement('div');
+          card.className = `p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all hover:border-[#F5C877] ${
+            isBillReq ? 'bg-[#241A1C] border-rose-500' : 'bg-[#121214] border-[#2C2C34]'
+          }`;
+          card.onclick = () => openTableDetailModal(t);
+
+          card.innerHTML = `
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-xl ${isBillReq ? 'bg-rose-500/20 text-rose-400' : 'bg-[#F5C877]/10 text-[#F5C877]'} flex items-center justify-center text-xs font-black">
+                ${isBillReq ? '<i class="fa-solid fa-receipt"></i>' : '<i class="fa-solid fa-utensils"></i>'}
+              </div>
+              <div>
+                <div class="font-black text-xs text-white">${t.tableName}</div>
+                <div class="text-[10px] text-[#8E8E98]">${t.waiterName || 'Garson'} • ${t.itemCount || 0} Kalem</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs font-mono font-black text-emerald-400">${(Number(t.totalAmount) || 0).toFixed(2)} ₺</div>
+              <div class="text-[9px] ${isBillReq ? 'text-rose-400 font-black' : 'text-[#8E8E98]'}">${isBillReq ? 'Hesap İstendi' : 'Serviste'}</div>
+            </div>
+          `;
+          tablesContainer.appendChild(card);
+        });
+      }
+
+      const topProducts = data.topProducts || [];
+      const prodContainer = document.getElementById('topProductsList');
+      prodContainer.innerHTML = '';
+
+      if (topProducts.length === 0) {
+        prodContainer.innerHTML = '<div class="text-center text-[#8E8E98] text-xs py-6">Henüz sipariş kaydı yok.</div>';
+      } else {
+        topProducts.forEach((p, index) => {
+          const div = document.createElement('div');
+          div.className = 'p-2.5 bg-[#121214] border border-[#2C2C34] rounded-2xl flex items-center justify-between text-xs';
+          div.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-lg bg-[#222228] text-[#F5C877] flex items-center justify-center font-black text-[10px]">${index + 1}</span>
+              <span class="font-bold text-white">${p.name}</span>
+            </div>
+            <div class="text-right font-mono">
+              <span class="text-xs font-black text-[#F5C877]">${p.quantity} Adet</span>
+              <span class="text-[10px] text-[#8E8E98] ml-1">(${(p.revenue || 0).toFixed(0)} ₺)</span>
+            </div>
+          `;
+          prodContainer.appendChild(div);
+        });
+      }
+    }
+
+    // ================= Z RAPORLARI FİLTRELEME & ÇEKME =================
+    function setZDateFilter(type) {
+      const today = new Date().toISOString().split('T')[0];
+      const startEl = document.getElementById('zStartDate');
+      const endEl = document.getElementById('zEndDate');
+
+      if (type === 'today') {
+        startEl.value = today;
+        endEl.value = today;
+      } else if (type === 'yesterday') {
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        const yStr = y.toISOString().split('T')[0];
+        startEl.value = yStr;
+        endEl.value = yStr;
+      } else if (type === 'thisMonth') {
+        const d = new Date();
+        const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+        startEl.value = firstDay;
+        endEl.value = today;
+      } else if (type === 'all') {
+        startEl.value = '';
+        endEl.value = '';
+      }
+      fetchZReports();
+    }
+
+    async function fetchZReports() {
+      const start = document.getElementById('zStartDate').value;
+      const end = document.getElementById('zEndDate').value;
+      const tbody = document.getElementById('zReportsTableBody');
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-[#8E8E98] py-8">Veritabanından Z raporları taranıyor...</td></tr>';
+
+      let url = `${API_URL}?action=get_boss_z_reports`;
+      if (start) url += `&startDate=${start}`;
+      if (end) url += `&endDate=${end}`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.success && data.zReports) {
+          renderZReports(data.zReports, data.summary || {});
+        } else {
+          tbody.innerHTML = '<tr><td colspan="9" class="text-center text-[#8E8E98] py-6">Kayıtlı Z raporu bulunamadı.</td></tr>';
+        }
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-rose-400 py-6">Z Raporları yüklenirken hata oluştu.</td></tr>';
+      }
+    }
+
+    function renderZReports(reports, summary) {
+      const tbody = document.getElementById('zReportsTableBody');
+      tbody.innerHTML = '';
+
+      document.getElementById('zSummaryRevenue').innerText = (summary.totalRevenue || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) + ' ₺';
+      document.getElementById('zSummaryCash').innerText = (summary.cashTotal || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) + ' ₺';
+      document.getElementById('zSummaryPos').innerText = (summary.posTotal || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) + ' ₺';
+      document.getElementById('zSummaryOpen').innerText = (summary.openAccountTotal || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) + ' ₺';
+
+      if (reports.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-[#8E8E98] py-8">Seçilen tarihlerde kapatılmış Z raporu bulunamadı.</td></tr>';
+        return;
+      }
+
+      reports.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-[#202026] transition-colors';
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 font-mono font-bold text-[#F5C877]">Z-${r.zNo}</td>
+          <td class="py-2.5 px-3 text-white">${r.date} ${r.time ? r.time.substring(0, 5) : ''}</td>
+          <td class="py-2.5 px-3 text-[#8E8E98]">${r.closedBy || 'Kasiyer'}</td>
+          <td class="py-2.5 px-3 text-right font-mono">${r.orderCount || 0}</td>
+          <td class="py-2.5 px-3 text-right font-mono text-white">${(r.cashTotal || 0).toFixed(2)} ₺</td>
+          <td class="py-2.5 px-3 text-right font-mono text-sky-400">${(r.posTotal || 0).toFixed(2)} ₺</td>
+          <td class="py-2.5 px-3 text-right font-mono text-amber-400">${(r.openAccountTotal || 0).toFixed(2)} ₺</td>
+          <td class="py-2.5 px-3 text-right font-mono font-black text-emerald-400">${(r.totalRevenue || 0).toFixed(2)} ₺</td>
+          <td class="py-2.5 px-3 text-center">
+            <button onclick='viewZDetail(${JSON.stringify(r).replace(/'/g, "&apos;")})' class="px-2 py-1 bg-[#282830] hover:bg-[#F5C877] hover:text-[#141416] text-[#F5C877] rounded-lg text-xs font-bold transition-all">
+              <i class="fa-solid fa-eye"></i> İncele
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function viewZDetail(r) {
+      document.getElementById('zRepDateTime').innerText = `${r.date} ${r.time || ''}`;
+      document.getElementById('zRepNo').innerText = `Z-${r.zNo}`;
+      document.getElementById('zRepClosedBy').innerText = r.closedBy || 'Patron';
+      document.getElementById('zRepOrderCount').innerText = `${r.orderCount || 0} Adet`;
+
+      document.getElementById('zRepCash').innerText = `${(r.cashTotal || 0).toFixed(2)} ₺`;
+      document.getElementById('zRepCredit').innerText = `${(r.posTotal || 0).toFixed(2)} ₺`;
+      document.getElementById('zRepOpenAccount').innerText = `${(r.openAccountTotal || 0).toFixed(2)} ₺`;
+      document.getElementById('zRepMealCard').innerText = `${(r.mealCardTotal || 0).toFixed(2)} ₺`;
+      document.getElementById('zRepIkram').innerText = `${(r.ikramTotal || 0).toFixed(2)} ₺`;
+      document.getElementById('zRepDiscount').innerText = `${(r.discountTotal || 0).toFixed(2)} ₺`;
+      document.getElementById('zRepGrandTotal').innerText = `${(r.totalRevenue || 0).toFixed(2)} ₺`;
+
+      document.getElementById('zReportModal').classList.remove('hidden');
+    }
+
+    // ================= MÜŞTERİLER & CARİLER =================
+    async function fetchCustomersOverview() {
+      const tbody = document.getElementById('customersTableBody');
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-[#8E8E98] py-6">Müşteriler çekiliyor...</td></tr>';
+
+      try {
+        const res = await fetch(`${API_URL}?action=get_customers_overview`);
+        const data = await res.json();
+        if (data.success && data.customers && data.customers.length > 0) {
+          tbody.innerHTML = '';
+          data.customers.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-[#202026] transition-colors';
+            const bal = Number(c.balance) || 0;
+            const balClass = bal > 0 ? 'text-amber-400' : (bal < 0 ? 'text-emerald-400' : 'text-[#8E8E98]');
+            tr.innerHTML = `
+              <td class="py-2.5 px-3 font-bold text-white">${c.name}</td>
+              <td class="py-2.5 px-3 text-[#8E8E98] font-mono">${c.phone || '-'}</td>
+              <td class="py-2.5 px-3 text-[#8E8E98] truncate max-w-[200px]">${c.address || '-'}</td>
+              <td class="py-2.5 px-3 text-right font-mono font-black ${balClass}">${bal.toFixed(2)} ₺</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } else {
+          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-[#8E8E98] py-6">Kayıtlı müşteri bulunamadı.</td></tr>';
+        }
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-rose-400 py-6">Müşteri verileri alınamadı.</td></tr>';
+      }
+    }
+
+    // ================= PERSONELLER & MAAŞLAR =================
+    async function fetchEmployeesOverview() {
+      const tbody = document.getElementById('employeesTableBody');
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-[#8E8E98] py-6">Personeller çekiliyor...</td></tr>';
+
+      try {
+        const res = await fetch(`${API_URL}?action=get_employees_overview`);
+        const data = await res.json();
+        if (data.success && data.employees && data.employees.length > 0) {
+          tbody.innerHTML = '';
+          data.employees.forEach(emp => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-[#202026] transition-colors';
+            const bal = Number(emp.balance) || 0;
+            const balClass = bal > 0 ? 'text-rose-400' : (bal < 0 ? 'text-emerald-400' : 'text-[#8E8E98]');
+            tr.innerHTML = `
+              <td class="py-2.5 px-3 font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-user text-[10px] text-[#F5C877]"></i>
+                <span>${emp.fullName}</span>
+              </td>
+              <td class="py-2.5 px-3 text-[#8E8E98]">${emp.position || emp.role || 'Personel'}</td>
+              <td class="py-2.5 px-3 text-[#8E8E98] font-mono">${emp.phone || '-'}</td>
+              <td class="py-2.5 px-3">
+                <span class="px-2 py-0.5 rounded-full text-[9px] font-bold ${emp.isActive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400'}">
+                  ${emp.isActive ? 'Aktif' : 'Pasif'}
+                </span>
+              </td>
+              <td class="py-2.5 px-3 text-right font-mono font-bold text-white">${(emp.salary || 0).toFixed(2)} ₺</td>
+              <td class="py-2.5 px-3 text-right font-mono font-black ${balClass}">${bal.toFixed(2)} ₺</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-[#8E8E98] py-6">Kayıtlı personel bulunamadı.</td></tr>';
+        }
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-rose-400 py-6">Personel verileri alınamadı.</td></tr>';
+      }
+    }
+
+    // ================= PAROLA DEĞİŞTİRME =================
+    function openChangePasswordModal() {
+      document.getElementById('curPassInput').value = '';
+      document.getElementById('newPassInput').value = '';
+      const st = document.getElementById('passChangeStatus');
+      st.classList.add('hidden');
+      document.getElementById('passwordChangeModal').classList.remove('hidden');
+    }
+
+    function closeChangePasswordModal() {
+      document.getElementById('passwordChangeModal').classList.add('hidden');
+    }
+
+    async function saveNewPassword() {
+      const cur = document.getElementById('curPassInput').value.trim();
+      const next = document.getElementById('newPassInput').value.trim();
+      const st = document.getElementById('passChangeStatus');
+      st.classList.add('hidden');
+
+      if (!cur || !next) {
+        st.innerText = 'Lütfen tüm alanları doldurun!';
+        st.className = 'text-xs text-center font-bold p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 block';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_URL}?action=change_boss_password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword: cur, newPassword: next })
+        });
+        const data = await res.json();
+        if (data.success) {
+          st.innerText = 'Parola başarıyla değiştirildi.';
+          st.className = 'text-xs text-center font-bold p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 block';
+          setTimeout(closeChangePasswordModal, 1200);
+        } else {
+          st.innerText = data.message || 'Parola değiştirilemedi!';
+          st.className = 'text-xs text-center font-bold p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 block';
+        }
+      } catch (e) {
+        st.innerText = 'Sunucu hatası!';
+        st.className = 'text-xs text-center font-bold p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 block';
+      }
+    }
+
+    function openTableDetailModal(table) {
+      document.getElementById('tableDetailTitle').innerText = `${table.tableName} — Adisyon Ayrıntısı`;
+      document.getElementById('tableDetailWaiter').innerText = `Siparişi Alan Garson: ${table.waiterName || 'Garson'}`;
+      document.getElementById('tableDetailTotal').innerText = `${(Number(table.totalAmount) || 0).toFixed(2)} ₺`;
+
+      const list = document.getElementById('tableDetailItemList');
+      list.innerHTML = '';
+
+      if (table.items && table.items.length > 0) {
+        table.items.forEach(i => {
+          const d = document.createElement('div');
+          d.className = 'py-1.5 flex justify-between items-start';
+          d.innerHTML = `
+            <div>
+              <div class="font-bold text-white">${i.quantity}x ${i.productName}</div>
+              ${i.note ? `<div class="text-[10px] text-[#F5C877]">${i.note}</div>` : ''}
+            </div>
+            <span class="font-mono text-white">${((i.price || 0) * (i.quantity || 1)).toFixed(2)} ₺</span>
+          `;
+          list.appendChild(d);
+        });
+      } else {
+        list.innerHTML = '<div class="text-center text-[#8E8E98] py-4">Ürün ayrıntısı bulunmuyor.</div>';
+      }
+
+      document.getElementById('tableDetailModal').classList.remove('hidden');
+    }
+
+    function closeTableDetailModal() {
+      document.getElementById('tableDetailModal').classList.add('hidden');
+    }
+
+    function closeZReportModal() {
+      document.getElementById('zReportModal').classList.add('hidden');
+    }
+
+    function logoutBoss() {
+      sessionStorage.removeItem('gtu_boss_active_session');
+      sessionStorage.removeItem('gtu_boss_token');
+      if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+      location.reload();
+    }
+
+    checkAuth();
+  </script>
+</body>
+</html>

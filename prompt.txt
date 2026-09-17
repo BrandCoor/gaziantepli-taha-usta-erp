@@ -1,0 +1,1461 @@
+# GAZİANTEPLİ TAHA USTA ERP
+
+## TAM KAPSAMLI KOD DENETİMİ, HATA AYIKLAMA, TEST, TAMAMLAMA VE STABİLİZASYON GÖREVİ
+
+Sen bu projede kıdemli bir **Full-Stack Developer, Software Architect, QA Engineer, Debugger ve DevOps mühendisi** gibi çalışacaksın.
+
+Ben yazılım geliştirme konusunda ileri düzey bilgiye sahip değilim. Bu nedenle teknik kararları sen vereceksin ve gerekli kod değişikliklerini kendin yapacaksın.
+
+Projenin amacı sadece mevcut hataları gidermek değildir.
+
+AMAÇ:
+
+> Mevcut projeyi baştan sona anlayıp, eksik/hatalı/çalışmayan bütün bölümleri tespit etmek, düzeltmek, gerçek kullanım senaryolarıyla test etmek ve sistemi mümkün olan en stabil üretim seviyesine getirmektir.
+
+---
+
+# 1. PROJE
+
+GitHub repository:
+
+https://github.com/BrandCoor/gaziantepli-taha-usta-erp
+
+Projenin yerel kopyası üzerinde çalışıyorsun.
+
+Öncelikle GitHub'daki repository ile mevcut çalışma klasörünün aynı proje olduğunu doğrula.
+
+Çalışmaya başlamadan önce:
+
+* mevcut branch'i kontrol et
+* git status çalıştır
+* mevcut değişiklikleri kontrol et
+* package.json'u incele
+* tsconfig.json'u incele
+* vite.config.ts'i incele
+* electron klasörünü incele
+* prisma klasörünü incele
+* src klasörünü tamamen incele
+* public klasörünü incele
+* .env.example dosyasını incele
+* README dosyalarını incele
+* mevcut scriptleri incele
+* mevcut test altyapısını incele
+
+ÖNEMLİ:
+
+Mevcut çalışan özellikleri gereksiz yere yeniden yazma.
+
+Önce mevcut mimariyi ve iş mantığını anlamaya çalış.
+
+---
+
+# 2. İLK AŞAMA: SADECE ANALİZ DEĞİL, GERÇEK PROJE DENETİMİ
+
+Projeyi yüzeysel olarak inceleme.
+
+Dosya dosya ve modül modül analiz yap.
+
+Özellikle aşağıdakileri tespit et:
+
+* TypeScript hataları
+* React hataları
+* runtime hataları
+* Electron hataları
+* Prisma hataları
+* veritabanı hataları
+* state yönetimi problemleri
+* async/await problemleri
+* race condition problemleri
+* null/undefined hataları
+* hatalı event handler'lar
+* çalışmayan butonlar
+* eksik fonksiyonlar
+* placeholder fonksiyonlar
+* TODO/FIXME alanları
+* sahte/mock veriler
+* hardcoded veriler
+* kullanılmayan fonksiyonlar
+* yanlış API çağrıları
+* yanlış route'lar
+* hatalı form işlemleri
+* hatalı modal işlemleri
+* yanlış hesaplama işlemleri
+* yanlış para/tutar hesaplamaları
+* hatalı tarih/saat işlemleri
+* veri kaybına yol açabilecek işlemler
+* tekrar eden kayıt problemleri
+* transaction problemleri
+* yetkilendirme problemleri
+* güvenlik açıkları
+* yazıcı entegrasyonu problemleri
+* Electron main/renderer/preload iletişim problemleri
+* IPC problemleri
+* WebSocket problemleri
+* PWA problemleri
+* responsive tasarım problemleri
+* loading state problemleri
+* error handling problemleri
+* kullanıcıya hata göstermeyen işlemler
+* sessizce başarısız olan işlemler
+* console.error / console.log kaynaklı sorunlar
+* production build problemleri
+
+---
+
+# 3. UYGULAMAYI GERÇEKTEN ÇALIŞTIR
+
+Sadece kaynak kodunu okumak YETERLİ DEĞİL.
+
+Projeyi gerçekten çalıştır.
+
+Önce gerekli bağımlılıkları kontrol et.
+
+Gerekliyse:
+
+npm install
+
+ve uygun diğer kurulum komutlarını çalıştır.
+
+Daha sonra:
+
+* development server'ı başlat
+* Electron uygulamasını başlat
+* build almayı dene
+* TypeScript kontrolü yap
+* lint kontrolü yap
+* mevcut testleri çalıştır
+* mümkünse E2E testleri çalıştır
+
+Bir komut hata verirse:
+
+1. hatayı oku
+2. kök sebebi bul
+3. düzelt
+4. aynı komutu tekrar çalıştır
+5. hata gerçekten giderilene kadar devam et
+
+Hatanın üzerini geçme.
+
+Örneğin:
+
+"npm run build hata verdi ama bunun dışındaki işlemlere devam ediyorum"
+
+YAPMA.
+
+Önce hatayı çöz.
+
+---
+
+# 4. TÜM UYGULAMA MODÜLLERİNİ TARAMA
+
+Aşağıdaki alanları özellikle kontrol et.
+
+## POS / KASA
+
+Kontrol et:
+
+* masa listesi
+* salon
+* bahçe
+* paket servis
+* masa açma
+* masa kapatma
+* masa taşıma
+* masa birleştirme
+* sipariş ekleme
+* sipariş silme
+* sipariş miktarı
+* sipariş durumu
+* adisyon
+* hesap isteme
+* hesap kapatma
+* ödeme
+* nakit
+* kart
+* parçalı ödeme
+* Alman usulü ödeme
+* yüzde indirim
+* tutar indirimi
+* cari ödeme
+* kalan tutar
+* yuvarlama
+* fiş
+* tekrar fiş
+* iptal
+* kontrollü ürün iptali
+* iptal nedeni
+* mutfak gönderimi
+
+Bütün hesaplamaların matematiksel olarak doğru olduğunu doğrula.
+
+Özellikle floating point para hatalarını kontrol et.
+
+---
+
+# 5. PARÇALI ÖDEME
+
+Bu alan kritik.
+
+Aşağıdaki senaryoları gerçek verilerle test et:
+
+Örnek:
+
+Toplam:
+1000 TL
+
+500 TL nakit
+500 TL kart
+
+Sonuç:
+
+Kalan:
+0 TL
+
+Başka senaryolar:
+
+1000 TL hesap
+
+3 ürün seçildi.
+
+Seçilen ürün toplamı:
+350 TL
+
+350 TL tahsil edildi.
+
+Kalan:
+650 TL
+
+Ayrıca:
+
+1/2
+1/3
+1/4
+1/5
+
+işlemlerini ayrı ayrı test et.
+
+İndirim + parçalı ödeme kombinasyonlarını da test et.
+
+Negatif veya yanlış kalan tutar oluşmasına izin verme.
+
+---
+
+# 6. MASA VE ADİSYON MANTIĞI
+
+Masa durumlarının doğru çalıştığını kontrol et.
+
+Örneğin:
+
+BOŞ
+DOLU
+HESAP İSTENDİ
+PAKET
+
+durumlarının birbirine yanlış geçmediğini doğrula.
+
+Bir masaya yeni ürün eklendiğinde:
+
+Daha önce mutfağa gönderilmiş ürün tekrar gönderilmemeli.
+
+Sadece yeni ürünler:
+
+"İLAVE SİPARİŞ"
+
+olarak gönderilmeli.
+
+Bu mekanizmayı kod seviyesinde doğrula.
+
+---
+
+# 7. MUTFAK YAZICILARI
+
+Fırın ve ocak yönlendirmesini incele.
+
+Ürünlerin doğru yazıcıya yönlendirildiğini doğrula.
+
+Kontrol et:
+
+* ESC/POS
+* USB
+* IP yazıcı
+* network printer
+* yazıcı bağlantı hatası
+* timeout
+* bağlantı kesilmesi
+* tekrar gönderme
+* duplicate print
+* iptal fişi
+* ilave sipariş fişi
+
+Yazıcı fiziksel olarak mevcut değilse bile mümkün olan en iyi mock/test mekanizmasını oluştur.
+
+Kodun yazıcı yokken uygulamayı çökertmemesini sağla.
+
+---
+
+# 8. GARSON MOBİL UYGULAMASI / PWA
+
+Kontrol et:
+
+* QR eşleştirme
+* PIN
+* cihaz eşleştirme
+* masa listesi
+* masa açma
+* ürün seçme
+* sepet
+* sipariş gönderme
+* notlar
+* hazır etiketler
+* masa taşıma
+* fiş isteme
+* bağlantı kopması
+* tekrar bağlanma
+* offline/online durumları
+
+Mobil ekranlarda kullanılabilirliği kontrol et.
+
+---
+
+# 9. PAKET SERVİS / CALLER ID
+
+Kontrol et:
+
+* telefon numarası alma
+* müşteri arama
+* müşteri bulma
+* yeni müşteri oluşturma
+* müşteri adresi
+* sipariş oluşturma
+* paket masa oluşturma
+* mutfak fişi
+* kurye/adres fişi
+
+Telefon numarası mevcut müşteriye aitse:
+
+müşterinin bilgileri doğru şekilde gelmeli.
+
+Yeni müşteriyse:
+
+kayıt oluşturulabilmeli.
+
+---
+
+# 10. MÜŞTERİ / CARİ
+
+Kontrol et:
+
+* müşteri ekleme
+* müşteri düzenleme
+* müşteri silme
+* müşteri arama
+* müşteri bakiyesi
+* cari borç
+* cari ödeme
+* cari ekstre
+* işlem geçmişi
+
+Bakiye sıfır değilse müşteri silinememeli.
+
+Bu kontrolü sadece frontend'de değil backend/database seviyesinde de güvence altına al.
+
+---
+
+# 11. TOPTANCI / TEDARİKÇİ
+
+Kontrol et:
+
+* tedarikçi ekleme
+* düzenleme
+* silme
+* fatura
+* borç
+* ödeme
+* bakiye
+* ekstre
+* işlem düzenleme
+* işlem silme
+
+Özellikle:
+
+Fatura girildiğinde borç artmalı.
+
+Ödeme yapıldığında borç azalmalı.
+
+Ekstrede herhangi bir işlem düzenlenirse bakiye yeniden doğru hesaplanmalı.
+
+---
+
+# 12. GİDERLER
+
+Kontrol et:
+
+* gider ekleme
+* düzenleme
+* silme
+* kategori
+* tarih
+* tutar
+* açıklama
+* filtre
+* raporlara yansıma
+
+---
+
+# 13. PERSONEL
+
+Kontrol et:
+
+* personel ekleme
+* düzenleme
+* silme
+* bakiye
+* avans
+* ödeme
+* cari
+* işlem geçmişi
+
+Bakiyesi bulunan personelin silinmesini engelle.
+
+---
+
+# 14. RAPORLAR
+
+Raporların gerçek database verileriyle çalıştığından emin ol.
+
+Kontrol et:
+
+* X raporu
+* Z raporu
+* günlük satış
+* nakit
+* kart
+* cari
+* gider
+* tedarikçi ödemeleri
+* net kasa
+* tarih filtreleri
+* toplamlar
+
+Raporlarda kullanılan hesaplamaları ilgili transaction kayıtlarıyla karşılaştır.
+
+---
+
+# 15. VERİTABANI / PRISMA
+
+Prisma yapısını tamamen incele.
+
+Kontrol et:
+
+* schema
+* relations
+* indexes
+* unique alanlar
+* foreign keys
+* cascade davranışları
+* nullable alanlar
+* migration'lar
+
+Database işlemlerinde:
+
+* race condition
+* duplicate kayıt
+* orphan kayıt
+* transaction eksikliği
+* yanlış relation
+* yanlış aggregation
+
+problemlerini araştır.
+
+Para ve kritik finansal işlemlerde mümkün olduğunca transaction kullan.
+
+---
+
+# 16. ELECTRON
+
+Electron yapısını ayrıca denetle.
+
+Kontrol et:
+
+* main process
+* renderer
+* preload
+* IPC
+* contextIsolation
+* nodeIntegration
+* güvenlik
+* window lifecycle
+* uygulama kapanması
+* uygulama yeniden açılması
+* yazıcı erişimi
+* local server
+* WebSocket
+* port kullanımı
+
+Electron uygulamasının production build sonrasında da çalışacağından emin ol.
+
+---
+
+# 17. TÜM BUTONLARI KONTROL ET
+
+Bu görev çok önemli.
+
+Uygulamadaki TÜM butonları tespit et.
+
+Her buton için şunu kontrol et:
+
+1. onclick/onClick gerçekten var mı?
+2. Doğru fonksiyonu çağırıyor mu?
+3. Fonksiyon gerçekten çalışıyor mu?
+4. Backend işlemi yapılıyor mu?
+5. Database güncelleniyor mu?
+6. Başarı mesajı geliyor mu?
+7. Hata durumunda kullanıcı bilgilendiriliyor mu?
+8. Loading state var mı?
+9. İşlem tamamlanınca UI güncelleniyor mu?
+10. Sayfa yenilendiğinde veri korunuyor mu?
+
+Disabled görünmesi gereken butonları doğru şekilde disabled yap.
+
+Çalışmayan butonları "çalışıyor" kabul etme.
+
+---
+
+# 18. TÜM FORMLARI KONTROL ET
+
+Her form için:
+
+* validation
+* required fields
+* number validation
+* decimal validation
+* Turkish character desteği
+* telefon
+* tarih
+* tutar
+* duplicate kontrolü
+* submit
+* loading
+* success
+* error
+* reset
+
+kontrolü yap.
+
+Form gönderilirken çift tıklama nedeniyle duplicate kayıt oluşmasını engelle.
+
+---
+
+# 19. UI / UX
+
+Uygulamanın görsel olarak mevcut tasarım dilini koru.
+
+Ancak kullanılabilirlik sorunlarını düzelt.
+
+Kontrol et:
+
+* mobil
+* tablet
+* desktop
+* küçük ekran
+* büyük ekran
+
+Ayrıca:
+
+* loading ekranları
+* skeleton
+* empty state
+* error state
+* confirmation dialog
+* toast
+* modal
+* scroll
+* overflow
+* keyboard navigation
+
+problemlerini düzelt.
+
+---
+
+# 20. HATA YÖNETİMİ
+
+Uygulamanın hiçbir kritik işlemi sessizce başarısız olmamalı.
+
+Örneğin:
+
+Database kayıt başarısız olduysa kullanıcı bunu bilmeli.
+
+Yazıcı başarısız olduysa kullanıcı bunu bilmeli.
+
+API bağlantısı koptuysa kullanıcı bunu bilmeli.
+
+Ama kullanıcıya teknik stack trace gösterme.
+
+Kullanıcıya anlaşılır Türkçe hata mesajı göster.
+
+Teknik hata detaylarını logla.
+
+---
+
+# 21. GÜVENLİK
+
+Kontrol et:
+
+* SQL injection
+* XSS
+* IPC güvenliği
+* Electron security
+* exposed secrets
+* .env
+* API key
+* password
+* authentication
+* authorization
+* input validation
+* unsafe HTML
+* local storage
+
+GitHub'a gizli bilgilerin gönderilmediğini doğrula.
+
+Gerçek secret/key/password bulursan repository'ye ekleme.
+
+---
+
+# 22. TEST STRATEJİSİ
+
+Mümkün olan her yerde test oluştur.
+
+Özellikle kritik business logic için:
+
+UNIT TEST
+
+oluştur.
+
+Özellikle:
+
+* ödeme hesaplama
+* parçalı ödeme
+* indirim
+* kalan bakiye
+* cari
+* tedarikçi borcu
+* stok
+* rapor toplamları
+
+test edilmeli.
+
+Mümkünse:
+
+INTEGRATION TEST
+
+ve
+
+E2E TEST
+
+de oluştur.
+
+---
+
+# 23. GERÇEK KULLANICI SENARYOLARI
+
+Aşağıdaki senaryoları baştan sona test et.
+
+## SENARYO 1
+
+Masa aç.
+
+3 ürün ekle.
+
+Sipariş gönder.
+
+İlave ürün ekle.
+
+Tekrar gönder.
+
+İlk ürünlerin tekrar basılmadığını doğrula.
+
+Hesap iste.
+
+Hesabı parçalı öde.
+
+Masayı kapat.
+
+Database'i kontrol et.
+
+---
+
+## SENARYO 2
+
+Yeni müşteri oluştur.
+
+Paket siparişi oluştur.
+
+Ürünleri ekle.
+
+Siparişi mutfağa gönder.
+
+Adres bilgisini kontrol et.
+
+Ödeme yap.
+
+Siparişi kapat.
+
+---
+
+## SENARYO 3
+
+Toptancı oluştur.
+
+Fatura gir.
+
+Borç oluştuğunu kontrol et.
+
+Ödeme yap.
+
+Bakiyenin azaldığını kontrol et.
+
+Ekstreyi kontrol et.
+
+---
+
+## SENARYO 4
+
+Gider oluştur.
+
+Gideri rapora yansıt.
+
+Gideri düzenle.
+
+Raporun değiştiğini doğrula.
+
+Gideri sil.
+
+Raporun tekrar düzeldiğini doğrula.
+
+---
+
+# 24. HATALARI SADECE LİSTELEME
+
+ÇOK ÖNEMLİ:
+
+Hata bulduğunda sadece bana:
+
+"Burada hata var."
+
+deme.
+
+Hatanın kök nedenini bul.
+
+Kodu düzelt.
+
+Test et.
+
+Sonra devam et.
+
+Örneğin:
+
+YANLIŞ:
+
+"PaymentModal.tsx içinde sorun var."
+
+DOĞRU:
+
+"PaymentModal.tsx içindeki kalan tutar state'i eski değer üzerinden hesaplanıyor. State bağımlılığı düzeltildi, hesaplama fonksiyonuna merkezi bir para hesaplama fonksiyonu bağlandı ve 1000 TL / 350 TL senaryosu test edildi."
+
+---
+
+# 25. KOD KALİTESİ
+
+Gereksiz yeniden yazımdan kaçın.
+
+Ama mevcut kod kötü tasarlanmışsa düzelt.
+
+Özellikle:
+
+* duplicate code
+* giant component
+* circular dependency
+* magic number
+* magic string
+* duplicated business logic
+* inconsistent naming
+* dead code
+
+alanlarını düzelt.
+
+Kritik business logic'i UI componentlerinin içine dağıtma.
+
+Mümkün olduğunca merkezi ve test edilebilir hale getir.
+
+---
+
+# 26. DEĞİŞİKLİK YAPMADAN ÖNCE
+
+Her büyük değişiklikten önce:
+
+* mevcut kodu anla
+* dependency'leri kontrol et
+* değişikliğin başka modülleri etkileyip etkilemeyeceğini düşün
+
+Bir modülü düzeltirken başka modülü bozma.
+
+Her önemli değişiklikten sonra ilgili testleri tekrar çalıştır.
+
+---
+
+# 27. YEDEKLEME
+
+Çalışmaya başlamadan önce mümkünse mevcut durumun Git üzerinden korunmasını sağla.
+
+Mevcut kullanıcı değişikliklerini silme.
+
+Git geçmişini gereksiz yere değiştirme.
+
+`git reset --hard`
+
+veya benzeri geri dönüşü zor işlemleri benim açık onayım olmadan kullanma.
+
+Özellikle mevcut değişiklikler varsa önce onları koru.
+
+---
+
+# 28. ÇALIŞMA ŞEKLİN
+
+Ben sana tek tek:
+
+"şimdi şu dosyayı incele"
+
+demeyeceğim.
+
+Sen projeyi kendin keşfedeceksin.
+
+Benim amacım:
+
+> Çalışan, stabil, kullanılabilir bir restoran POS + ERP sistemi elde etmek.
+
+Bu nedenle kendi görev planını oluştur.
+
+Öncelik sırası:
+
+1. Build / startup problemleri
+2. Runtime hataları
+3. Database problemleri
+4. Kritik business logic
+5. POS
+6. ödeme
+7. sipariş
+8. yazıcı
+9. cari
+10. tedarikçi
+11. gider
+12. personel
+13. paket servis
+14. garson uygulaması
+15. raporlar
+16. UI/UX
+17. güvenlik
+18. performans
+19. testler
+20. production build
+
+---
+
+# 29. KENDİNİ "TAMAMLANDI" İLAN ETME KRİTERİ
+
+Aşağıdakiler sağlanmadan projeyi tamamlanmış kabul etme:
+
+* npm/build başarılı
+* TypeScript hatası yok
+* kritik runtime hatası yok
+* Prisma/database işlemleri düzgün
+* kritik business logic testlerden geçiyor
+* POS çalışıyor
+* sipariş çalışıyor
+* ödeme çalışıyor
+* parçalı ödeme çalışıyor
+* cari çalışıyor
+* tedarikçi çalışıyor
+* gider çalışıyor
+* personel çalışıyor
+* raporlar çalışıyor
+* paket servis çalışıyor
+* kritik butonlar çalışıyor
+* formlar çalışıyor
+* Electron çalışıyor
+* production build alınabiliyor
+* mümkün olan testler geçiyor
+
+Bir şey test edilemediğinde bunu açıkça belirt.
+
+Test etmediğin bir şeyi:
+
+"çalışıyor"
+
+olarak raporlama.
+
+---
+
+# 30. ÇALIŞMA SIRASINDA RAPORLAMA
+
+Her aşamada bana gereksiz teknik ayrıntı yağdırma.
+
+Ancak önemli bulguları kısa şekilde bildir.
+
+Örnek:
+
+FAZ 1 – ANALİZ
+
+* Mimari incelendi
+* 17 kritik sorun tespit edildi
+* 8 orta seviye sorun tespit edildi
+* 11 eksik fonksiyon tespit edildi
+
+FAZ 2 – KRİTİK HATALAR
+
+* Build hatası düzeltildi
+* Prisma relation hatası düzeltildi
+* ödeme hesaplama hatası düzeltildi
+
+FAZ 3 – TEST
+
+* POS test edildi
+* ödeme test edildi
+* cari test edildi
+
+gibi.
+
+---
+
+# 31. BENİ GEREKSİZ YERE BEKLETME
+
+Bir hata çıktığında çözümü araştır ve uygula.
+
+Bana:
+
+"Burada hata aldım, ne yapayım?"
+
+diye sorma.
+
+Eğer çözüm teknik olarak makulse kendin uygula.
+
+Sadece gerçekten kullanıcı kararı gerektiren konularda bana sor.
+
+Örneğin:
+
+* ürün davranışı konusunda birbiriyle çelişen iki iş kuralı
+* geri dönüşü olmayan veri silme
+* mevcut kullanıcı verisini etkileyen kritik değişiklik
+* dış servis hesabı/credential gerektiren işlem
+* iş modelini değiştiren karar
+
+Bunların dışında kendi teknik kararını ver.
+
+---
+
+# 32. İŞ KURALLARINI KORU
+
+README'de veya mevcut kodda tanımlanmış iş kurallarını bozma.
+
+Özellikle:
+
+* masa kapanma şartları
+* kalan borç
+* parçalı ödeme
+* cari
+* tedarikçi bakiyesi
+* personel bakiyesi
+* mutfak yazıcı yönlendirmesi
+* ilave sipariş
+* iptal fişi
+* Z raporu
+
+gibi kurallar kritik kabul edilecek.
+
+Bir kod değişikliği mevcut bir iş kuralını değiştiriyorsa bunu fark et ve bana bildir.
+
+---
+
+# 33. PROJEYİ SIFIRDAN YAZMA
+
+Önemli:
+
+Bu proje yarım olabilir.
+
+Ama bu, her şeyi silip yeniden yazabileceğin anlamına gelmez.
+
+Mevcut sistemi mümkün olduğunca koru.
+
+Ancak bir bölümün mimarisi gerçekten bozuksa:
+
+* önce neden bozuk olduğunu belirle
+* etkilediği modülleri tespit et
+* sonra güvenli şekilde refactor et
+
+---
+
+# 34. SON AŞAMA: FINAL AUDIT
+
+Tüm düzeltmelerden sonra tekrar baştan sona audit yap.
+
+İkinci taramada yeni hata çıkarsa onu da düzelt.
+
+Sonrasında:
+
+* build
+* tests
+* lint
+* typecheck
+* production build
+
+çalıştır.
+
+Sonuçları raporla.
+
+---
+
+# 35. FINAL RAPOR
+
+İş tamamlandığında bana şu formatta rapor ver:
+
+## PROJE DURUMU
+
+Build:
+PASS / FAIL
+
+TypeScript:
+PASS / FAIL
+
+Tests:
+PASS / FAIL
+
+Production Build:
+PASS / FAIL
+
+## DÜZELTİLENLER
+
+* ...
+* ...
+* ...
+
+## TAMAMLANAN MODÜLLER
+
+* POS
+* Ödeme
+* Cari
+* Toptancı
+* Gider
+* Personel
+* Paket Servis
+* Garson
+* Raporlar
+* vb.
+
+## KRİTİK HATALAR
+
+Bulunan kritik hatalar ve nasıl çözüldükleri.
+
+## TEST EDİLEN SENARYOLAR
+
+Gerçek test senaryolarını listele.
+
+## KALAN SORUNLAR
+
+Eğer gerçekten çözülemeyen bir şey varsa açıkça yaz.
+
+"Her şey tamam" demek için tahminde bulunma.
+
+---
+
+# 36. EN ÖNEMLİ KURAL
+
+SENİN GÖREVİN KOD YAZMAK DEĞİL.
+
+SENİN GÖREVİN:
+
+> ÇALIŞAN BİR SİSTEM ORTAYA ÇIKARMAK.
+
+Kod yazmak bunun aracıdır.
+
+Bu nedenle:
+
+ANALİZ ET
+→ ÇALIŞTIR
+→ HATA BUL
+→ KÖK NEDENİ BUL
+→ DÜZELT
+→ TEST ET
+→ TEKRAR ÇALIŞTIR
+→ BAŞKA MODÜLE GEÇ
+→ TÜM SİSTEMİ TEKRAR TEST ET
+
+Döngüsünü kullan.
+
+Bir özellik sadece kodda mevcut olduğu için "çalışıyor" kabul edilmez.
+
+Gerçekten çalıştırılmış ve doğrulanmış olması gerekir.
+
+# 37. DEMO / MOCK / SİMÜLASYON KESİNLİKLE YASAKTIR
+
+BU PROJE GERÇEK KULLANIM İÇİN GELİŞTİRİLMEKTEDİR.
+
+Aşağıdaki yöntemleri KULLANMA:
+
+* Demo veri
+* Mock data
+* Fake data
+* Dummy data
+* Simülasyon
+* Sahte API response
+* Sahte database response
+* Hardcoded örnek kayıtlar
+* Placeholder kayıtlar
+* Geçici sahte kullanıcılar
+* Geçici sahte müşteriler
+* Sahte ürünler
+* Sahte siparişler
+* Sahte ödeme sonuçları
+* Sahte rapor sonuçları
+* Sahte yazıcı başarı mesajları
+* "Başarılı" gösteren ancak gerçek işlem yapmayan fonksiyonlar
+* Mock API
+* Mock database
+* Fake service
+* Test amacıyla production kodunun içine eklenmiş bypass'lar
+* Gerçek backend yerine frontend üzerinde yapılan sahte işlemler
+
+ÖZELLİKLE:
+
+Bir butonun gerçek fonksiyonu çalışmıyorsa, o butona basıldığında sadece:
+
+"İşlem başarılı"
+
+gösteren sahte bir mekanizma oluşturma.
+
+Bir database işlemi çalışmıyorsa sahte bir sonuç döndürme.
+
+Bir API çalışmıyorsa fake response oluşturup sistemi çalışıyor gibi gösterme.
+
+Bir yazıcı bağlı değilse yazdırılmış gibi gösterme.
+
+Bir ödeme gerçekleşmediyse ödeme yapılmış gibi gösterme.
+
+Bir sipariş database'e kaydedilmediyse kaydedilmiş gibi gösterme.
+
+Bir rapor gerçek database verisinden üretilemiyorsa sahte rakam gösterme.
+
+---
+
+# 38. TEST VERİSİ İLE GERÇEK UYGULAMA VERİSİNİ KARIŞTIRMA
+
+Testler için gerekli veriler yalnızca test ortamında veya otomatik test mekanizmasının kendi izole ortamında kullanılabilir.
+
+Production uygulamasının içine:
+
+* demo müşteriler
+* demo ürünler
+* demo masalar
+* demo siparişler
+* demo personeller
+* demo tedarikçiler
+* demo finansal işlemler
+
+ekleme.
+
+Uygulama ilk açıldığında kullanıcıya sahte veri gösterme.
+
+Database seed kullanılıyorsa bunun amacı ve kapsamı açıkça belirlenmeli ve gerçek kullanım ortamında istenmeyen demo kayıtları oluşturmamalıdır.
+
+---
+
+# 39. TEST VE SİMÜLASYON AYRIMI
+
+TEST YAPMAK SERBESTTİR.
+
+ANCAK TEST İLE UYGULAMANIN GERÇEK İŞLEYİŞİNİ SAHTELEMEK FARKLI ŞEYLERDİR.
+
+Örneğin:
+
+DOĞRU:
+
+Gerçek ödeme hesaplama fonksiyonunu unit test ile test etmek.
+
+DOĞRU:
+
+İzole bir test database'i kullanarak gerçek Prisma sorgularını test etmek.
+
+DOĞRU:
+
+Gerçek business logic üzerinden E2E test çalıştırmak.
+
+DOĞRU:
+
+Yazıcı entegrasyonunu gerçek bağlantı olmadan test etmek için ayrı bir test adapter/mock katmanı kullanmak.
+
+YANLIŞ:
+
+Production koduna:
+
+if (demoMode) {
+return true;
+}
+
+gibi bypass eklemek.
+
+YANLIŞ:
+
+Database'den veri gelmediğinde:
+
+return demoCustomers;
+
+yapmak.
+
+YANLIŞ:
+
+API hata verdiğinde:
+
+return fakeSuccessfulResponse;
+
+yapmak.
+
+YANLIŞ:
+
+Butona basıldığında gerçek işlem yapılmadan:
+
+toast("Başarılı");
+
+göstermek.
+
+---
+
+# 40. MOCK KULLANILMASI GEREKEN DURUMLAR
+
+Test altyapısında mock/stub/fake kullanılması gerekiyorsa bu mekanizma:
+
+* production kodundan izole edilmeli
+* açıkça test ortamına ait olmalı
+* production build'e yanlışlıkla dahil olmamalı
+* gerçek business logic'i bypass etmemeli
+* gerçek uygulamanın çalışıyor gibi görünmesini sağlamamalı
+
+Örneğin fiziksel yazıcı olmadan yazıcı test ediliyorsa:
+
+TEST ORTAMI:
+Mock Printer Adapter
+
+PRODUCTION:
+Gerçek Printer Adapter
+
+şeklinde ayrıştır.
+
+Ancak production uygulamasında:
+
+"Yazıcı bağlı değil ama yazdırıldı."
+
+gibi bir davranış kesinlikle oluşturma.
+
+---
+
+# 41. PLACEHOLDER VE TODO KODLARI
+
+Aşağıdaki kodlar production içerisinde bırakılmamalıdır:
+
+* TODO
+* FIXME
+* Coming Soon
+* Not Implemented
+* Placeholder
+* Demo
+* Mock
+* Temporary
+* Fake
+* Dummy
+* Sample
+
+Bunlardan biri gerçek bir özellik için kullanılıyorsa özelliği gerçekten tamamla.
+
+Örneğin:
+
+// TODO: ödeme yapılacak
+
+gibi bir alan varsa bunu bırakma.
+
+Gerçek ödeme mekanizmasını tamamla.
+
+---
+
+# 42. EKSİK ÖZELLİKLERDE DAVRANIŞ
+
+Bir özellik mevcut mimaride eksikse onu sahte şekilde tamamlanmış göstermeye çalışma.
+
+Örneğin:
+
+"Excel'e aktar" butonu var fakat export mekanizması yoksa:
+
+YANLIŞ:
+Butona basınca "Excel oluşturuldu" mesajı göstermek.
+
+DOĞRU:
+Gerçek Excel export mekanizmasını oluşturmak.
+
+Aynı şekilde:
+
+PDF
+Yazıcı
+E-Fatura
+Ödeme
+Rapor
+Cari
+Sipariş
+Mutfak
+Paket servis
+
+gibi bütün alanlarda gerçek işlem yapılmalıdır.
+
+---
+
+# 43. "ÇALIŞIYOR GİBİ GÖRÜNME" KURALI
+
+Bir özelliğin UI tarafında çalışıyor görünmesi yeterli değildir.
+
+Aşağıdaki zincirin tamamı gerçek olmalıdır:
+
+KULLANICI İŞLEMİ
+↓
+UI
+↓
+BUSINESS LOGIC
+↓
+BACKEND / IPC / API
+↓
+DATABASE / GERÇEK SERVİS
+↓
+GERÇEK SONUÇ
+↓
+UI'YA GERİ DÖNÜŞ
+↓
+KULLANICIYA DOĞRU DURUM
+
+Bu zincirin herhangi bir yerinde sahte sonuç üretme.
+
+---
+
+# 44. GERÇEK VERİ İLKESİ
+
+Uygulamanın normal çalışma modunda gösterilen bütün bilgiler gerçek kaynaktan gelmelidir.
+
+Örneğin:
+
+Dashboard satış:
+→ gerçek database
+
+Masa durumu:
+→ gerçek database/application state
+
+Cari bakiye:
+→ gerçek transaction kayıtları
+
+Tedarikçi borcu:
+→ gerçek transaction kayıtları
+
+Gider:
+→ gerçek database
+
+Personel bakiyesi:
+→ gerçek database
+
+Rapor:
+→ gerçek database
+
+Sipariş:
+→ gerçek database
+
+Ödeme:
+→ gerçek ödeme transaction'ı
+
+Hiçbirini frontend içerisinde sabit rakamlarla oluşturma.
+
+---
+
+# 45. SON KONTROL
+
+Projeyi tamamladığını söylemeden önce kod içerisinde aşağıdaki kelimeleri ve kalıpları ara:
+
+demo
+mock
+fake
+dummy
+sample
+placeholder
+temporary
+simulation
+simulate
+testData
+demoData
+mockData
+fakeData
+dummyData
+TODO
+FIXME
+Coming Soon
+Not Implemented
+
+Bulduğun her kullanımın production açısından gerekli olup olmadığını değerlendir.
+
+Test altyapısında olması normal olabilir.
+
+Ancak production davranışını etkileyen bir demo/mock/simülasyon mekanizması varsa kaldır veya gerçek implementasyonla değiştir.
+
+---
+
+# 46. TEMEL PRENSİP
+
+BU PROJE BİR DEMO DEĞİLDİR.
+
+BU PROJE BİR PROTOTİP GİBİ DAVRANMAMALIDIR.
+
+BU PROJE SADECE EKRANLARIN GÖSTERİLDİĞİ BİR UI ÇALIŞMASI DEĞİLDİR.
+
+AMAÇ:
+
+> GERÇEK VERİLERLE ÇALIŞAN, GERÇEK İŞLEMLERİ GERÇEKTEN YAPAN, ÜRETİMDE KULLANILABİLECEK STABİL BİR ERP/POS SİSTEMİ OLUŞTURMAKTIR.
+
+Bir özellik henüz tamamlanmadıysa tamamla.
+
+Tamamlanması teknik olarak mümkün değilse bunu açıkça bildir.
+
+Ama hiçbir zaman eksik özelliği sahte veri, mock response, simülasyon veya bypass ile çalışıyor gibi gösterme.
+
+
+
+---
+
+# ŞİMDİ BAŞLA
+
+İlk olarak hiçbir dosyayı rastgele değiştirme.
+
+Önce:
+
+1. Git durumunu kontrol et.
+2. Proje yapısını çıkar.
+3. package.json ve teknoloji yığınını belirle.
+4. Prisma/database yapısını analiz et.
+5. Electron mimarisini analiz et.
+6. src içerisindeki tüm modülleri çıkar.
+7. Mevcut testleri ve scriptleri tespit et.
+8. Projeyi çalıştır.
+9. İlk build/typecheck/lint/test sonuçlarını al.
+10. Kritik sorunları önceliklendir.
+11. Sonra düzeltmeye başla.
+
+İlk mesajında bana sadece:
+
+* proje mimarisinin özeti
+* tespit ettiğin kritik sorun sayısı
+* çalıştırdığın ilk test/build sonuçları
+* izleyeceğin düzeltme sırası
+
+hakkında kısa bir rapor ver.
+
+Ardından beklemeden çalışmaya devam et.
+
+# BAŞLA.

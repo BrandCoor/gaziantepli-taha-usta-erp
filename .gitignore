@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.env
+.env.*
+!.env.example
+*.log
+
+prisma/*.db
+bun.lock
+yedek_*/
+*.bak
+app/
