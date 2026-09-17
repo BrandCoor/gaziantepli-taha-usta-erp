@@ -41,7 +41,7 @@ function getPlatformRow($pdo, $platformCode) {
 }
 
 // 1. SİPARİŞİ ONAYLA (ACCEPT & PREPARING)
-if ($action === 'accept_order') {
+if ($action === 'accept_order' || $action === 'accept_online_order') {
     $orderId = $body['orderId'] ?? $body['id'] ?? '';
     if (empty($orderId)) {
         echo json_encode(['success' => false, 'error' => 'Sipariş ID belirtilmedi.']);
@@ -147,7 +147,7 @@ if ($action === 'accept_order') {
 }
 
 // 2. SİPARİŞİ İPTAL ET / REDDET (CANCEL & REJECT)
-if ($action === 'reject_order' || $action === 'cancel_order') {
+if ($action === 'reject_order' || $action === 'cancel_order' || $action === 'reject_online_order' || $action === 'cancel_online_order') {
     $orderId = $body['orderId'] ?? $body['id'] ?? '';
     $reason = trim($body['cancelReason'] ?? $body['reason'] ?? 'Restoran Yoğunluğu');
 
@@ -173,7 +173,7 @@ if ($action === 'reject_order' || $action === 'cancel_order') {
 }
 
 // 3. KURYEYE VERİLDİ / YOLA ÇIKTI (DISPATCHED)
-if ($action === 'dispatch_order') {
+if ($action === 'dispatch_order' || $action === 'dispatch_online_order') {
     $orderId = $body['orderId'] ?? $body['id'] ?? '';
     if (empty($orderId)) {
         echo json_encode(['success' => false, 'error' => 'Sipariş ID belirtilmedi.']);
@@ -196,7 +196,7 @@ if ($action === 'dispatch_order') {
 }
 
 // 4. TESLİM EDİLDİ (DELIVERED)
-if ($action === 'deliver_order') {
+if ($action === 'deliver_order' || $action === 'deliver_online_order') {
     $orderId = $body['orderId'] ?? $body['id'] ?? '';
     if (empty($orderId)) {
         echo json_encode(['success' => false, 'error' => 'Sipariş ID belirtilmedi.']);
@@ -219,7 +219,7 @@ if ($action === 'deliver_order') {
 }
 
 // 5. RESTORAN SİPARİŞ DURUM KONTROLÜ (OPEN / BUSY / CLOSED)
-if ($action === 'update_store_status') {
+if ($action === 'update_store_status' || $action === 'update_online_store_status') {
     $platformCode = strtoupper(trim($body['platform'] ?? 'ALL'));
     $status = strtoupper(trim($body['status'] ?? 'OPEN'));
 
@@ -256,8 +256,38 @@ if ($action === 'update_store_status') {
     exit;
 }
 
+// 5.1. BASİT AÇIK/KAPALI DURUM (Kasa "Restoranı Aç/Kapat" kısayolu: isOpen boolean)
+if ($action === 'update_platform_store_status') {
+    $platformCode = strtoupper(trim($body['platform'] ?? 'ALL'));
+    $isOpen = !empty($body['isOpen']);
+    $status = $isOpen ? 'OPEN' : 'CLOSED';
+
+    if ($pdo) {
+        try {
+            if ($platformCode === 'ALL') {
+                $stmt = $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ?, `updated_at` = NOW()");
+                $stmt->execute([$status]);
+            } else {
+                $stmt = $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ?, `updated_at` = NOW() WHERE `platform_code` = ?");
+                $stmt->execute([$status, $platformCode]);
+            }
+        } catch (Exception $e) {}
+    }
+
+    echo json_encode([
+        'success' => true,
+        'platform' => $platformCode,
+        'isOpen' => $isOpen,
+        'message' => "Platform ({$platformCode}) " . ($isOpen ? 'siparişe açıldı.' : 'siparişe kapatıldı.')
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// Not: 'get_platform_store_status' isteği index.php tarafından online/orders.php'e
+// yönlendirilir (bkz. o dosyadaki karşılığı); burada tekrar tanımlanmaz.
+
 // 6. DİNAMİK AÇMA/KAPAMA (FEATURE TOGGLE: is_enabled)
-if ($action === 'toggle_platform') {
+if ($action === 'toggle_platform' || $action === 'toggle_online_platform') {
     $platformCode = strtoupper(trim($body['platform'] ?? ''));
     $isEnabled = !empty($body['isEnabled']) ? 1 : 0;
 
@@ -283,7 +313,7 @@ if ($action === 'toggle_platform') {
 }
 
 // 7. PLATFORM AYARLARINI KAYDET (SAVE CREDENTIALS)
-if ($action === 'save_platform_config') {
+if ($action === 'save_platform_config' || $action === 'save_online_platform_config') {
     $platformCode = strtoupper(trim($body['platform'] ?? ''));
     $creds = $body['credentials'] ?? [];
     $webhookSecret = $body['webhookSecret'] ?? null;
@@ -403,7 +433,7 @@ if ($action === 'assign_courier') {
 }
 
 // 8. BAĞLANTI TESTİ (TEST CONNECTION)
-if ($action === 'test_connection') {
+if ($action === 'test_connection' || $action === 'test_online_connection') {
     $platformCode = strtoupper(trim($body['platform'] ?? 'TRENDYOL'));
     $platformRow = getPlatformRow($pdo, $platformCode);
     $creds = json_decode($platformRow['credentials_json'] ?? '{}', true) ?: [];

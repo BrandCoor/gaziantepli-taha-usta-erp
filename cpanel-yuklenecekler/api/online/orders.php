@@ -25,8 +25,35 @@ if ($pdo) {
 
 $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 
+// 0. BASİT AÇIK/KAPALI DURUMU OKU (Kasa açılışında senkronize etmek için)
+if ($action === 'get_platform_store_status') {
+    $platformStoreStatus = [
+        'TRENDYOL' => ['isOpen' => true],
+        'GETIR' => ['isOpen' => true],
+        'YEMEKSEPETI' => ['isOpen' => true],
+    ];
+
+    if ($pdo) {
+        try {
+            $rows = $pdo->query("SELECT `platform_code`, `store_status` FROM `online_platforms`")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $row) {
+                $platformStoreStatus[$row['platform_code']] = [
+                    'isOpen' => $row['store_status'] !== 'CLOSED'
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    echo json_encode([
+        'success' => true,
+        'platformStoreStatus' => $platformStoreStatus,
+        'timestamp' => date('c')
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // 1. PLATFORM LİSTESİ VE DURUMLARI (GET_PLATFORMS)
-if ($action === 'get_platforms') {
+if ($action === 'get_platforms' || $action === 'get_online_platforms') {
     $platforms = [];
     if ($pdo) {
         try {
@@ -53,7 +80,7 @@ if ($action === 'get_platforms') {
 }
 
 // 2. SİPARİŞLERİ LİSTELE (POLLING / LIST)
-if ($action === 'list' || $action === 'get_orders') {
+if ($action === 'list' || $action === 'get_orders' || $action === 'get_online_orders' || $action === 'list_online_orders') {
     $statusFilter = $_GET['status'] ?? 'ACTIVE'; // ACTIVE, ALL, HISTORY, BEKLIYOR vb.
     $platformFilter = $_GET['platform'] ?? 'ALL'; // ALL, YEMEKSEPETI, TRENDYOL, GETIR
     $orders = [];
@@ -170,7 +197,7 @@ if ($action === 'list' || $action === 'get_orders') {
 }
 
 // 3. SİPARİŞ TEST ENJEKSİYONU (Manuel / Test Amaçlı)
-if ($action === 'create_test_order') {
+if ($action === 'create_test_order' || $action === 'create_test_online_order') {
     $rawPayload = file_get_contents('php://input');
     $data = json_decode($rawPayload, true) ?: [];
 

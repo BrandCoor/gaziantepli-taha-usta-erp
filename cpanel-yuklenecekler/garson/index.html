@@ -419,9 +419,17 @@
             signal: controller.signal
           });
           clearTimeout(timeoutId);
-          // Sunucudan gelen HER yanıt (200, 400, 401, 403, 500...) gerçek bir
-          // bağlantı kurulduğu anlamına gelir; yalnızca ağ/DNS/zaman aşımı
-          // hataları (fetch reddi) bir sonraki adrese geçmeyi gerektirir.
+          // Bu adresin gerçekten API'ye ulaştığını doğrula: yanlış/eski bir adres
+          // (ör. yanlış alt alan adı) genelde 404 veya bir HTML hata sayfası döner.
+          // Sadece geçerli bir JSON gövdesi dönen adres "doğru API adresi" sayılır;
+          // aksi halde bir sonraki adaya (ör. api.rymedya.com.tr) geçilir.
+          const cloned = res.clone();
+          try {
+            await cloned.json();
+          } catch (parseErr) {
+            lastError = new Error(`Geçersiz API yanıtı (${base}): JSON değil veya adres yanlış.`);
+            continue;
+          }
           workingApiUrl = base;
           return res;
         } catch (err) {
