@@ -82,6 +82,12 @@ export const OnlineOrdersView: React.FC = () => {
   const [customCourierName, setCustomCourierName] = useState<string>('');
   const [isAlarmMuted, setIsAlarmMuted] = useState(false);
   const [apiProcessingId, setApiProcessingId] = useState<string | null>(null);
+
+  // Yeni sipariş açılır penceresi: sipariş geldiği anda ekranın ortasında çıkar,
+  // kasiyerin kabul/red kararını vermeden geçmesini engeller.
+  const [popupOrderId, setPopupOrderId] = useState<string | null>(null);
+  const [popupStage, setPopupStage] = useState<'DECIDE' | 'ACCEPTED'>('DECIDE');
+  const [popupSeenIds, setPopupSeenIds] = useState<string[]>([]);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
   // Platform Yapılandırması ve Canlı Durumları
@@ -142,6 +148,19 @@ export const OnlineOrdersView: React.FC = () => {
   // Yeni sipariş onaylanana veya reddedilene kadar zil durmaksızın çalar
   const pendingNewOrders = orders.filter(o => o.status === 'NEW');
   const hasNewOrder = pendingNewOrders.length > 0;
+
+  const popupOrder = popupOrderId ? orders.find(o => o.id === popupOrderId) || null : null;
+
+  // Yeni bir sipariş düştüğünde açılır pencere otomatik açılır. Aynı sipariş için
+  // bir kez açılır; kasiyer kapattıysa tekrar tekrar önüne çıkmaz.
+  useEffect(() => {
+    if (popupOrderId) return;
+    const next = pendingNewOrders.find(o => !popupSeenIds.includes(o.id));
+    if (!next) return;
+    setPopupOrderId(next.id);
+    setPopupStage('DECIDE');
+    setPopupSeenIds(prev => [...prev, next.id].slice(-50));
+  }, [pendingNewOrders, popupOrderId, popupSeenIds]);
 
   useEffect(() => {
     if (hasNewOrder && platformConfig.continuousAlarmUntilAction && !isAlarmMuted) {
@@ -316,6 +335,11 @@ export const OnlineOrdersView: React.FC = () => {
 
     setApiProcessingId(null);
     restaurantDataService.playAudioAlert('register');
+
+    // Açılır pencere bu sipariş için açıksa, adisyon yazdırma adımına geçilir.
+    if (popupOrderId === order.id) {
+      setPopupStage('ACCEPTED');
+    }
 
     // 2. Akıllı Donanım Fiş Yönlendirmesi (Fırın, Ocak, Kurye)
     try {
@@ -1210,6 +1234,122 @@ export const OnlineOrdersView: React.FC = () => {
       )}
 
       {/* MODAL 2: SİPARİŞ İPTAL / RED GEREKÇESİ MODALI */}
+      {/* ===================================================================== */}
+      {/* YENİ SİPARİŞ AÇILIR PENCERESİ (Kabul / Red / Adisyon Yazdır)          */}
+      {/* ===================================================================== */}
+      {popupOrder && (
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[60] backdrop-blur-md">
+          <div className="bg-[#18181C] rounded-3xl max-w-lg w-full shadow-2xl border border-[#F5C877]/30 max-h-[92vh] overflow-y-auto">
+
+            <div className="p-5 border-b border-[#2C2C34] flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg text-[11px] font-black text-white" style={{ backgroundColor: popupOrder.platform === 'TRENDYOL' ? '#f97316' : popupOrder.platform === 'GETIR' ? '#9333ea' : '#e11d48' }}>
+                    {popupOrder.platform}
+                  </span>
+                  <span className="text-xs font-mono text-[#8E8E98]">{popupOrder.platformCode}</span>
+                </div>
+                <h3 className="text-lg font-black text-white mt-2">
+                  {popupStage === 'ACCEPTED' ? 'Sipariş Kabul Edildi' : 'Yeni Sipariş Geldi'}
+                </h3>
+              </div>
+              <div className="text-right">
+                <div className="text-xl font-black text-[#F5C877]">{formatMoney(popupOrder.totalAmount)}</div>
+                <div className="text-[10px] text-[#8E8E98] mt-0.5">{popupOrder.paymentMethod}</div>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-3 text-xs">
+              <div className="bg-[#141416] rounded-2xl p-3.5 space-y-1.5 border border-[#2C2C34]">
+                <div className="flex justify-between gap-3">
+                  <span className="text-[#8E8E98]">Müşteri</span>
+                  <span className="text-white font-bold text-right">{popupOrder.customerName}</span>
+                </div>
+                {popupOrder.customerPhone && (
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[#8E8E98]">Telefon</span>
+                    <span className="text-white font-mono">{popupOrder.customerPhone}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-3">
+                  <span className="text-[#8E8E98] shrink-0">Adres</span>
+                  <span className="text-white text-right leading-snug">{popupOrder.address}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-[#8E8E98]">Teslimat</span>
+                  <span className="text-white font-bold">
+                    {popupOrder.deliveryModel === 'RESTAURANT' || popupOrder.deliveryModel === 'RESTAURANT_COURIER' ? 'Restoran Kuryesi' : 'Platform Kuryesi'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-[#141416] rounded-2xl p-3.5 border border-[#2C2C34] space-y-1.5">
+                {popupOrder.items.map((it, idx) => (
+                  <div key={idx}>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-white"><span className="text-[#F5C877] font-black">{it.quantity}x</span> {it.name}</span>
+                      <span className="text-[#C4C4CC] font-mono shrink-0">{formatMoney((it.price || 0) * it.quantity)}</span>
+                    </div>
+                    {it.note && <div className="text-[10px] text-amber-300 pl-5">› {it.note}</div>}
+                  </div>
+                ))}
+              </div>
+
+              {popupOrder.orderNote && (
+                <div className="bg-amber-950/30 border border-amber-600/30 rounded-2xl p-3 text-amber-200 text-[11px]">
+                  <span className="font-black">Müşteri notu: </span>{popupOrder.orderNote}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 pt-0">
+              {popupStage === 'DECIDE' ? (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={apiProcessingId === popupOrder.id}
+                    onClick={() => {
+                      setPopupOrderId(null);
+                      setRejectModalOrder(popupOrder);
+                    }}
+                    className="flex-1 py-3 bg-rose-600/15 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded-2xl font-black text-xs cursor-pointer transition-all"
+                  >
+                    Siparişi Reddet
+                  </button>
+                  <button
+                    type="button"
+                    disabled={apiProcessingId === popupOrder.id}
+                    onClick={() => handleInitiateAcceptOrder(popupOrder)}
+                    className="flex-[2] py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs shadow-lg shadow-emerald-600/25 cursor-pointer transition-all disabled:opacity-60"
+                  >
+                    {apiProcessingId === popupOrder.id ? 'İşleniyor...' : 'Siparişi Kabul Et'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePrintReceipt(popupOrder)}
+                    className="w-full py-3 bg-[#F5C877] hover:brightness-110 text-slate-950 rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Adisyonu Yazdır</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPopupOrderId(null)}
+                    className="w-full py-2.5 bg-[#282830] hover:bg-[#34343E] text-[#C4C4CC] hover:text-white rounded-2xl font-bold text-xs cursor-pointer"
+                  >
+                    Kapat
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {rejectModalOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#1C1C20] border border-rose-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
@@ -1242,6 +1382,8 @@ export const OnlineOrdersView: React.FC = () => {
                   <option value="Menüdeki Ürün veya Hammadde Tükendi">Menüdeki Ürün veya Hammadde Tükendi</option>
                   <option value="Kurye Dağıtım Bölgesi Dışı">Kurye Dağıtım Bölgesi Dışı</option>
                   <option value="İşletme Kapanış Saati">İşletme Kapanış Saati</option>
+                  <option value="Müşteri Talebiyle İptal">Müşteri Talebiyle İptal</option>
+                  <option value="Adres veya İletişim Bilgisi Hatalı">Adres veya İletişim Bilgisi Hatalı</option>
                   <option value="Teknik İletişim Hatası">Teknik İletişim Hatası</option>
                 </select>
               </div>
