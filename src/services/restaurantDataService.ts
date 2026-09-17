@@ -816,8 +816,11 @@ class RestaurantDataService {
       const rawWaiters = localStorage.getItem(STORAGE_KEYS.WAITERS);
       if (rawWaiters) {
         const waiters: WaiterConfig[] = JSON.parse(rawWaiters);
+        // Yalnızca bilinen demo KAYIT ID'leri silinir. İsme göre silme kaldırıldı:
+        // gerçekten "Ahmet Yılmaz" adında bir personel tanımlanırsa her açılışta
+        // sessizce siliniyordu. Ayrıca adı olmayan kayıtta .includes() hata veriyordu.
         const demoWaiterIds = ['w-1', 'w-2', 'w-admin'];
-        const filtered = waiters.filter(w => !demoWaiterIds.includes(w.id) && !w.name.includes('Ahmet Yılmaz') && !w.name.includes('Mehmet Demir'));
+        const filtered = waiters.filter(w => !demoWaiterIds.includes(w.id));
         if (filtered.length !== waiters.length) {
           localStorage.setItem(STORAGE_KEYS.WAITERS, JSON.stringify(filtered));
         }
@@ -1060,7 +1063,7 @@ class RestaurantDataService {
         }
         if (data.categories && data.categories.length > 0) this.saveCategories(data.categories);
         if (data.products && data.products.length > 0) this.saveProducts(data.products);
-        if (data.employees && data.employees.length > 0) this.saveWaiters(data.employees);
+        if (data.employees && data.employees.length > 0) this.mergeWaitersFromServer(data.employees);
         if (data.tables && data.tables.length > 0) {
           const sections = (data.sections && data.sections.length > 0) ? data.sections : this.getSections();
           const sorted = sortTablesNaturally(data.tables, sections);
@@ -2400,6 +2403,56 @@ class RestaurantDataService {
   public saveWaiters(waiters: WaiterConfig[]) {
     localStorage.setItem(STORAGE_KEYS.WAITERS, JSON.stringify(waiters));
     this.notify();
+  }
+
+  /**
+   * Sunucudaki personel kayıtlarını garson listesiyle birleştirir.
+   *
+   * Sunucu alan adları yereldekinden farklıdır (`ad` -> `fullName` olarak döner,
+   * yerelde ise `name` beklenir). Önceden sunucudan gelen kayıt doğrudan listenin
+   * üzerine yazıldığı için her açılışta garson İSİMLERİ BOŞALIYORDU. Burada alanlar
+   * eşlenir ve sunucuda olmayan yerel bilgiler (eşleşme kodu, cihaz, izinler) korunur.
+   */
+  public mergeWaitersFromServer(serverEmployees: any[]): void {
+    const local = this.getWaiters();
+    const byId = new Map(local.map((w) => [w.id, w]));
+
+    serverEmployees.forEach((emp) => {
+      if (!emp || !emp.id) return;
+
+      const serverName = String(emp.name ?? emp.fullName ?? emp.ad ?? '').trim();
+      const existing = byId.get(emp.id);
+
+      if (existing) {
+        byId.set(emp.id, {
+          ...existing,
+          // Sunucu ismi boş geldiyse yereldeki isim korunur, asla silinmez.
+          name: serverName || existing.name,
+          phone: String(emp.phone ?? emp.telefon ?? existing.phone ?? '').trim(),
+          pin: String(emp.pin ?? existing.pin ?? '').trim() || existing.pin,
+          qrToken: emp.qrToken || existing.qrToken,
+          pairingCode: emp.pairingCode || existing.pairingCode
+        });
+        return;
+      }
+
+      // Sunucuda olup yerelde olmayan personel: yalnızca adı varsa eklenir.
+      if (!serverName) return;
+      byId.set(emp.id, {
+        id: emp.id,
+        name: serverName,
+        phone: String(emp.phone ?? emp.telefon ?? '').trim(),
+        pin: String(emp.pin ?? '').trim(),
+        qrToken: emp.qrToken || '',
+        pairingCode: emp.pairingCode || this.generatePairingCode(),
+        macAddress: '',
+        deviceUuid: '',
+        deviceName: 'Eşleşme Bekliyor',
+        status: 'NOT_PAIRED'
+      } as WaiterConfig);
+    });
+
+    this.saveWaiters(Array.from(byId.values()));
   }
 
   public addWaiter(waiter: Partial<WaiterConfig> & { name: string; pin: string }): WaiterConfig {

@@ -83,7 +83,6 @@ export const OnlineOrdersView: React.FC = () => {
   const [isAlarmMuted, setIsAlarmMuted] = useState(false);
   const [apiProcessingId, setApiProcessingId] = useState<string | null>(null);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
-  const [testingOrderPlatform, setTestingOrderPlatform] = useState<OnlinePlatformCode | null>(null);
 
   // Platform Yapılandırması ve Canlı Durumları
   const [platforms, setPlatforms] = useState<PlatformState[]>(() => onlinePlatformService.getPlatforms());
@@ -392,47 +391,6 @@ export const OnlineOrdersView: React.FC = () => {
     }));
   };
 
-  // HIZLI TEST SİPARİŞİ OLUŞTURMA
-  const handleCreateFastTestOrder = async (code: OnlinePlatformCode) => {
-    setTestingOrderPlatform(code);
-    try {
-      const order = await onlinePlatformService.createTestOrder(code);
-      if (order) {
-        const isPlatform = order.deliveryModel === 'PLATFORM_COURIER' || order.deliveryModel === 'PLATFORM';
-        const newOrd: OnlineOrder = {
-          id: order.id,
-          platform: order.platform,
-          platformCode: `#${order.platformOrderId}`,
-          deliveryModel: isPlatform ? 'PLATFORM_COURIER' : 'RESTAURANT_COURIER',
-          assignedCourierId: order.assignedCourierId,
-          assignedCourierName: order.assignedCourierName,
-          platformCourierName: order.platformCourierName,
-          platformCourierPhone: order.platformCourierPhone,
-          platformCourierEtaMinutes: order.platformCourierEtaMinutes,
-          handoverCode: order.handoverCode,
-          customerName: order.customerName,
-          customerPhone: order.customerPhone || '0532 000 00 00',
-          address: order.address,
-          orderNote: order.orderNote || '',
-          items: order.items.map(it => ({
-            name: it.name,
-            quantity: it.quantity,
-            price: it.price,
-            note: it.note
-          })),
-          totalAmount: order.totalAmount,
-          paymentMethod: order.paymentMethod,
-          status: 'NEW',
-          createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-        };
-        setOrders(prev => [newOrd, ...prev]);
-        setIsAlarmMuted(false);
-        notify.success('Test Siparişi Düştü!', `[${code}] #${order.platformOrderId} test siparişi oluşturuldu.`);
-      }
-    } finally {
-      setTestingOrderPlatform(null);
-    }
-  };
 
   // MANUEL DOĞRUDAN SİPARİŞ KAYDI (Telefon / Acil Siparişler İçin)
   const [formPlatform, setFormPlatform] = useState<'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI'>('TRENDYOL');
@@ -493,24 +451,27 @@ export const OnlineOrdersView: React.FC = () => {
     setFormNote('');
   };
 
-  const filteredOrders = orders.filter(o => {
-    // 1. Görünürlük Kuralı: Pasif duruma getirilen platformlar sipariş listesinden TAMAMEN gizlenir
+  // Platform filtresi DIŞINDAKİ tüm kurallar. Sekme sayaçları da bunu kullanır ki
+  // listede sipariş yokken sekmede "1" yazması gibi bir tutarsızlık oluşmasın.
+  const matchesCommonFilters = (o: OnlineOrder) => {
+    // Pasif duruma getirilen platformlar sipariş listesinden tamamen gizlenir
     if (!enabledPlatformCodes.has(o.platform)) return false;
 
-    // 2. Platform Filtresi
-    if (activePlatformFilter !== 'ALL' && o.platform !== activePlatformFilter) return false;
-
-    // 3. Teslimat Modeli Filtresi
     if (activeDeliveryFilter !== 'ALL') {
       const isRest = o.deliveryModel === 'RESTAURANT' || o.deliveryModel === 'RESTAURANT_COURIER';
       if (activeDeliveryFilter === 'RESTAURANT' && !isRest) return false;
       if (activeDeliveryFilter === 'PLATFORM' && isRest) return false;
     }
 
-    // 4. Durum Sekmesi
     if (activeStatusTab === 'ACTIVE') return o.status !== 'DELIVERED' && o.status !== 'CANCELLED';
     return o.status === 'DELIVERED' || o.status === 'CANCELLED';
-  });
+  };
+
+  const visibleOrders = orders.filter(matchesCommonFilters);
+
+  const filteredOrders = visibleOrders.filter(
+    (o) => activePlatformFilter === 'ALL' || o.platform === activePlatformFilter
+  );
 
   const handlePrintReceipt = (order: OnlineOrder) => {
     restaurantDataService.playAudioAlert('register');
@@ -623,10 +584,6 @@ export const OnlineOrdersView: React.FC = () => {
           <div>
             <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
               <span>Yemek Platformları Sipariş Yönetimi</span>
-              <span className="px-2.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-black uppercase flex items-center gap-1">
-                <Radio className="w-3 h-3 animate-pulse" />
-                <span>CANLI ENTEGRASYON</span>
-              </span>
             </h1>
             <p className="text-xs text-[#8E8E98] mt-0.5">
               Platform siparişlerini tek merkezden yönetin; mağaza durumunu anlık olarak açıp kapatın.
@@ -635,28 +592,6 @@ export const OnlineOrdersView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* HIZLI TEST SİPARİŞİ BUTONLARI */}
-          {enabledPlatforms.length > 0 && (
-            <div className="flex items-center gap-1 bg-[#141416] p-1 rounded-2xl border border-[#2C2C34]">
-              <span className="text-[10px] font-black uppercase text-[#8E8E98] px-2.5">Test Siparişi:</span>
-              {enabledPlatforms.map(p => (
-                <button
-                  key={p.code}
-                  disabled={testingOrderPlatform === p.code}
-                  onClick={() => handleCreateFastTestOrder(p.code)}
-                  className="px-2.5 py-1.5 bg-[#282830] hover:bg-[#34343E] text-white rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all border border-[#3C3C48]"
-                  title={`${p.name} için anında yeni test siparişi oluşturur ve sesli alarmı başlatır`}
-                >
-                  {testingOrderPlatform === p.code ? (
-                    <RefreshCw className="w-3 h-3 animate-spin text-[#F5C877]" />
-                  ) : (
-                    <span>🧪 {p.code === 'TRENDYOL' ? 'TY' : p.code === 'GETIR' ? 'Getir' : 'YS'}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* TÜMÜNÜ AÇ / TÜMÜNÜ KAPAT ANA ŞALTERİ */}
           {enabledPlatforms.length > 0 && (
             <button
@@ -673,14 +608,6 @@ export const OnlineOrdersView: React.FC = () => {
               <span>{areAllOpen ? 'Tüm Platformları Kapat' : 'Tüm Platformları Aç'}</span>
             </button>
           )}
-
-          <button
-            onClick={() => setSettingsModalOpen(true)}
-            className="px-4 py-2.5 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] border border-[#F5C877]/30 rounded-2xl text-xs font-black flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-95"
-          >
-            <Settings className="w-4 h-4" />
-            <span>API & Platform Ayarları</span>
-          </button>
 
           <button
             onClick={() => setManualOrderModalOpen(true)}
@@ -770,15 +697,6 @@ export const OnlineOrdersView: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    disabled={testingOrderPlatform === p.code}
-                    onClick={() => handleCreateFastTestOrder(p.code)}
-                    className="px-2.5 py-1 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] rounded-xl text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all border border-[#3C3C48]"
-                    title="Test siparişi oluştur"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Test</span>
-                  </button>
                 </div>
 
                 {/* 3 KADEMELİ HIZLI DURUM BUTONLARI (AÇIK / YOĞUN / KAPALI) */}
@@ -835,10 +753,10 @@ export const OnlineOrdersView: React.FC = () => {
                 activePlatformFilter === 'ALL' ? 'bg-[#F5C877] text-[#141416]' : 'text-[#8E8E98] hover:text-white'
               }`}
             >
-              Tüm Kanallar ({filteredOrders.length})
+              Tüm Kanallar ({visibleOrders.length})
             </button>
             {enabledPlatforms.map((p) => {
-              const count = orders.filter(o => o.platform === p.code).length;
+              const count = visibleOrders.filter(o => o.platform === p.code).length;
               const isSelected = activePlatformFilter === p.code;
               const tabColor = p.badgeColor?.pill || (p.code === 'TRENDYOL' ? '#f97316' : p.code === 'GETIR' ? '#9333ea' : '#e11d48');
               return (
@@ -922,15 +840,6 @@ export const OnlineOrdersView: React.FC = () => {
               <p className="max-w-md mx-auto text-[#7A7A88] mt-1 text-xs leading-relaxed">
                 Trendyol Yemek, Getir Yemek veya Yemeksepeti üzerinden gelen siparişler anlık olarak bu alanda listelenecek ve sesli bildirim devreye girecektir.
               </p>
-            </div>
-            <div className="pt-2">
-              <button
-                onClick={() => setSettingsModalOpen(true)}
-                className="px-5 py-2.5 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] border border-[#F5C877]/30 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-2"
-              >
-                <Settings className="w-4 h-4" />
-                <span>API & Entegrasyon Ayarlarını Görüntüle</span>
-              </button>
             </div>
           </div>
         ) : (
