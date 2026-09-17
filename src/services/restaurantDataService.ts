@@ -286,9 +286,10 @@ export interface WaiterConfig {
   phone?: string;
   pin: string;
   qrToken: string;
-  deviceUuid: string;
+  pairingCode?: string;
+  deviceUuid?: string;
   deviceName: string;
-  macAddress: string;
+  macAddress?: string;
   status: 'APPROVED' | 'SUSPENDED' | 'NOT_PAIRED' | 'PENDING';
   allowedSections: string[];
   permissions: {
@@ -299,6 +300,7 @@ export interface WaiterConfig {
     canPrintBill: boolean;
   };
   lastActiveAt?: string;
+  pairedAt?: string;
 }
 
 export interface PrinterConfig {
@@ -2311,6 +2313,10 @@ class RestaurantDataService {
     this.deleteItemFromCloud('urunler', id);
   }
 
+  public generatePairingCode(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
   public generateMacAddress(): string {
     const hex = '0123456789ABCDEF';
     let mac = '';
@@ -2340,12 +2346,14 @@ class RestaurantDataService {
   public addWaiter(waiter: Partial<WaiterConfig> & { name: string; pin: string }): WaiterConfig {
     const waiters = this.getWaiters();
     const token = `TOKEN-GTU-${Math.random().toString(36).substring(2, 9).toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    const pairingCode = waiter.pairingCode || this.generatePairingCode();
     const newW: WaiterConfig = {
-      id: `w-${Date.now()}`,
+      id: waiter.id || `w-${Date.now()}`,
       name: waiter.name.trim(),
       phone: waiter.phone?.trim() || '',
       pin: waiter.pin.trim(),
       qrToken: token,
+      pairingCode,
       macAddress: '',
       deviceUuid: '',
       deviceName: 'Eşleşme Bekliyor',
@@ -2361,6 +2369,7 @@ class RestaurantDataService {
     };
     waiters.push(newW);
     localStorage.setItem(STORAGE_KEYS.WAITERS, JSON.stringify(waiters));
+    this.notify();
     return newW;
   }
 
@@ -2370,7 +2379,6 @@ class RestaurantDataService {
         return {
           ...w,
           ...partial,
-          macAddress: partial.macAddress ? partial.macAddress.trim().toUpperCase() : w.macAddress,
           phone: partial.phone !== undefined ? partial.phone.trim() : w.phone,
         };
       }
@@ -2385,13 +2393,14 @@ class RestaurantDataService {
     this.deleteItemFromCloud('personeller', id);
   }
 
-  public pairWaiterDevice(id: string, macAddress: string, deviceName: string) {
-    const cleanMac = macAddress.trim().toUpperCase() || this.generateMacAddress();
+  public pairWaiterDevice(id: string, deviceIdentifier: string, deviceName?: string) {
+    const cleanId = deviceIdentifier.trim() || `DEV-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
     this.updateWaiter(id, {
-      macAddress: cleanMac,
-      deviceName: deviceName.trim() || 'Mobil Garson Terminali',
-      deviceUuid: `UUID-${cleanMac.replace(/[^A-Z0-9]/g, '')}`,
+      deviceUuid: cleanId,
+      macAddress: cleanId,
+      deviceName: deviceName?.trim() || 'Mobil Garson Terminali',
       status: 'APPROVED',
+      pairedAt: new Date().toISOString(),
       lastActiveAt: new Date().toISOString(),
     });
   }
@@ -2401,6 +2410,8 @@ class RestaurantDataService {
       deviceUuid: '',
       deviceName: 'Telefon Eşleşmesi Bekleniyor',
       status: 'NOT_PAIRED',
+      macAddress: '',
+      pairingCode: this.generatePairingCode(),
       qrToken: `TOKEN-GTU-${Math.random().toString(36).substring(2, 9).toUpperCase()}-${Date.now().toString().slice(-4)}`
     });
   }

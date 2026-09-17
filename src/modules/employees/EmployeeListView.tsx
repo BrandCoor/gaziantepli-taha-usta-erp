@@ -313,7 +313,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         isActive: true,
       });
 
-      // Eğer garson ise garson listesine de telefon ve otomatik MAC adresi ile ekle
+      // Eğer garson ise garson listesine de telefon ve otomatik cihaz kimliği ile ekle
       if (formPosition.toLowerCase().includes('garson')) {
         restaurantDataService.addWaiter({
           name: formName.trim(),

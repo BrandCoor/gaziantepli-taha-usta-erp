@@ -10,6 +10,7 @@ interface WaiterPairingViewProps {
   onCancel?: () => void;
   initialToken?: string;
   initialUserId?: string;
+  initialCode?: string;
 }
 
 export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({ 
@@ -17,12 +18,15 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
   onGoToLogin, 
   onCancel,
   initialToken,
-  initialUserId
+  initialUserId,
+  initialCode
 }) => {
   const [status, setStatus] = useState<'IDLE' | 'PAIRING' | 'SUCCESS' | 'ERROR'>('IDLE');
   const [errorMessage, setErrorMessage] = useState('');
   const [pairedInfo, setPairedInfo] = useState<PairResponse | null>(null);
   const [scanError, setScanError] = useState('');
+  const [pairingMode, setPairingMode] = useState<'QR' | 'CODE'>('QR');
+  const [inputCode, setInputCode] = useState(initialCode || '');
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const deviceUuid = deviceService.getOrCreateDeviceUuid();
@@ -31,15 +35,19 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
     const routeInfo = parseAppRoute();
     const token = initialToken || routeInfo.token;
     const userId = initialUserId || routeInfo.userId;
+    const code = initialCode || routeInfo.params['code'];
     const pin = routeInfo.params['pin'];
     const name = routeInfo.params['name'];
 
-    if (token && userId) {
+    if (code) {
+      executePairingWithCode(code);
+    } else if (token && userId) {
       executePairing(userId, token, pin, name);
     }
-  }, [initialToken, initialUserId]);
+  }, [initialToken, initialUserId, initialCode]);
 
   useEffect(() => {
+    if (pairingMode !== 'QR') return;
     const routeInfo = parseAppRoute();
     if (routeInfo.token && routeInfo.userId || initialToken && initialUserId || status !== 'IDLE' || !videoRef.current) {
       return;
@@ -56,6 +64,7 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
       try {
         let token = '';
         let userId = '';
+        let code = '';
         let pin: string | undefined = undefined;
         let name: string | undefined = undefined;
 
@@ -64,6 +73,7 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
           const parsed = JSON.parse(scannedValue);
           token = parsed.token || parsed.pairingToken || parsed.pairing_token || '';
           userId = parsed.userId || parsed.user_id || parsed.id || parsed.waiterId || '';
+          code = parsed.code || parsed.pairingCode || '';
           pin = parsed.pin || undefined;
           name = parsed.name || parsed.ad || undefined;
         } catch {}
@@ -78,14 +88,21 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
 
             token = queryParams.get('token') || hashParams.get('token') || '';
             userId = queryParams.get('userId') || hashParams.get('userId') || queryParams.get('id') || hashParams.get('id') || '';
+            code = queryParams.get('code') || hashParams.get('code') || '';
             pin = queryParams.get('pin') || hashParams.get('pin') || undefined;
             name = queryParams.get('name') || hashParams.get('name') || undefined;
           } catch {}
         }
 
-        if (!token || !userId) throw new Error('QR token bilgisi eksik');
-        controls?.stop();
-        executePairing(userId, token, pin, name);
+        if (code) {
+          controls?.stop();
+          executePairingWithCode(code);
+        } else if (token && userId) {
+          controls?.stop();
+          executePairing(userId, token, pin, name);
+        } else {
+          throw new Error('QR token bilgisi eksik');
+        }
       } catch {
         handled = false;
         setScanError('Bu QR kod geçerli bir garson eşleştirme kodu değil.');
@@ -93,11 +110,31 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
     }).then((nextControls) => {
       controls = nextControls;
     }).catch(() => {
-      setScanError('Kamera açılamadı. Tarayıcı kamera iznini etkinleştirin ve HTTPS bağlantısı kullanın.');
+      setScanError('Kamera açılamadı. 6 haneli eşleşme kodunu yazarak da bağlanabilirsiniz.');
+      setPairingMode('CODE');
     });
 
     return () => controls?.stop();
-  }, [initialToken, initialUserId, status]);
+  }, [initialToken, initialUserId, status, pairingMode]);
+
+  const executePairingWithCode = async (code: string) => {
+    setStatus('PAIRING');
+    setErrorMessage('');
+
+    try {
+      const res = await deviceService.pairWithCode(code);
+      if (res.success) {
+        setStatus('SUCCESS');
+        setPairedInfo(res);
+      } else {
+        setStatus('ERROR');
+        setErrorMessage(res.error || 'Cihaz eşleştirilemedi. Lütfen kodu kontrol ediniz.');
+      }
+    } catch (e: any) {
+      setStatus('ERROR');
+      setErrorMessage('Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.');
+    }
+  };
 
   const executePairing = async (userId: string, token: string, pin?: string, name?: string) => {
     setStatus('PAIRING');
@@ -110,7 +147,7 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
         setPairedInfo(res);
       } else {
         setStatus('ERROR');
-        setErrorMessage(res.error || 'Cihaz eşleştirilemedi. QR kodunun 5 dakikalık süresi dolmuş olabilir.');
+        setErrorMessage(res.error || 'Cihaz eşleştirilemedi. QR kodunun süresi dolmuş olabilir.');
       }
     } catch (e: any) {
       setStatus('ERROR');
@@ -140,13 +177,66 @@ export const WaiterPairingView: React.FC<WaiterPairingViewProps> = ({
         )}
 
         {status === 'IDLE' && (
-          <div className="space-y-3">
-            <div className="overflow-hidden rounded-2xl border border-[#383844] bg-black aspect-square">
-              <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
+          <div className="space-y-4">
+            {/* Sekme Seçici: QR Tarayıcı vs 6 Haneli Kod */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#121214] rounded-2xl border border-[#2C2C34] text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setPairingMode('QR')}
+                className={`py-2 rounded-xl transition-all cursor-pointer ${
+                  pairingMode === 'QR'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'text-[#8E8E98] hover:text-white'
+                }`}
+              >
+                📷 QR Okut
+              </button>
+              <button
+                type="button"
+                onClick={() => setPairingMode('CODE')}
+                className={`py-2 rounded-xl transition-all cursor-pointer ${
+                  pairingMode === 'CODE'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'text-[#8E8E98] hover:text-white'
+                }`}
+              >
+                🔢 6 Haneli Kod
+              </button>
             </div>
-            <div className="text-sm font-bold text-white">Kasa QR kodunu okutun</div>
-            <p className="text-xs text-[#80808A]">Kasa ekranındaki güncel eşleştirme kodunu kameraya gösterin.</p>
-            {scanError && <p className="text-xs text-red-300">{scanError}</p>}
+
+            {pairingMode === 'QR' ? (
+              <div className="space-y-3">
+                <div className="overflow-hidden rounded-2xl border border-[#383844] bg-black aspect-square">
+                  <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
+                </div>
+                <div className="text-sm font-bold text-white">Kasa QR kodunu okutun</div>
+                <p className="text-xs text-[#80808A]">Kasa ekranındaki güncel eşleştirme kodunu kameraya gösterin.</p>
+                {scanError && <p className="text-xs text-amber-300">{scanError}</p>}
+              </div>
+            ) : (
+              <div className="space-y-3 pt-2">
+                <p className="text-xs text-[#A0A0AA]">
+                  Kasa bilgisayarında Garson kartındaki <b>6 Haneli Eşleşme Kodunu</b> buraya yazın:
+                </p>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={inputCode}
+                  onChange={(e) => setInputCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Örn: 842195"
+                  className="w-full text-center py-3 bg-[#121214] border-2 border-[#383844] focus:border-amber-400 rounded-2xl text-2xl font-mono font-black text-amber-300 tracking-widest outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={inputCode.length < 4}
+                  onClick={() => executePairingWithCode(inputCode)}
+                  className="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:brightness-110 disabled:opacity-40 text-slate-950 font-black text-xs rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/20 transition-all"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Cihazı Eşleştir ve Mühürle</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 

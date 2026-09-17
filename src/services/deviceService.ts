@@ -31,6 +31,7 @@ export interface PairResponse {
     device_paired?: boolean;
   };
   device_uuid?: string;
+  pairing_code?: string;
 }
 
 export interface WaiterLoginResponse {
@@ -111,12 +112,13 @@ class DeviceService {
   /**
    * Kasa Tarafı: Personele özel geçerli QR eşleştirme belirteci ve URL üretir
    */
-  public async createPairingToken(userId: string, actor?: { id: string; pin: string }): Promise<{ success: boolean; token?: string; qrUrl?: string; appUrl?: string; expiresAt?: string; error?: string }> {
+  public async createPairingToken(userId: string, actor?: { id: string; pin: string }): Promise<{ success: boolean; token?: string; pairingCode?: string; qrUrl?: string; appUrl?: string; expiresAt?: string; error?: string }> {
     const waiter = restaurantDataService.getWaiters().find(w => w.id === userId);
     const fallbackToken = waiter?.qrToken || `TOKEN-GTU-${Math.random().toString(36).substring(2, 9).toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    const pairingCode = waiter?.pairingCode || restaurantDataService.generatePairingCode();
     
-    if (waiter && !waiter.qrToken) {
-      restaurantDataService.updateWaiter(userId, { qrToken: fallbackToken });
+    if (waiter && (!waiter.qrToken || !waiter.pairingCode)) {
+      restaurantDataService.updateWaiter(userId, { qrToken: fallbackToken, pairingCode });
     }
 
     // Kasa yerel personel listesini MySQL'e göndermeyi dene
@@ -136,7 +138,7 @@ class DeviceService {
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, action: 'create_pairing_token', actorId: actor?.id, actorPin: actor?.pin }),
+          body: JSON.stringify({ userId, action: 'create_pairing_token', actorId: actor?.id, actorPin: actor?.pin, pairingCode }),
           signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -144,28 +146,80 @@ class DeviceService {
         let result: any;
         try { result = JSON.parse(raw); } catch { result = {}; }
         if (response.ok && result.success && result.token) {
-          if (waiter) restaurantDataService.updateWaiter(userId, { qrToken: result.token });
-          return result;
+          if (waiter) restaurantDataService.updateWaiter(userId, { qrToken: result.token, pairingCode });
+          return { ...result, pairingCode };
         }
       } catch (error: any) {
         // Devam et, diğer URL veya fallback'e geç
       }
     }
 
-    // Çevrimdışı / Yerel Fallback: Her zaman anında geçerli eşleşme tokenı sağla
+    // Çevrimdışı / Yerel Fallback: Her zaman anında geçerli eşleşme tokenı ve 6 haneli kod sağla
     return {
       success: true,
       token: fallbackToken,
+      pairingCode,
       expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    };
+  }
+
+  /**
+   * 6 Haneli Hızlı Eşleşme Kodu ile Cihaz Eşleştirme (Kamera Olmadan veya Uzaktan)
+   */
+  public async pairWithCode(pairingCode: string, optionalDeviceName?: string): Promise<PairResponse> {
+    const cleanCode = pairingCode.replace(/\D/g, '').trim();
+    if (!cleanCode || cleanCode.length < 4) {
+      return { success: false, error: 'Lütfen en az 4 haneli geçerli bir eşleşme kodu girin.' };
+    }
+
+    const waiters = restaurantDataService.getWaiters();
+    // 1. 6 Haneli pairingCode ile eşleşen garsonu bul
+    let targetWaiter = waiters.find(w => w.pairingCode === cleanCode);
+    
+    // 2. PIN veya Token ile fallback eşleşme
+    if (!targetWaiter) {
+      targetWaiter = waiters.find(w => w.pin === cleanCode || (w.qrToken && w.qrToken.includes(cleanCode)));
+    }
+
+    if (targetWaiter) {
+      return this.pairDevice(targetWaiter.id, targetWaiter.qrToken || `TOKEN-${cleanCode}`, targetWaiter.pin, targetWaiter.name, optionalDeviceName);
+    }
+
+    // 3. Bulut API'de kodu dene
+    try {
+      const url = this.getAuthApiUrl('pair_device');
+      const deviceUuid = this.getOrCreateDeviceUuid();
+      const devName = optionalDeviceName || this.detectDeviceType();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
+        body: JSON.stringify({ action: 'pair_device', pairingCode: cleanCode, device_uuid: deviceUuid, deviceName: devName }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const serverResult: PairResponse = await response.json();
+      if (response.ok && serverResult.success && serverResult.user) {
+        localStorage.setItem('gaziantepli_paired_user_id', serverResult.user.id);
+        localStorage.setItem('gaziantepli_paired_user_name', serverResult.user.ad);
+        realtimeSyncService.broadcastWaiterPaired(serverResult.user.id, deviceUuid, devName);
+        return { ...serverResult, user: { ...serverResult.user, device_paired: true }, device_uuid: deviceUuid };
+      }
+    } catch {}
+
+    return {
+      success: false,
+      error: 'Girilen eşleşme koduna ait garson kaydı bulunamadı. Lütfen kasanızdan Personeller ekranındaki güncel kodu kontrol edin.'
     };
   }
 
   /**
    * Mobil Garson PWA: QR taranınca veya link açılınca cihazı personele mühürler
    */
-  public async pairDevice(userId: string, token: string, optionalPin?: string, optionalName?: string): Promise<PairResponse> {
+  public async pairDevice(userId: string, token: string, optionalPin?: string, optionalName?: string, customDeviceName?: string): Promise<PairResponse> {
     const deviceUuid = this.getOrCreateDeviceUuid();
-    const devName = this.detectDeviceType();
+    const devName = customDeviceName || this.detectDeviceType();
 
     // 1. Bulut API üzerinden eşleştirmeyi dene
     try {

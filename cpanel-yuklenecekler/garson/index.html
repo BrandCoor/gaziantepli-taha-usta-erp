@@ -90,28 +90,51 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- 1B. İLK CİHAZ QR EŞLEŞTİRME EKRANI       -->
+  <!-- 1B. İLK CİHAZ QR & KOD EŞLEŞTİRME EKRANI       -->
   <!-- ========================================== -->
   <div id="pairingScreen" class="hidden flex-1 flex-col items-center justify-center p-5 max-w-md mx-auto w-full text-center">
     <div class="w-full bg-[#18181C] border border-[#2C2C34] rounded-3xl p-5 shadow-2xl space-y-4">
       <div class="w-14 h-14 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-2xl flex items-center justify-center mx-auto text-xl">
-        <i class="fa-solid fa-qrcode"></i>
+        <i class="fa-solid fa-mobile-screen-button"></i>
       </div>
       <div>
         <h1 class="text-lg font-black text-white">Telefonu Eşleştirin</h1>
-        <p class="text-xs text-[#A0A0AA] mt-1">Kasa ekranındaki güncel QR kodu kameraya gösterin veya doğrudan PIN ekranına geçin.</p>
+        <p class="text-xs text-[#A0A0AA] mt-1">Kasadaki QR kodu okutun veya 6 haneli kodu girin.</p>
       </div>
-      <div class="aspect-square overflow-hidden rounded-2xl border border-[#383844] bg-black">
-        <video id="pairingVideo" class="h-full w-full object-cover" autoplay muted playsinline></video>
+
+      <!-- Sekme Seçici -->
+      <div class="grid grid-cols-2 gap-1 p-1 bg-[#121214] rounded-2xl border border-[#2C2C34] text-xs font-bold">
+        <button id="btnTabQr" onclick="switchPairingTab('qr')" class="py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40">
+          <i class="fa-solid fa-qrcode mr-1"></i> QR Okut
+        </button>
+        <button id="btnTabCode" onclick="switchPairingTab('code')" class="py-2 rounded-xl text-[#8E8E98] hover:text-white">
+          <i class="fa-solid fa-hashtag mr-1"></i> 6 Haneli Kod
+        </button>
       </div>
-      <p id="pairingStatus" class="text-xs text-[#F5C877] font-bold">Kamera başlatılıyor...</p>
-      <div class="space-y-2">
-        <button id="pairingRetryButton" onclick="startPairingScanner()" class="hidden w-full py-3 bg-[#24242C] border border-[#383844] text-white rounded-2xl text-xs font-bold">
+
+      <div id="boxPairingQr" class="space-y-3">
+        <div class="aspect-square overflow-hidden rounded-2xl border border-[#383844] bg-black">
+          <video id="pairingVideo" class="h-full w-full object-cover" autoplay muted playsinline></video>
+        </div>
+        <p id="pairingStatus" class="text-xs text-[#F5C877] font-bold">Kamera başlatılıyor...</p>
+        <button id="pairingRetryButton" onclick="startPairingScanner()" class="hidden w-full py-2.5 bg-[#24242C] border border-[#383844] text-white rounded-2xl text-xs font-bold">
           <i class="fa-solid fa-rotate mr-1"></i> Kamerayı Yeniden Aç
         </button>
-        <button onclick="showPinScreen()" class="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-2xl text-xs font-black shadow-lg shadow-[#F5C877]/20 flex items-center justify-center gap-2">
+      </div>
+
+      <div id="boxPairingCode" class="hidden space-y-3 pt-2">
+        <p class="text-xs text-[#A0A0AA]">Kasa ekranında personel kartındaki <b>6 Haneli Kodu</b> yazın:</p>
+        <input id="inputPairingCode" type="text" maxlength="6" placeholder="842195" class="w-full text-center py-3 bg-[#121214] border-2 border-[#383844] focus:border-amber-400 rounded-2xl text-2xl font-mono font-black text-amber-300 tracking-widest outline-none" />
+        <button onclick="submitPairingCode()" class="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-slate-950 rounded-2xl text-xs font-black shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>Cihazı Eşleştir</span>
+        </button>
+      </div>
+
+      <div class="pt-2 border-t border-[#2C2C34]">
+        <button onclick="showPinScreen()" class="w-full py-2.5 bg-[#24242C] hover:bg-[#2C2C34] text-[#A0A0AA] hover:text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2">
           <i class="fa-solid fa-key"></i>
-          <span>PIN Kodu ile Giriş Yap</span>
+          <span>PIN Kodu Ekranına Geç</span>
         </button>
       </div>
     </div>
@@ -502,6 +525,66 @@
       document.getElementById('pairingScreen').classList.remove('hidden');
       document.getElementById('pairingScreen').classList.add('flex');
       startPairingScanner();
+    }
+
+    function switchPairingTab(mode) {
+      const btnQr = document.getElementById('btnTabQr');
+      const btnCode = document.getElementById('btnTabCode');
+      const boxQr = document.getElementById('boxPairingQr');
+      const boxCode = document.getElementById('boxPairingCode');
+
+      if (mode === 'qr') {
+        btnQr.className = 'py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        btnCode.className = 'py-2 rounded-xl text-[#8E8E98] hover:text-white';
+        boxQr.classList.remove('hidden');
+        boxCode.classList.add('hidden');
+        startPairingScanner();
+      } else {
+        btnCode.className = 'py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        btnQr.className = 'py-2 rounded-xl text-[#8E8E98] hover:text-white';
+        boxCode.classList.remove('hidden');
+        boxQr.classList.add('hidden');
+        stopPairingScanner();
+        const inp = document.getElementById('inputPairingCode');
+        if (inp) inp.focus();
+      }
+    }
+
+    async function submitPairingCode() {
+      const inp = document.getElementById('inputPairingCode');
+      const code = inp ? inp.value.trim() : '';
+      if (!code || code.length < 4) {
+        showToast('Lütfen 6 haneli eşleşme kodunu girin.', 'error');
+        return;
+      }
+
+      showToast('Cihaz eşleştiriliyor...', 'info');
+      try {
+        const response = await apiFetch('pair_device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
+          body: JSON.stringify({ action: 'pair_with_code', code: code, device_uuid: deviceUuid })
+        });
+        const result = await response.json();
+        if (result && result.success) {
+          const userObj = result.user || {};
+          const pairedObj = {
+            id: userObj.id || result.waiterId || 'W1',
+            name: userObj.ad || userObj.name || 'Garson',
+            pin: userObj.pin || '',
+            deviceUuid: deviceUuid
+          };
+          localStorage.setItem('gtu_paired_waiter', JSON.stringify(pairedObj));
+          selectedWaiter = pairedObj;
+          showToast(`Cihaz [${pairedObj.name}] hesabına başarıyla mühürlendi!`, 'success');
+          showPinScreen();
+          loadActiveWaiters();
+        } else {
+          showToast(result?.error || 'Geçersiz eşleşme kodu. Kasadaki kodu kontrol edin.', 'error');
+        }
+      } catch (e) {
+        showToast('Sunucu bağlantı hatası.', 'error');
+      }
     }
 
     function getPairingParams(scannedText) {
