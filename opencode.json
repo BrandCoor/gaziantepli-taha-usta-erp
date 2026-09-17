@@ -6,7 +6,7 @@
 "name": "NVIDIA",
 "options": {
 "baseURL": "https://integrate.api.nvidia.com/v1",
-"apiKey": "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"
+"apiKey": "{env:NVIDIA_API_KEY}"
 },
 "models": {
 "minimaxai/minimax-m2.7": { "name": "MiniMax M2.7" },

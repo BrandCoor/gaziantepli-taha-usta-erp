@@ -60,27 +60,10 @@ if ($action === 'accept_order') {
     $platformCode = $order['platform_code'] ?? ($body['platform'] ?? 'TRENDYOL');
     $platformOrderId = $order['platform_order_id'] ?? $orderId;
 
-    // Platform REST API Çağrısı (cURL simülasyonu / gerçek uç nokta)
-    $apiResult = ['status' => 'SUCCESS', 'message' => 'Platform API sipariş onayı kabul etti.'];
-    $platformRow = getPlatformRow($pdo, $platformCode);
-    $creds = json_decode($platformRow['credentials_json'] ?? '{}', true) ?: [];
-
-    // Trendyol / Getir / Yemeksepeti API çağrısı
-    if ($platformCode === 'TRENDYOL' && !empty($creds['apiKey']) && !empty($creds['supplierId'])) {
-        // Gerçek API uç noktası: https://api.trendyol.com/sapigw/suppliers/{supplierId}/orders/{packageId}/picking
-        $ch = curl_init("https://api.trendyol.com/sapigw/suppliers/" . urlencode($creds['supplierId']) . "/orders/" . urlencode($platformOrderId) . "/picking");
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_TIMEOUT => 5,
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Basic ' . base64_encode($creds['apiKey'] . ':' . ($creds['secretKey'] ?? '')),
-                'Content-Type: application/json'
-            ]
-        ]);
-        $resp = curl_exec($ch);
-        curl_close($ch);
-    }
+    // NOT: Burada platformun kendi API'sine sipariş onayı gönderilmiyor. Önceki kod,
+    // yemek siparişi için Trendyol'un PAZARYERI (sapigw) uç noktasını çağırıyordu; bu
+    // yanlış API'dir ve Trendyol V1 servisleri 15.09.2026'da kapatılmıştır. Doğru
+    // entegrasyon (Uber Eats Trendyol GO) kurulana kadar durum yalnızca yerelde güncellenir.
 
     // MySQL Durum Güncelleme
     if ($pdo) {
@@ -408,50 +391,43 @@ if ($action === 'test_connection') {
     $platformRow = getPlatformRow($pdo, $platformCode);
     $creds = json_decode($platformRow['credentials_json'] ?? '{}', true) ?: [];
 
-    $isConfigured = false;
-    $details = '';
-
     if ($platformCode === 'TRENDYOL') {
-        $supplierId = $creds['supplierId'] ?? $body['supplierId'] ?? '';
-        $apiKey = $creds['apiKey'] ?? $body['apiKey'] ?? '';
-        if (!empty($supplierId) && !empty($apiKey)) {
-            $isConfigured = true;
-            $details = "Trendyol Meal API Gateway doğrulandı (Supplier ID: {$supplierId}). Webhook dinleme hazır.";
-        }
+        $required = ['supplierId' => 'Satıcı ID', 'apiKey' => 'API Key', 'secretKey' => 'API Secret'];
     } elseif ($platformCode === 'GETIR') {
-        $secretKey = $creds['secretKey'] ?? $body['secretKey'] ?? '';
-        $appKey = $creds['appKey'] ?? $body['appKey'] ?? '';
-        $restaurantId = $creds['restaurantId'] ?? $body['restaurantId'] ?? '';
-        if (!empty($secretKey) || (!empty($appKey) && !empty($restaurantId))) {
-            $isConfigured = true;
-            $details = "Getir Yemek Partner Gateway doğrulandı. Sipariş kuyruğu aktif.";
-        }
+        $required = ['appKey' => 'App Key', 'restaurantSecretKey' => 'Restoran Secret Key'];
     } else { // YEMEKSEPETI
-        $vendorId = $creds['vendorId'] ?? $body['vendorId'] ?? '';
-        $clientId = $creds['clientId'] ?? $body['clientId'] ?? '';
-        $clientSecret = $creds['clientSecret'] ?? $body['clientSecret'] ?? '';
-        if (!empty($vendorId) || (!empty($clientId) && !empty($clientSecret))) {
-            $isConfigured = true;
-            $details = "Delivery Hero / Yemeksepeti Partner Gateway yetkilendirmesi doğrulandı.";
+        $required = ['clientId' => 'Client ID', 'clientSecret' => 'Client Secret', 'vendorId' => 'Vendor ID'];
+    }
+
+    $missing = [];
+    foreach ($required as $key => $label) {
+        $value = $creds[$key] ?? $body[$key] ?? '';
+        if (trim((string)$value) === '') {
+            $missing[] = $label;
         }
     }
 
-    if ($isConfigured) {
-        echo json_encode([
-            'success' => true,
-            'platform' => $platformCode,
-            'message' => "Bağlantı Başarılı! {$details}",
-            'httpStatus' => 200,
-            'timestamp' => date('c')
-        ], JSON_UNESCAPED_UNICODE);
-    } else {
+    if (!empty($missing)) {
         echo json_encode([
             'success' => false,
             'platform' => $platformCode,
-            'message' => "Eksik parametre! Lütfen {$platformCode} için zorunlu API kimlik bilgilerini eksiksiz doldurunuz.",
-            'httpStatus' => 400
+            'message' => "Eksik bilgi: " . implode(', ', $missing) . ". Bu değerler platformun kendi satıcı panelinden alınır.",
+            'timestamp' => date('c')
         ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
+
+    // Kimlik bilgileri kayıtlı; ancak bu sunucuda platformun canlı API'sine karşı
+    // doğrulama yapan bir istemci YOK. Bağlantıyı "başarılı" göstermek, sipariş
+    // akmadığı halde her şey yolundaymış izlenimi verdiği için kasıtlı olarak yapılmıyor.
+    echo json_encode([
+        'success' => false,
+        'platform' => $platformCode,
+        'message' => "Kimlik bilgileri kayıtlı, fakat {$platformCode} canlı API doğrulaması bu sunucuda kurulu değil. Entegrasyon aktif değildir; bu haliyle sipariş akmaz.",
+        'credentialsStored' => true,
+        'liveVerification' => false,
+        'timestamp' => date('c')
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

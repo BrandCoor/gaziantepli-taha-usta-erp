@@ -55,9 +55,7 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
     setPlatforms(onlinePlatformService.getPlatforms());
   }, []);
 
-  const getWebhookUrl = (code: OnlinePlatformCode) => {
-    return `https://api.rymedya.com.tr/api/online/webhook.php?platform=${code}`;
-  };
+  const getWebhookUrl = (code: OnlinePlatformCode) => onlinePlatformService.getWebhookUrl(code);
 
   const handleSaveAll = async () => {
     // 1. restaurantDataService kaydı
@@ -566,7 +564,7 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
                       ...p, credentials: { ...p.credentials, supplierId: val }
                     } : p));
                   }}
-                  placeholder="Örn: 770463"
+                  placeholder="Satıcı panelinizdeki Satıcı ID"
                   className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-4 py-2.5 text-xs text-white focus:border-orange-500 outline-none"
                 />
               </div>
@@ -672,7 +670,7 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
                       ...p, credentials: { ...p.credentials, vendorId: val }
                     } : p));
                   }}
-                  placeholder="YS-770463"
+                  placeholder="Yemeksepeti Vendor ID"
                   className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-4 py-2.5 text-xs text-white focus:border-rose-500 outline-none font-mono"
                 />
               </div>

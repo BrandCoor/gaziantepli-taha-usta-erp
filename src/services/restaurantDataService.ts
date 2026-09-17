@@ -456,34 +456,37 @@ const STORAGE_KEYS = {
   ONLINE_ORDERS: 'gtu_online_orders',
 };
 
+// Kimlik bilgileri burada ASLA sabit yazılmaz: bu dosya derlenip istemciye gönderildiği
+// için buraya yazılan her anahtar/şifre uygulamanın kurulu olduğu her makinede okunabilir.
+// Değerler Ayarlar > Platform API ekranından girilir ve cihaz üzerinde saklanır.
 export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
   trendyol: {
-    enabled: true,
-    isOpen: true,
-    supplierId: '770463',
-    apiKey: 'Es32CcLQUCJs51lAPgJ8',
-    secretKey: 'xbuy0pocdpcUOfGd8kNS9',
-    email: 'mehmettahagumus@icloud.com',
+    enabled: false,
+    isOpen: false,
+    supplierId: '',
+    apiKey: '',
+    secretKey: '',
+    email: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
   },
   getir: {
-    enabled: true,
-    isOpen: true,
-    restaurantName: 'Gaziantepli Taha Usta (Eğitim Mah.)',
-    secretKey: '85309848fd36282068984f02259f91c2873d2bc6',
-    restaurantId: 'GETIR-27-01',
+    enabled: false,
+    isOpen: false,
+    restaurantName: '',
+    secretKey: '',
+    restaurantId: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
   },
   yemeksepeti: {
-    enabled: true,
-    isOpen: true,
-    username: 'mehmettahagumus@icloud.com',
-    password: 'Gaziantepli27taha',
-    restaurantId: 'YS-TAHA-27',
+    enabled: false,
+    isOpen: false,
+    username: '',
+    password: '',
+    restaurantId: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
