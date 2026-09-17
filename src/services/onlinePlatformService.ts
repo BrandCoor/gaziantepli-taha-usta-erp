@@ -314,6 +314,29 @@ class OnlinePlatformService {
   }
 
   /**
+   * Platformun bağlantı testi için zorunlu kimlik alanlarından eksik olanları döner
+   */
+  private getMissingCredentialFields(code: OnlinePlatformCode): string[] {
+    const creds = this.platforms[code]?.credentials || {};
+    const missing: string[] = [];
+
+    if (code === 'TRENDYOL') {
+      if (!creds.supplierId) missing.push('Satıcı ID');
+      if (!creds.apiKey) missing.push('API Key');
+    } else if (code === 'GETIR') {
+      if (!creds.restaurantSecretKey && !(creds.appKey && creds.restaurantId)) {
+        missing.push('Restoran Secret Key (veya App Key + Restaurant ID)');
+      }
+    } else {
+      if (!creds.vendorId && !(creds.clientId && creds.clientSecret)) {
+        missing.push('Vendor ID (veya Client ID + Client Secret)');
+      }
+    }
+
+    return missing;
+  }
+
+  /**
    * API Bağlantısını Test Eder
    */
   public async testConnection(code: OnlinePlatformCode): Promise<{ success: boolean; message: string }> {

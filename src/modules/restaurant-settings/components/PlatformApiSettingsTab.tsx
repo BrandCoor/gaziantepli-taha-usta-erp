@@ -18,7 +18,6 @@ import {
   Power,
   Volume2,
   ExternalLink,
-  Send,
   SlidersHorizontal,
   Flame,
   Coffee,
@@ -44,7 +43,6 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
   const [activePlatform, setActivePlatform] = useState<OnlinePlatformCode>('TRENDYOL');
   const [config, setConfig] = useState<FoodPlatformsConfig>(restaurantDataService.getFoodPlatformsConfig());
   const [testingConnection, setTestingConnection] = useState<string | null>(null);
-  const [sendingTestOrder, setSendingTestOrder] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<{ [key: string]: { success: boolean; msg: string; time: string } }>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -174,24 +172,6 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
       }));
     } finally {
       setTestingConnection(null);
-    }
-  };
-
-  // Test Siparişi Gönderimi
-  const handleSendTestOrder = async (code: OnlinePlatformCode) => {
-    setSendingTestOrder(code);
-    try {
-      const order = await onlinePlatformService.createTestOrder(code);
-      if (order) {
-        notify.success(
-          'Test Siparişi Oluşturuldu!',
-          `[${code}] #${order.platformOrderId} siparişi başarıyla enjekte edildi. Kasa sesli uyarısı ve sipariş kartı tetiklendi.`
-        );
-      }
-    } catch (e) {
-      notify.error('Test Siparişi Hatası', 'Sipariş oluşturulamadı.');
-    } finally {
-      setSendingTestOrder(null);
     }
   };
 
@@ -356,7 +336,7 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
             </div>
           </div>
 
-          {/* AKSIYON BUTONLARI (TEST BAĞLANTI, TEST SİPARİŞİ, SİPARİŞ DURUMU) */}
+          {/* AKSIYON BUTONLARI (TEST BAĞLANTI, SİPARİŞ DURUMU) */}
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => handleTestConnection(currentPlatform.code)}
@@ -366,16 +346,6 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
             >
               <RefreshCw className={`w-3.5 h-3.5 ${testingConnection === currentPlatform.code ? 'animate-spin' : ''}`} />
               <span>Bağlantıyı Doğrula</span>
-            </button>
-
-            <button
-              onClick={() => handleSendTestOrder(currentPlatform.code)}
-              disabled={sendingTestOrder === currentPlatform.code}
-              className="px-3.5 py-2.5 bg-[#282830] hover:bg-[#34343E] text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Sisteme gerçekçi bir test siparişi düşürür"
-            >
-              <Send className={`w-3.5 h-3.5 ${sendingTestOrder === currentPlatform.code ? 'animate-pulse' : ''}`} />
-              <span>Test Siparişi Gönder</span>
             </button>
           </div>
         </div>
