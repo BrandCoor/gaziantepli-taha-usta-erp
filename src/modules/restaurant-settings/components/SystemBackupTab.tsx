@@ -54,10 +54,9 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
   };
 
   const handleResetApiUrl = () => {
-    const defaultUrl = 'https://api.rymedya.com.tr/index.php';
-    setApiUrlState(defaultUrl);
+    setApiUrlState('');
     setApiSyncUrl('');
-    notify.info('Varsayılana Döndürüldü', 'Orijinal merkezi sunucu adresi tanımlandı.');
+    notify.warning('Sunucu Adresi Temizlendi', 'Kendi sunucu adresinizi girmeden garson, QR menü ve patron paneli bu kasayla senkronize olmaz.');
   };
 
   const handleTestDatabase = async () => {
@@ -94,7 +93,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
       restaurantDataService.pullPendingOrdersFromCloud();
       setTimeout(() => {
         setIsSyncing(false);
-        notify.success('Bulut Senkronizasyonu Başarılı', 'Tüm menü, masa ve adisyon durumları merkezi sunucuya (api.rymedya.com.tr) aktarıldı.');
+        notify.success('Bulut Senkronizasyonu Başarılı', 'Tüm menü, masa ve adisyon durumları kendi sunucunuzdaki veritabanına aktarıldı.');
       }, 700);
     } catch (e) {
       setIsSyncing(false);
@@ -256,7 +255,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
           <div className="flex items-center justify-between text-xs">
             <label className="font-bold text-white flex items-center gap-1.5">
               <span>Merkezi API Endpoint Adresi (index.php)</span>
-              <span className="text-[10px] text-[#A0A0AA] font-normal">(Kendi siteniz veya rymedya.com.tr)</span>
+              <span className="text-[10px] text-[#A0A0AA] font-normal">(Kendi hosting adresiniz)</span>
             </label>
             <button
               onClick={handleResetApiUrl}
@@ -353,7 +352,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
               <div className="flex items-center gap-3">
                 <Wifi className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <div className="font-black text-white">Merkezi Bulut API (api.rymedya.com.tr)</div>
+                  <div className="font-black text-white">Kendi Sunucunuzdaki Veritabanı</div>
                   <div className="text-[11px] text-[#A0A0AA]">Garson siparişleri ve anlık masa durumu senkronu</div>
                 </div>
               </div>

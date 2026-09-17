@@ -8,7 +8,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID, X-Device-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -35,7 +35,13 @@ if ($pdo) {
         "ALTER TABLE `personeller` ADD COLUMN `device_uuid` VARCHAR(255) NULL DEFAULT NULL AFTER `pin`",
         "ALTER TABLE `personeller` ADD COLUMN `device_paired_at` DATETIME NULL DEFAULT NULL AFTER `device_uuid`",
         "ALTER TABLE `personeller` ADD COLUMN `pairing_secret` VARCHAR(64) NULL DEFAULT NULL AFTER `device_paired_at`",
-        "ALTER TABLE `personeller` ADD COLUMN `pairing_expires_at` DATETIME NULL DEFAULT NULL AFTER `pairing_secret`"
+        "ALTER TABLE `personeller` ADD COLUMN `pairing_expires_at` DATETIME NULL DEFAULT NULL AFTER `pairing_secret`",
+        // Kalıcı cihaz anahtarı: telefon bir kez eşleştikten sonra bir daha QR istemez.
+        // Anahtarın kendisi saklanmaz, yalnızca SHA-256 özeti tutulur.
+        "ALTER TABLE `users` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL AFTER `pairing_expires_at`",
+        "ALTER TABLE `personeller` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL AFTER `pairing_expires_at`",
+        "ALTER TABLE `cihazlar` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL",
+        "ALTER TABLE `cihazlar` ADD COLUMN `son_gorulme` DATETIME NULL DEFAULT NULL"
     ];
 
     foreach ($migrationQueries as $sql) {
@@ -68,6 +74,28 @@ $action = $_GET['action'] ?? $inputData['action'] ?? '';
 // Başlıkta veya gövdede gönderilen device_uuid kontrolü
 $deviceUuidHeader = $_SERVER['HTTP_X_DEVICE_UUID'] ?? '';
 $deviceUuid = trim($inputData['device_uuid'] ?? $_GET['device_uuid'] ?? $deviceUuidHeader);
+
+// Kalıcı cihaz anahtarı (telefon bir kez eşleştikten sonra her istekte gönderir)
+$deviceTokenHeader = $_SERVER['HTTP_X_DEVICE_TOKEN'] ?? '';
+$deviceToken = trim($inputData['device_token'] ?? $_GET['device_token'] ?? $deviceTokenHeader);
+
+/**
+ * Telefonun MAC adresi tarayıcıdan OKUNAMAZ (hiçbir tarayıcı bu bilgiyi vermez) ve
+ * modern telefonlar her ağda farklı rastgele MAC kullanır. Bu yüzden cihaz kimliği
+ * için sunucunun ürettiği, iptal edilebilir kalıcı bir anahtar kullanılır.
+ * Anahtarın kendisi veritabanında saklanmaz; yalnızca SHA-256 özeti tutulur.
+ */
+function issueDeviceToken() {
+    try {
+        return bin2hex(random_bytes(32));
+    } catch (Exception $e) {
+        return hash('sha256', uniqid('gtu', true) . microtime(true) . mt_rand());
+    }
+}
+
+function hashDeviceToken($token) {
+    return hash('sha256', (string)$token);
+}
 
 switch ($action) {
     // ========================================================
@@ -245,15 +273,29 @@ switch ($action) {
                 $updPers->execute([$targetDeviceUuid, $now, $targetUser['id']]);
             }
 
+            // Kalıcı cihaz anahtarı üret: telefon bunu saklar ve bir daha QR istenmez.
+            $newDeviceToken = issueDeviceToken();
+            $newDeviceTokenHash = hashDeviceToken($newDeviceToken);
             try {
-                $updCihaz = $pdo->prepare("
-                    INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `durum`, `eslesme_tarihi`)
-                    VALUES (?, ?, ?, 'APPROVED', NOW())
-                    ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `durum` = 'APPROVED', `eslesme_tarihi` = NOW()
-                ");
-                $updCihaz->execute([$targetUser['id'], $targetUser['ad'] ?? $name ?? 'Garson', $targetDeviceUuid]);
+                $tokPers = $pdo->prepare("UPDATE `personeller` SET `device_token_hash` = ? WHERE `id` = ?");
+                $tokPers->execute([$newDeviceTokenHash, $targetUser['id']]);
+            } catch (Exception $ignore) {}
+            try {
+                $tokUser = $pdo->prepare("UPDATE `users` SET `device_token_hash` = ? WHERE `id` = ?");
+                $tokUser->execute([$newDeviceTokenHash, $targetUser['id']]);
             } catch (Exception $ignore) {}
 
+            try {
+                $updCihaz = $pdo->prepare("
+                    INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `device_token_hash`, `durum`, `eslesme_tarihi`, `son_gorulme`)
+                    VALUES (?, ?, ?, ?, 'APPROVED', NOW(), NOW())
+                    ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `device_token_hash` = VALUES(`device_token_hash`), `durum` = 'APPROVED', `eslesme_tarihi` = NOW(), `son_gorulme` = NOW()
+                ");
+                $updCihaz->execute([$targetUser['id'], $targetUser['ad'] ?? $name ?? 'Garson', $targetDeviceUuid, $newDeviceTokenHash]);
+            } catch (Exception $ignore) {}
+
+            // PIN yanıtta DÖNDÜRÜLMEZ: eşleştirme trafiğini görebilen birine garsonun
+            // giriş kodunu vermek, cihaz kilidini anlamsız kılar.
             echo json_encode([
                 'success' => true,
                 'message' => 'Cihazınız Başarıyla Eşleştirildi',
@@ -261,12 +303,12 @@ switch ($action) {
                     'id' => $targetUser['id'],
                     'ad' => $targetUser['ad'] ?? $name ?? 'Garson',
                     'name' => $targetUser['ad'] ?? $name ?? 'Garson',
-                    'pin' => $targetUser['pin'] ?? '1234',
                     'rol' => $targetUser['rol'] ?? 'WAITER',
                     'device_paired' => true
                 ],
                 'waiterId' => $targetUser['id'],
                 'device_uuid' => $targetDeviceUuid,
+                'device_token' => $newDeviceToken,
                 'paired_at' => $now
             ], JSON_UNESCAPED_UNICODE);
             exit;
@@ -287,14 +329,18 @@ switch ($action) {
                 }
             }
 
+            $newDeviceToken = issueDeviceToken();
+
             if (!isset($json['paired_devices'])) $json['paired_devices'] = [];
             $json['paired_devices'][$userId] = [
                 'device_uuid' => $targetDeviceUuid,
+                'device_token_hash' => hashDeviceToken($newDeviceToken),
                 'waiterName' => $waiterName,
                 'paired_at' => $now
             ];
             saveJsonData($dbFile, $json);
 
+            // PIN yanıtta döndürülmez (bkz. MySQL yolundaki açıklama).
             echo json_encode([
                 'success' => true,
                 'message' => 'Cihazınız Başarıyla Eşleştirildi',
@@ -302,12 +348,12 @@ switch ($action) {
                     'id' => $userId,
                     'ad' => $waiterName,
                     'name' => $waiterName,
-                    'pin' => $waiterPin,
                     'rol' => 'WAITER',
                     'device_paired' => true
                 ],
                 'waiterId' => $userId,
                 'device_uuid' => $targetDeviceUuid,
+                'device_token' => $newDeviceToken,
                 'paired_at' => $now
             ], JSON_UNESCAPED_UNICODE);
             exit;
@@ -484,6 +530,117 @@ switch ($action) {
     // ========================================================
     // 5. CİHAZ DURUMU DENETLEME (CHECK DEVICE STATUS)
     // ========================================================
+    case 'device_lookup':
+        // Cihaz kimliğinden eşleşmiş garsonu bulur. Telefonun yerel hafızası silinse
+        // bile (iOS/PWA depolama temizliği) cihaz tanınır ve yeniden QR okutmak
+        // gerekmez. PIN bu yanıtta DÖNDÜRÜLMEZ: yalnızca cihaz kimliğini bilen birine
+        // PIN sızdırmamak için giriş yine PIN doğrulamasından geçer.
+        $lookupUuid = trim($inputData['device_uuid'] ?? $_GET['device_uuid'] ?? $deviceUuid);
+        if ($lookupUuid === '' && $deviceToken === '') {
+            echo json_encode(['success' => false, 'error' => 'Cihaz kimliği veya anahtarı belirtilmedi.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // Öncelik kalıcı cihaz anahtarındadır; yalnızca cihaz kimliği bilinen eski
+        // eşleşmeler için UUID ile eşleşmeye izin verilir.
+        $lookupTokenHash = $deviceToken !== '' ? hashDeviceToken($deviceToken) : '';
+
+        $foundWaiter = null;
+        if ($useMysql) {
+            if ($lookupTokenHash !== '') {
+                try {
+                    $ltStmt = $pdo->prepare("
+                        SELECT id, ad_soyad AS ad, rol FROM `users` WHERE `device_token_hash` = ? AND `aktif` = 1
+                        UNION
+                        SELECT id, ad AS ad, rol FROM `personeller` WHERE `device_token_hash` = ? AND `aktif` = 1
+                        LIMIT 1
+                    ");
+                    $ltStmt->execute([$lookupTokenHash, $lookupTokenHash]);
+                    $ltRow = $ltStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($ltRow) {
+                        $foundWaiter = [
+                            'id' => $ltRow['id'],
+                            'name' => $ltRow['ad'] ?: 'Garson',
+                            'role' => $ltRow['rol'] ?: 'WAITER'
+                        ];
+                    }
+                } catch (Exception $e) {}
+            }
+
+            if (!$foundWaiter && $lookupUuid !== '') {
+                try {
+                    $luStmt = $pdo->prepare("
+                        SELECT id, ad_soyad AS ad, rol FROM `users` WHERE `device_uuid` = ? AND `aktif` = 1
+                        UNION
+                        SELECT id, ad AS ad, rol FROM `personeller` WHERE `device_uuid` = ? AND `aktif` = 1
+                        LIMIT 1
+                    ");
+                    $luStmt->execute([$lookupUuid, $lookupUuid]);
+                    $luRow = $luStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($luRow) {
+                        $foundWaiter = [
+                            'id' => $luRow['id'],
+                            'name' => $luRow['ad'] ?: 'Garson',
+                            'role' => $luRow['rol'] ?: 'WAITER'
+                        ];
+                    }
+                } catch (Exception $e) {}
+            }
+
+            if (!$foundWaiter) {
+                try {
+                    // Parantezler şart: SQL'de AND, OR'dan önce bağlar. Parantezsiz yazımda
+                    // anahtarla eşleşen ama iptal edilmiş (durum <> APPROVED) cihaz da geçerdi.
+                    $cuStmt = $pdo->prepare("
+                        SELECT `waiter_id`, `waiter_name` FROM `cihazlar`
+                        WHERE (
+                            (? <> '' AND `device_token_hash` = ?)
+                            OR (? <> '' AND `device_uuid` = ?)
+                        )
+                        AND `durum` = 'APPROVED'
+                        LIMIT 1
+                    ");
+                    $cuStmt->execute([$lookupTokenHash, $lookupTokenHash, $lookupUuid, $lookupUuid]);
+                    $cuRow = $cuStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($cuRow) {
+                        $foundWaiter = [
+                            'id' => $cuRow['waiter_id'],
+                            'name' => $cuRow['waiter_name'] ?: 'Garson',
+                            'role' => 'WAITER'
+                        ];
+                    }
+                } catch (Exception $e) {}
+            }
+
+            if ($foundWaiter) {
+                try {
+                    $seenStmt = $pdo->prepare("UPDATE `cihazlar` SET `son_gorulme` = NOW() WHERE `waiter_id` = ?");
+                    $seenStmt->execute([$foundWaiter['id']]);
+                } catch (Exception $e) {}
+            }
+        } else {
+            $luJson = loadJsonData($dbFile);
+            foreach (($luJson['paired_devices'] ?? []) as $luWaiterId => $luInfo) {
+                $tokenMatch = $lookupTokenHash !== '' && !empty($luInfo['device_token_hash']) && hash_equals($luInfo['device_token_hash'], $lookupTokenHash);
+                $uuidMatch = $lookupUuid !== '' && !empty($luInfo['device_uuid']) && $luInfo['device_uuid'] === $lookupUuid;
+                if ($tokenMatch || $uuidMatch) {
+                    $foundWaiter = [
+                        'id' => $luWaiterId,
+                        'name' => $luInfo['waiterName'] ?? 'Garson',
+                        'role' => 'WAITER'
+                    ];
+                    break;
+                }
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'is_paired' => $foundWaiter !== null,
+            'waiter' => $foundWaiter
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+
     case 'check_device_status':
         $userId = trim($inputData['userId'] ?? $_GET['userId'] ?? '');
         $checkDeviceUuid = trim($inputData['device_uuid'] ?? $deviceUuid);

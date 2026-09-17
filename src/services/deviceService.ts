@@ -4,7 +4,7 @@
  * Cihaza özel tekil ve kalıcı UUID üretir.
  * Hibrit Eşleştirme Motoru:
  * 1. Yerel & Broadcast Senkronizasyonu (Hatasız ve anında 0ms eşleşme)
- * 2. Merkezi Veritabanı (api.rymedya.com.tr) arka plan senkronizasyonu
+ * 2. İşletmenin kendi sunucusundaki MySQL veritabanı ile senkronizasyon
  * 3. Donanım mühürleme ve 4 haneli sert PIN güvenlik kilidi
  */
 
@@ -101,6 +101,9 @@ class DeviceService {
    */
   private getAuthApiUrl(action: string): string {
     const configured = getApiSyncUrl().replace(/\/+$/, '');
+    // Sunucu ayarlanmadıysa sabit bir alan adına düşmek yerine boş döndürülür:
+    // aksi halde istekler yazılımcının sunucusuna gidiyordu.
+    if (!configured) return '';
     let endpoint = configured;
     if (!/\/(?:index|auth)\.php$/i.test(endpoint)) {
       endpoint = endpoint.endsWith('/api') ? `${endpoint}/index.php` : `${endpoint}/api/index.php`;
@@ -127,9 +130,8 @@ class DeviceService {
     } catch {}
 
     const urls = [
-      this.getAuthApiUrl('create_pairing_token'),
-      'https://api.rymedya.com.tr/index.php?action=create_pairing_token'
-    ].filter((url, index, all) => all.indexOf(url) === index);
+      this.getAuthApiUrl('create_pairing_token')
+    ].filter(Boolean).filter((url, index, all) => all.indexOf(url) === index);
 
     for (const url of urls) {
       try {
@@ -188,6 +190,7 @@ class DeviceService {
     // 3. Bulut API'de kodu dene
     try {
       const url = this.getAuthApiUrl('pair_device');
+      if (!url) throw new Error('Senkronizasyon sunucusu ayarlanmadı.');
       const deviceUuid = this.getOrCreateDeviceUuid();
       const devName = optionalDeviceName || this.detectDeviceType();
       const controller = new AbortController();
@@ -224,6 +227,7 @@ class DeviceService {
     // 1. Bulut API üzerinden eşleştirmeyi dene
     try {
       const url = this.getAuthApiUrl('pair_device');
+      if (!url) throw new Error('Senkronizasyon sunucusu ayarlanmadı.');
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
       const response = await fetch(url, {
@@ -360,6 +364,7 @@ class DeviceService {
       // Arka planda sunucuya bildir
       try {
         const url = this.getAuthApiUrl('reset_device_pairing');
+        if (!url) throw new Error('Senkronizasyon sunucusu ayarlanmadı.');
         fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -384,10 +389,8 @@ class DeviceService {
     const waiters = restaurantDataService.getWaiters();
 
     const candidateUrls = [
-      this.getAuthApiUrl('waiter_login'),
-      'https://api.rymedya.com.tr/index.php?action=waiter_login',
-      'https://garson.rymedya.com.tr/api/index.php?action=waiter_login'
-    ].filter((u, i, a) => a.indexOf(u) === i);
+      this.getAuthApiUrl('waiter_login')
+    ].filter(Boolean).filter((u, i, a) => a.indexOf(u) === i);
 
     for (const url of candidateUrls) {
       try {
@@ -520,10 +523,8 @@ class DeviceService {
   public async checkDeviceStatus(userId: string): Promise<{ success: boolean; is_paired: boolean; deviceName?: string; deviceUuid?: string }> {
     // 1. Sunucu API sorgulaması (MySQL / phpMyAdmin / cpanel senkronizasyonu)
     const candidateUrls = [
-      this.getAuthApiUrl('check_device_status'),
-      'https://api.rymedya.com.tr/index.php?action=check_device_status',
-      'https://garson.rymedya.com.tr/api/index.php?action=check_device_status'
-    ].filter((u, i, a) => a.indexOf(u) === i);
+      this.getAuthApiUrl('check_device_status')
+    ].filter(Boolean).filter((u, i, a) => a.indexOf(u) === i);
 
     for (const baseUrl of candidateUrls) {
       try {

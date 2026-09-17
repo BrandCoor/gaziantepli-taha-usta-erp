@@ -492,13 +492,20 @@ export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
   autoAcceptOrders: false,
 };
 
+// Burada varsayılan bir sunucu adresi YAZILMAZ. Önceki varsayılan yazılımcının kendi
+// alan adıydı; bu, işletmenin tüm verisinin (müşteri, personel maaş/IBAN, kasa, Z
+// raporu) sahibinin haberi olmadan başka bir sunucuya akması demekti. Ayrıca kasa o
+// sunucuya, garson uygulaması ise kendi hosting'ine bağlandığı için masalar hiçbir
+// zaman örtüşmüyordu. Adres ayarlanmadıysa senkronizasyon yapılmaz.
 export const getApiSyncUrl = (): string => {
   try {
     const custom = localStorage.getItem('CUSTOM_API_SYNC_URL');
     if (custom && custom.trim().length > 0) return custom.trim();
   } catch (e) {}
-  return 'https://api.rymedya.com.tr/index.php';
+  return '';
 };
+
+export const isApiSyncConfigured = (): boolean => getApiSyncUrl().length > 0;
 
 export const setApiSyncUrl = (url: string): void => {
   try {
@@ -535,8 +542,10 @@ export const getPublicBaseUrl = (): string => {
     }
   }
 
-  // Localhost veya yerel ağda çalışılıyorsa, telefonun bağlanabileceği canlı cPanel / cloud domainini kullan
-  return 'https://garson.rymedya.com.tr';
+  // Sabit bir alan adına düşülmez: önceki değer yazılımcının kendi adresiydi ve
+  // kasanın ürettiği QR kodlar garsonu başka birinin sunucusuna yönlendiriyordu.
+  // Adres girilmediyse boş döner; QR üretimi bunu kullanıcıya bildirir.
+  return '';
 };
 
 export const setPublicBaseUrl = (url: string): void => {
@@ -969,6 +978,7 @@ class RestaurantDataService {
   private pushDebounceTimer: any = null;
 
   public async pushStateToCloud(): Promise<boolean> {
+    if (!isApiSyncConfigured()) return false;
     if (this.pushDebounceTimer) {
       clearTimeout(this.pushDebounceTimer);
     }
@@ -1036,6 +1046,7 @@ class RestaurantDataService {
    * Sunucudaki MySQL / phpMyAdmin veritabanındaki tüm ERP verilerini çeker ve eşitler
    */
   public async pullAllErpDataFromCloud(): Promise<boolean> {
+    if (!isApiSyncConfigured()) return false;
     try {
       const res = await fetch(`${getApiSyncUrl()}?action=get_all_erp_data`);
       if (!res.ok) return false;
@@ -1080,6 +1091,7 @@ class RestaurantDataService {
    * phpMyAdmin / MySQL tablosundan anında silme
    */
   public async deleteItemFromCloud(table: string, id: string): Promise<{ success: boolean; message?: string }> {
+    if (!isApiSyncConfigured()) return { success: false, message: 'Senkronizasyon sunucusu ayarlanmadı.' };
     try {
       const res = await fetch(`${getApiSyncUrl()}?action=delete_item`, {
         method: 'POST',
@@ -1096,6 +1108,7 @@ class RestaurantDataService {
   }
 
   public async pullPendingOrdersFromCloud() {
+    if (!isApiSyncConfigured()) return;
     try {
       // 1. Eşleşen Telefonları Canlı Senkronize Et
       try {
@@ -2315,16 +2328,6 @@ class RestaurantDataService {
 
   public generatePairingCode(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  public generateMacAddress(): string {
-    const hex = '0123456789ABCDEF';
-    let mac = '';
-    for (let i = 0; i < 6; i++) {
-      if (i > 0) mac += ':';
-      mac += hex.charAt(Math.floor(Math.random() * 16)) + hex.charAt(Math.floor(Math.random() * 16));
-    }
-    return mac;
   }
 
   public getWaiters(): WaiterConfig[] {

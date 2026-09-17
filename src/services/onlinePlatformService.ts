@@ -200,13 +200,17 @@ class OnlinePlatformService {
   /**
    * Sunucu API URL'sini döndürür
    */
+  // Kasa ile aynı sunucu ayarı kullanılır; sabit bir alan adına düşülmez.
   private getApiUrl(): string {
-    const saved = localStorage.getItem('gtu_sync_api_url');
-    if (saved && saved.startsWith('http')) {
-      const trimmed = saved.replace('/index.php', '').replace(/\/$/, '');
-      return `${trimmed}/index.php`;
+    const candidates = ['gtu_sync_api_url', 'CUSTOM_API_SYNC_URL'];
+    for (const key of candidates) {
+      const saved = localStorage.getItem(key);
+      if (saved && saved.startsWith('http')) {
+        const trimmed = saved.replace('/index.php', '').replace(/\/$/, '');
+        return `${trimmed}/index.php`;
+      }
     }
-    return 'https://api.rymedya.com.tr/index.php';
+    return '';
   }
 
   /**
@@ -314,6 +318,23 @@ class OnlinePlatformService {
    */
   public async testConnection(code: OnlinePlatformCode): Promise<{ success: boolean; message: string }> {
     const p = this.platforms[code];
+
+    const missing = this.getMissingCredentialFields(code);
+    if (missing.length > 0) {
+      return {
+        success: false,
+        message: `${p.name} için eksik bilgiler: ${missing.join(', ')}. Ayarlar > Platform API ekranından doldurun.`,
+      };
+    }
+
+    const apiUrl = this.getApiUrl();
+    if (!apiUrl) {
+      return {
+        success: false,
+        message: 'Senkronizasyon sunucusu ayarlanmadı. Ayarlar > Sistem & Yedekleme bölümünden kendi sunucu adresinizi girin.'
+      };
+    }
+
     try {
       const res = await fetch(`${this.getApiUrl()}?action=test_online_connection`, {
         method: 'POST',

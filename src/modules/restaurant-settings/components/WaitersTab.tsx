@@ -277,11 +277,13 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     if (!w) return '';
     const token = pairingToken || w.qrToken || `TOKEN-GTU-${(w.id || 'W1').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`;
     const code = pairingCode || w.pairingCode || '';
-    const query = `token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}&userId=${encodeURIComponent(w.id)}&name=${encodeURIComponent(w.name || '')}&pin=${encodeURIComponent(w.pin || '')}`;
-    if (qrTargetMode === 'REMOTE') {
-      return `https://garson.rymedya.com.tr/#/pair?${query}`;
-    }
+    // PIN QR koduna KONULMAZ: QR'ı fotoğraflayan herkes garsonun giriş kodunu
+    // öğrenirdi ve cihaz kilidi anlamsız hale gelirdi. Giriş sunucuda doğrulanır.
+    const query = `token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}&userId=${encodeURIComponent(w.id)}&name=${encodeURIComponent(w.name || '')}`;
     const publicBase = getPublicBaseUrl();
+    if (qrTargetMode === 'REMOTE') {
+      return publicBase ? `${publicBase}/#/pair?${query}` : '';
+    }
     const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     const origin = isLocal ? publicBase : (typeof window !== 'undefined' ? window.location.origin : publicBase);
     const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
@@ -679,8 +681,37 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                 />
               </div>
             ) : (
-              <div className="p-5 rounded-3xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-xs font-bold">
-                Sunucudan geçerli eşleştirme tokenı alınamadı.
+              <div className="p-4 rounded-3xl border border-rose-500/40 bg-rose-500/10 text-left space-y-2.5">
+                <p className="text-xs font-black text-rose-200">
+                  QR kod üretilemiyor: garson uygulamasının adresi tanımlı değil.
+                </p>
+                <p className="text-[10px] text-[#C4C4CC] leading-relaxed">
+                  Garson uygulamasını yüklediğiniz adresi girin. Telefon bu adresi okutarak eşleşecek.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={customDomainInput}
+                    onChange={(e) => setCustomDomainInput(e.target.value)}
+                    placeholder="https://alanadiniz.com.tr/garson"
+                    className="flex-1 px-3 py-2 bg-[#141416] border border-[#383844] focus:border-[#F5C877] rounded-xl text-[11px] font-mono text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const value = customDomainInput.trim();
+                      if (!value) {
+                        notify.error('Adres Gerekli', 'Lütfen garson uygulamasının adresini girin.');
+                        return;
+                      }
+                      setPublicBaseUrl(value);
+                      setCustomDomainInput(getPublicBaseUrl());
+                      notify.success('Adres Kaydedildi', 'QR kod bu adrese yönlendirecek şekilde güncellendi.');
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-[11px] cursor-pointer"
+                  >
+                    Kaydet
+                  </button>
+                </div>
               </div>
             )}
 
