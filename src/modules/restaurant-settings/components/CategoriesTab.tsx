@@ -92,7 +92,11 @@ export const CategoriesTab: React.FC<CategoriesTabProps> = ({
       message: `[${name}] kategorisini silmek istediğinize emin misiniz?`,
       type: 'danger',
       onConfirm: () => {
-        restaurantDataService.deleteCategory(id);
+        const result = restaurantDataService.deleteCategory(id);
+        if (!result.success) {
+          notify.error('Kategori Silinemedi', result.message || 'Bu kategoriye bağlı ürünler var.');
+          return;
+        }
         notify.success('Kategori Silindi', `[${name}] kaldırıldı.`);
         onRefresh();
       }

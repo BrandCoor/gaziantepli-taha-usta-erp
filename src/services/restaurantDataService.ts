@@ -456,34 +456,37 @@ const STORAGE_KEYS = {
   ONLINE_ORDERS: 'gtu_online_orders',
 };
 
+// Kimlik bilgileri burada ASLA sabit yazılmaz: bu dosya derlenip istemciye gönderildiği
+// için buraya yazılan her anahtar/şifre uygulamanın kurulu olduğu her makinede okunabilir.
+// Değerler Ayarlar > Platform API ekranından girilir ve cihaz üzerinde saklanır.
 export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
   trendyol: {
-    enabled: true,
-    isOpen: true,
-    supplierId: '770463',
-    apiKey: 'Es32CcLQUCJs51lAPgJ8',
-    secretKey: 'xbuy0pocdpcUOfGd8kNS9',
-    email: 'mehmettahagumus@icloud.com',
+    enabled: false,
+    isOpen: false,
+    supplierId: '',
+    apiKey: '',
+    secretKey: '',
+    email: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
   },
   getir: {
-    enabled: true,
-    isOpen: true,
-    restaurantName: 'Gaziantepli Taha Usta (Eğitim Mah.)',
-    secretKey: '85309848fd36282068984f02259f91c2873d2bc6',
-    restaurantId: 'GETIR-27-01',
+    enabled: false,
+    isOpen: false,
+    restaurantName: '',
+    secretKey: '',
+    restaurantId: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
   },
   yemeksepeti: {
-    enabled: true,
-    isOpen: true,
-    username: 'mehmettahagumus@icloud.com',
-    password: 'Gaziantepli27taha',
-    restaurantId: 'YS-TAHA-27',
+    enabled: false,
+    isOpen: false,
+    username: '',
+    password: '',
+    restaurantId: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
@@ -683,7 +686,7 @@ const DEFAULT_RECEIPT_SETTINGS: ReceiptSettingsConfig = {
   taxOffice: 'Şehitkamil V.D.',
   mersisNo: '012345678900001',
   wifiName: 'TahaUsta_Misafir',
-  wifiPassword: 'anteplilezzetleri',
+  wifiPassword: '',
   instagram: '@gazianteplitahausta',
   footerMessage: 'Afiyet Olsun. Yine Bekleriz!',
   showWaiterName: true,
@@ -1279,6 +1282,17 @@ class RestaurantDataService {
       }
     });
 
+    // Açık adisyonu olan bir masa, bölümün masa sayısı düşürülmüş (veya bölüm silinmiş)
+    // olsa bile listeden çıkarılmaz. Aksi halde ödenmemiş hesap, uyarı ve arşiv kaydı
+    // olmadan tamamen kaybolur.
+    const keptIds = new Set(updatedTables.map((t) => t.id));
+    for (const t of existingTables) {
+      if (keptIds.has(t.id)) continue;
+      if (t.order && (t.order.items?.length || 0) > 0) {
+        updatedTables.push(t);
+      }
+    }
+
     const sorted = sortTablesNaturally(updatedTables, sections);
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(sorted));
     return sorted;
@@ -1467,10 +1481,20 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []) {
+  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []): boolean {
     const tables = this.getTables();
     const table = tables.find((t) => t.id === tableId);
-    if (!table || !table.order) return;
+    if (!table || !table.order) return false;
+
+    // Tahsil edilen tutar hesabı karşılamıyorsa masa kapatılmaz. Aksi halde ödenmemiş
+    // bir hesap "tamamlandı" olarak arşivlenir ve gün sonunda kasa açığı olarak çıkar.
+    const dueAmount = Number(table.order.totalAmount) || 0;
+    if (payments.length > 0) {
+      const collected = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      if (collected + 0.01 < dueAmount) {
+        return false;
+      }
+    }
 
     const now = new Date();
     const todayDate = now.toISOString().split('T')[0];
@@ -1498,6 +1522,7 @@ class RestaurantDataService {
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
+    return true;
   }
 
   public getAllCompletedOrders(): CompletedOrderArchive[] {
@@ -1756,7 +1781,7 @@ class RestaurantDataService {
     // KASADA KALAN NET NAKİT = (Nakit Satış) - (Kasadan Çıkan Nakit Giderler) - (Kasadan Toptancıya Ödenen Nakitler)
     const netCashInRegister = cashSales - cashExpenses - supplierCashPayments;
 
-    const netTotal = grossTotal - discountTotal;
+    const netTotal = grossTotal - discountTotal - giftTotal;
     const vatRate = 10;
     const vatBase = netTotal / 1.10;
     const vatAmount = netTotal - vatBase;
@@ -2111,7 +2136,7 @@ class RestaurantDataService {
       });
     });
 
-    const netTotal = grossTotal - discountTotal;
+    const netTotal = grossTotal - discountTotal - giftTotal;
     const totalOrders = paidOrders.length;
     const avgOrderAmount = totalOrders > 0 ? grossTotal / totalOrders : 0;
 
@@ -2245,10 +2270,30 @@ class RestaurantDataService {
     this.savePrinters(printers);
   }
 
-  public deletePrinter(id: string) {
+  // Yazıcı silinince ona bağlı ürün/kategoriler ölü bir yazıcıya işaret etmeye devam
+  // ediyor ve mutfak fişi sessizce hiçbir yere gitmiyordu. Bağlantılar temizlenir.
+  public deletePrinter(id: string): { success: boolean; clearedProducts: number; clearedCategories: number } {
     const printers = this.getPrinters().filter(p => p.id !== id);
     this.savePrinters(printers);
+
+    const products = this.getProducts();
+    const affectedProducts = products.filter(p => p.printerId === id);
+    if (affectedProducts.length > 0) {
+      this.saveProducts(products.map(p => (p.printerId === id ? { ...p, printerId: undefined } : p)));
+    }
+
+    const categories = this.getCategories();
+    const affectedCategories = categories.filter(c => c.printerId === id);
+    if (affectedCategories.length > 0) {
+      this.saveCategories(categories.map(c => (c.printerId === id ? { ...c, printerId: undefined } : c)));
+    }
+
     this.deleteItemFromCloud('printers', id);
+    return {
+      success: true,
+      clearedProducts: affectedProducts.length,
+      clearedCategories: affectedCategories.length
+    };
   }
 
   public getCategories(): CategoryConfig[] {
@@ -2274,10 +2319,21 @@ class RestaurantDataService {
     this.saveCategories(categories);
   }
 
-  public deleteCategory(id: string) {
+  // Kategori silinince ürünleri sahipsiz kalıyordu: menüde görünmez oluyor ama
+  // depoda duruyorlardı. Bağlı ürün varsa silme engellenir, karar kullanıcıya bırakılır.
+  public deleteCategory(id: string): { success: boolean; message?: string } {
+    const linkedProducts = this.getProducts().filter(p => p.categoryId === id);
+    if (linkedProducts.length > 0) {
+      return {
+        success: false,
+        message: `Bu kategoride ${linkedProducts.length} ürün var (${linkedProducts.slice(0, 3).map(p => p.name).join(', ')}${linkedProducts.length > 3 ? '...' : ''}). Önce bu ürünleri başka bir kategoriye taşıyın veya silin.`
+      };
+    }
+
     const categories = this.getCategories().filter(c => c.id !== id);
     this.saveCategories(categories);
     this.deleteItemFromCloud('kategoriler', id);
+    return { success: true };
   }
 
   public getProducts(): ProductConfig[] {

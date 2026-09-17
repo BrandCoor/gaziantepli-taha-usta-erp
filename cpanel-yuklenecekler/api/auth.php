@@ -484,6 +484,72 @@ switch ($action) {
     // ========================================================
     // 5. CİHAZ DURUMU DENETLEME (CHECK DEVICE STATUS)
     // ========================================================
+    case 'device_lookup':
+        // Cihaz kimliğinden eşleşmiş garsonu bulur. Telefonun yerel hafızası silinse
+        // bile (iOS/PWA depolama temizliği) cihaz tanınır ve yeniden QR okutmak
+        // gerekmez. PIN bu yanıtta DÖNDÜRÜLMEZ: yalnızca cihaz kimliğini bilen birine
+        // PIN sızdırmamak için giriş yine PIN doğrulamasından geçer.
+        $lookupUuid = trim($inputData['device_uuid'] ?? $_GET['device_uuid'] ?? $deviceUuid);
+        if ($lookupUuid === '') {
+            echo json_encode(['success' => false, 'error' => 'Cihaz kimliği belirtilmedi.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $foundWaiter = null;
+        if ($useMysql) {
+            try {
+                $luStmt = $pdo->prepare("
+                    SELECT id, ad_soyad AS ad, rol FROM `users` WHERE `device_uuid` = ? AND `aktif` = 1
+                    UNION
+                    SELECT id, ad AS ad, rol FROM `personeller` WHERE `device_uuid` = ? AND `aktif` = 1
+                    LIMIT 1
+                ");
+                $luStmt->execute([$lookupUuid, $lookupUuid]);
+                $luRow = $luStmt->fetch(PDO::FETCH_ASSOC);
+                if ($luRow) {
+                    $foundWaiter = [
+                        'id' => $luRow['id'],
+                        'name' => $luRow['ad'] ?: 'Garson',
+                        'role' => $luRow['rol'] ?: 'WAITER'
+                    ];
+                }
+            } catch (Exception $e) {}
+
+            if (!$foundWaiter) {
+                try {
+                    $cuStmt = $pdo->prepare("SELECT `waiter_id`, `waiter_name` FROM `cihazlar` WHERE `device_uuid` = ? AND `durum` = 'APPROVED' LIMIT 1");
+                    $cuStmt->execute([$lookupUuid]);
+                    $cuRow = $cuStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($cuRow) {
+                        $foundWaiter = [
+                            'id' => $cuRow['waiter_id'],
+                            'name' => $cuRow['waiter_name'] ?: 'Garson',
+                            'role' => 'WAITER'
+                        ];
+                    }
+                } catch (Exception $e) {}
+            }
+        } else {
+            $luJson = loadJsonData($dbFile);
+            foreach (($luJson['paired_devices'] ?? []) as $luWaiterId => $luInfo) {
+                if (!empty($luInfo['device_uuid']) && $luInfo['device_uuid'] === $lookupUuid) {
+                    $foundWaiter = [
+                        'id' => $luWaiterId,
+                        'name' => $luInfo['waiterName'] ?? 'Garson',
+                        'role' => 'WAITER'
+                    ];
+                    break;
+                }
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'is_paired' => $foundWaiter !== null,
+            'waiter' => $foundWaiter
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+
     case 'check_device_status':
         $userId = trim($inputData['userId'] ?? $_GET['userId'] ?? '');
         $checkDeviceUuid = trim($inputData['device_uuid'] ?? $deviceUuid);

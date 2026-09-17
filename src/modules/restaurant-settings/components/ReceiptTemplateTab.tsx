@@ -31,7 +31,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
     taxOffice: settings.taxOffice || 'Şehitkamil V.D.',
     mersisNo: settings.mersisNo || '012345678900001',
     wifiName: settings.wifiName || 'TahaUsta_Misafir',
-    wifiPassword: settings.wifiPassword || 'anteplilezzetleri',
+    wifiPassword: settings.wifiPassword || '',
     instagram: settings.instagram || '@gazianteplitahausta',
     footerMessage: settings.footerMessage || 'Afiyet Olsun. Yine Bekleriz!',
     showWaiterName: settings.showWaiterName ?? true,
@@ -249,7 +249,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                     type="text"
                     value={form.wifiPassword || ''}
                     onChange={(e) => setForm({ ...form, wifiPassword: e.target.value })}
-                    placeholder="anteplilezzetleri"
+                    placeholder="Misafir Wi-Fi şifresi"
                     className="w-full mt-1 p-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono font-bold text-sky-300"
                   />
                 </div>

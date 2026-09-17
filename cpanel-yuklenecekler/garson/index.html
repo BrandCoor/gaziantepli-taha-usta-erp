@@ -498,11 +498,45 @@
       }, 3300);
     }
 
-    let deviceUuid = localStorage.getItem('gtu_waiter_uuid');
+    // Cihaz kimliği ve eşleşme yalnızca localStorage'da tutulduğunda, iOS/Safari bir
+    // süre kullanılmayan siteyi temizleyince telefon her açılışta yeniden QR istiyordu.
+    // Bu yüzden aynı değer 1 yıllık çerezle de yedekleniyor; ikisinden biri sağ kalırsa
+    // eşleşme korunur. İkisi birden silinse bile sunucudaki cihaz kaydından geri alınır.
+    function persistentSet(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+      try {
+        const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = key + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax' + secure;
+      } catch (e) {}
+    }
+
+    function persistentGet(key) {
+      try {
+        const fromLocal = localStorage.getItem(key);
+        if (fromLocal) return fromLocal;
+      } catch (e) {}
+      try {
+        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = document.cookie.match(new RegExp('(?:^|; )' + escaped + '=([^;]*)'));
+        if (match) {
+          const value = decodeURIComponent(match[1]);
+          try { localStorage.setItem(key, value); } catch (e) {}
+          return value;
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function persistentRemove(key) {
+      try { localStorage.removeItem(key); } catch (e) {}
+      try { document.cookie = key + '=; path=/; max-age=0; SameSite=Lax'; } catch (e) {}
+    }
+
+    let deviceUuid = persistentGet('gtu_waiter_uuid');
     if (!deviceUuid) {
       deviceUuid = 'MOB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-      localStorage.setItem('gtu_waiter_uuid', deviceUuid);
     }
+    persistentSet('gtu_waiter_uuid', deviceUuid);
 
     let pairingScannerControls = null;
 
@@ -574,7 +608,7 @@
             pin: userObj.pin || code,
             deviceUuid: deviceUuid
           };
-          localStorage.setItem('gtu_paired_waiter', JSON.stringify(pairedObj));
+          persistentSet('gtu_paired_waiter', JSON.stringify(pairedObj));
           selectedWaiter = pairedObj;
           showToast(`Cihaz [${pairedObj.name}] hesabına başarıyla mühürlendi!`, 'success');
           showPinScreen();
@@ -585,21 +619,14 @@
           return;
         }
       } catch (e) {
-        console.warn('Eşleşme API hatası, yerel eşleşme devrede:', e);
+        console.warn('Eşleşme API hatası:', e);
       }
 
-      // Ağ/Sunucu offline olsa bile kesintisiz yerel eşleşme
-      const fallbackWaiter = {
-        id: 'waiter-' + code,
-        name: 'Garson (' + code + ')',
-        pin: code,
-        deviceUuid: deviceUuid
-      };
-      localStorage.setItem('gtu_paired_waiter', JSON.stringify(fallbackWaiter));
-      selectedWaiter = fallbackWaiter;
-      showToast(`Cihaz [${fallbackWaiter.name}] hesabına başarıyla eşleştirildi.`, 'success');
-      showPinScreen();
-      loadActiveWaiters();
+      // Cihaz eşleştirme bir güvenlik işlemidir ve SUNUCU ONAYI OLMADAN yapılamaz.
+      // Önceki kod, sunucuya ulaşılamadığında girilen kodu doğru kabul edip uydurma
+      // bir garson hesabı oluşturuyordu; bu hem kasada olmayan bir garson yaratıyor
+      // hem de herhangi bir 6 haneli kodla giriş yapılmasına izin veriyordu.
+      showToast('Eşleştirme yapılamadı: kasa sunucusuna ulaşılamıyor. İnternet bağlantınızı kontrol edip tekrar deneyin.', 'error');
     }
 
     function getPairingParams(scannedText) {
@@ -747,7 +774,7 @@
     let currentWaiter = null;
 
     // Eğer önceden eşleşmiş bir garson varsa otomatik seç
-    const savedPairedStr = localStorage.getItem('gtu_paired_waiter');
+    const savedPairedStr = persistentGet('gtu_paired_waiter');
     if (savedPairedStr) {
       try {
         const parsed = JSON.parse(savedPairedStr);
@@ -761,8 +788,46 @@
       } catch(e) {}
     }
 
+    // Telefonun yerel hafızası (localStorage + çerez) tamamen silinmiş olabilir.
+    // Bu durumda bile cihaz sunucuda kayıtlıysa QR okutmaya gerek yoktur: cihaz
+    // kimliğinden eşleşme geri yüklenir ve doğrudan PIN ekranına geçilir.
+    async function restorePairingFromServer() {
+      if (selectedWaiter) return true;
+      try {
+        const res = await apiFetch('device_lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'device_lookup', device_uuid: deviceUuid })
+        });
+        const data = await res.json();
+        if (data && data.success && data.is_paired && data.waiter && data.waiter.id) {
+          const restored = {
+            id: data.waiter.id,
+            name: data.waiter.name || 'Garson',
+            pin: '',
+            deviceUuid: deviceUuid
+          };
+          persistentSet('gtu_paired_waiter', JSON.stringify(restored));
+          selectedWaiter = restored;
+          const greetingEl = document.getElementById('waiterGreeting');
+          if (greetingEl) greetingEl.innerText = `Seçildi: ${restored.name}`;
+          return true;
+        }
+      } catch (e) {
+        console.warn('Cihaz eşleşmesi sunucudan sorgulanamadı:', e);
+      }
+      return false;
+    }
+
     if (!selectedWaiter && !qrToken) {
-      showPairingScreen();
+      restorePairingFromServer().then((restored) => {
+        if (restored) {
+          showPinScreen();
+          loadActiveWaiters();
+        } else {
+          showPairingScreen();
+        }
+      });
     }
 
     function updateWaiterUI() {
@@ -844,6 +909,8 @@
     let enteredPin = '';
     let liveSections = [];
     let liveTables = [];
+    // Kasadan veri alınamadığını arayüzde açıkça belirtmek için kullanılır.
+    let liveDataError = false;
     let liveProducts = [];
     let liveCategories = [];
     let currentSectionId = '';
@@ -889,7 +956,7 @@
       const pinVal = enteredPin;
       const waiterTarget = selectedWaiter || (function() {
         try {
-          const raw = localStorage.getItem('gtu_paired_waiter');
+          const raw = persistentGet('gtu_paired_waiter');
           return raw ? JSON.parse(raw) : null;
         } catch(e) { return null; }
       })();
@@ -928,7 +995,9 @@
 
       // 2. Çevrimdışı / Yerel Eşleşme Doğrulaması (Sunucuya ulaşılamadığında kesintisiz giriş)
       if (!loginSuccessful) {
-        if (waiterTarget && (waiterTarget.pin === pinVal || !waiterTarget.pin || pinVal === '1234' || pinVal === '1453')) {
+        // Sabit '1234'/'1453' kodları ve PIN'i olmayan garsona serbest giriş kaldırıldı:
+        // sunucuya ulaşılamadığında herkesin bildiği kodlarla giriş yapılabiliyordu.
+        if (waiterTarget && waiterTarget.pin && waiterTarget.pin === pinVal) {
           loginSuccessful = true;
           authenticatedWaiter = {
             id: waiterTarget.id || 'w1',
@@ -994,11 +1063,9 @@
     }
 
     // Canlı Veri Çekme & Kasa ile Tam Eşzamanlama
-    const DEFAULT_KASA_SECTIONS = [
-      { id: 'sec-salon', name: 'Ana Salon', tableCount: 12, capacityPerTable: 4 },
-      { id: 'sec-bahce', name: 'Bahçe', tableCount: 10, capacityPerTable: 6 },
-      { id: 'sec-paket', name: 'Paket Servis', tableCount: 8, capacityPerTable: 1 }
-    ];
+    // NOT: Buraya varsayılan/örnek masa, kategori veya ürün listesi EKLENMEZ. Sunucuya
+    // ulaşılamadığında uydurma masa ve fiyat göstermek, garsonun kasada olmayan bir
+    // ürünü hayali fiyatla sipariş etmesine yol açar. Veri yoksa açıkça hata gösterilir.
 
     function extractTableNumber(table) {
       if (!table) return 0;
@@ -1047,25 +1114,6 @@
         }
         return collator.compare(a.name || a.id || '', b.name || b.id || '');
       });
-    }
-
-    function generateTablesFromSections(secs) {
-      const generated = [];
-      secs.forEach(sec => {
-        const count = Number(sec.tableCount) || 10;
-        for (let i = 1; i <= count; i++) {
-          generated.push({
-            id: `tbl-${sec.id}-${i}`,
-            sectionId: sec.id,
-            sectionName: sec.name,
-            name: `${sec.name} ${i}`,
-            capacity: sec.capacityPerTable || 4,
-            status: 'EMPTY',
-            order: null
-          });
-        }
-      });
-      return sortTablesNaturally(generated, secs);
     }
 
     function initSyncListeners() {
@@ -1177,39 +1225,13 @@
           }
         }
       } catch (e) {
-        console.warn('Canlı veri çekilemedi, yerel veri devreye alınıyor:', e);
+        console.warn('Canlı veri çekilemedi:', e);
       }
 
-      // Eğer sunucudan veya yerelden masa/bölüm boş geldiyse varsayılan Kasa şemasını yükle
-      if (!liveSections || liveSections.length === 0) {
-        liveSections = DEFAULT_KASA_SECTIONS;
-      }
-      if (!liveTables || liveTables.length === 0) {
-        liveTables = generateTablesFromSections(liveSections);
-      }
-      if (!liveCategories || liveCategories.length === 0) {
-        liveCategories = [
-          { id: 'cat-kebap', name: 'Kebaplar & Izgaralar' },
-          { id: 'cat-firin', name: 'Pide & Lahmacun' },
-          { id: 'cat-corba', name: 'Çorbalar & Mezeler' },
-          { id: 'cat-icecek', name: 'İçecekler & Meşrubat' },
-          { id: 'cat-tatli', name: 'Tatlılar & Meyve' }
-        ];
-      }
-      if (!liveProducts || liveProducts.length === 0) {
-        liveProducts = [
-          { id: 'p-1', name: 'Adana Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-          { id: 'p-2', name: 'Urfa Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-          { id: 'p-3', name: 'Kuzu Şiş Kebap', categoryId: 'cat-kebap', price: 380, printer: 'Ocak' },
-          { id: 'p-4', name: 'Ali Nazik Kebap', categoryId: 'cat-kebap', price: 390, printer: 'Ocak' },
-          { id: 'p-5', name: 'Antep Lahmacun', categoryId: 'cat-firin', price: 110, printer: 'Fırın' },
-          { id: 'p-6', name: 'Kuşbaşılı Kaşarlı Pide', categoryId: 'cat-firin', price: 280, printer: 'Fırın' },
-          { id: 'p-7', name: 'Kıymalı Kaşarlı Pide', categoryId: 'cat-firin', price: 260, printer: 'Fırın' },
-          { id: 'p-8', name: 'Açık Yayık Ayranı', categoryId: 'cat-icecek', price: 40, printer: 'Kasa' },
-          { id: 'p-9', name: 'Kutu Meşrubat / Şalgam', categoryId: 'cat-icecek', price: 45, printer: 'Kasa' },
-          { id: 'p-10', name: 'Antep Fıstıklı Katmer', categoryId: 'cat-tatli', price: 220, printer: 'Fırın' }
-        ];
-      }
+      // Sunucudan masa/menü gelmediyse UYDURMA veri üretilmez; kasada olmayan bir ürünün
+      // hayali fiyatla sipariş edilmesi gerçek mali zarar demektir. Durum arayüzde
+      // açıkça hata olarak gösterilir ve sipariş alınamaz.
+      liveDataError = !Array.isArray(liveTables) || liveTables.length === 0;
 
       if (!currentSectionId) {
         currentSectionId = liveSections[0] ? liveSections[0].id : 'ALL';
@@ -1224,69 +1246,6 @@
       if (isManual) showToast('Masalar ve menü güncellendi.', 'success');
     }
 
-    function fallbackLocalData() {
-      // 1. Önce Kasa'nın localStorage verisini kontrol et
-      try {
-        const rawSec = localStorage.getItem('gtu_sections');
-        const rawTbl = localStorage.getItem('gtu_tables');
-        const rawProd = localStorage.getItem('gtu_products');
-        const rawCat = localStorage.getItem('gtu_categories');
-
-        if (rawSec) {
-          const parsedSec = JSON.parse(rawSec);
-          if (Array.isArray(parsedSec) && parsedSec.length > 0) liveSections = parsedSec;
-        }
-        if (rawTbl) {
-          const parsedTbl = JSON.parse(rawTbl);
-          if (Array.isArray(parsedTbl) && parsedTbl.length > 0) liveTables = sortTablesNaturally(parsedTbl, liveSections);
-        }
-        if (rawProd) {
-          const parsedProd = JSON.parse(rawProd);
-          if (Array.isArray(parsedProd) && parsedProd.length > 0) liveProducts = parsedProd;
-        }
-        if (rawCat) {
-          const parsedCat = JSON.parse(rawCat);
-          if (Array.isArray(parsedCat) && parsedCat.length > 0) liveCategories = parsedCat;
-        }
-
-        if (liveSections.length > 0 && liveTables.length > 0) {
-          if (!currentSectionId) currentSectionId = liveSections[0].id;
-          if (!transferActiveSectionId) transferActiveSectionId = liveSections[0].id;
-          renderSectionTabs();
-          renderTables();
-          updateHeaderStats();
-          return;
-        }
-      } catch (e) {}
-
-      // 2. Kasa ile 100% birebir eşleşen varsayılan bölümler ve masalar
-      liveSections = DEFAULT_KASA_SECTIONS;
-      liveTables = generateTablesFromSections(liveSections);
-      liveCategories = [
-        { id: 'cat-kebap', name: 'Kebaplar & Izgaralar' },
-        { id: 'cat-firin', name: 'Pide & Lahmacun' },
-        { id: 'cat-corba', name: 'Çorbalar & Mezeler' },
-        { id: 'cat-icecek', name: 'İçecekler & Meşrubat' },
-        { id: 'cat-tatli', name: 'Tatlılar & Meyve' }
-      ];
-      liveProducts = [
-        { id: 'p-1', name: 'Adana Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-        { id: 'p-2', name: 'Urfa Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-        { id: 'p-3', name: 'Kuzu Şiş Kebap', categoryId: 'cat-kebap', price: 380, printer: 'Ocak' },
-        { id: 'p-4', name: 'Ali Nazik Kebap', categoryId: 'cat-kebap', price: 390, printer: 'Ocak' },
-        { id: 'p-5', name: 'Antep Lahmacun', categoryId: 'cat-firin', price: 110, printer: 'Fırın' },
-        { id: 'p-6', name: 'Kuşbaşılı Kaşarlı Pide', categoryId: 'cat-firin', price: 280, printer: 'Fırın' },
-        { id: 'p-7', name: 'Kıymalı Kaşarlı Pide', categoryId: 'cat-firin', price: 260, printer: 'Fırın' },
-        { id: 'p-8', name: 'Açık Yayık Ayranı', categoryId: 'cat-icecek', price: 40, printer: 'Kasa' },
-        { id: 'p-9', name: 'Kutu Meşrubat / Şalgam', categoryId: 'cat-icecek', price: 45, printer: 'Kasa' },
-        { id: 'p-10', name: 'Antep Fıstıklı Katmer', categoryId: 'cat-tatli', price: 220, printer: 'Fırın' }
-      ];
-      currentSectionId = liveSections[0].id;
-      transferActiveSectionId = liveSections[0].id;
-      renderSectionTabs();
-      renderTables();
-      updateHeaderStats();
-    }
 
     // Gerçek Zamanlı Dinleyicileri Başlat
     initSyncListeners();
@@ -1373,7 +1332,13 @@
       }
 
       if (tables.length === 0) {
-        grid.innerHTML = '<div class="col-span-full text-center text-[#8E8E98] text-xs py-10">Bu filtrede masa bulunmuyor.</div>';
+        grid.innerHTML = liveDataError
+          ? `<div class="col-span-full text-center py-10 px-4">
+               <i class="fa-solid fa-triangle-exclamation text-2xl text-rose-400 mb-3 block"></i>
+               <p class="text-xs font-black text-rose-400">Masa bilgileri kasadan alınamadı.</p>
+               <p class="text-[11px] text-[#A0A0AA] mt-2 leading-relaxed">İnternet bağlantınızı kontrol edip yukarıdaki yenile düğmesine basın.<br>Bağlantı kurulmadan sipariş alınamaz.</p>
+             </div>`
+          : '<div class="col-span-full text-center text-[#8E8E98] text-xs py-10">Bu filtrede masa bulunmuyor.</div>';
         return;
       }
 

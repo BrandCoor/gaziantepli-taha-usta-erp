@@ -301,13 +301,19 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
       message: `[${name}] yazıcısını sistemden silmek istediğinize emin misiniz?`,
       type: 'danger',
       onConfirm: () => {
-        restaurantDataService.deletePrinter(id);
+        const result = restaurantDataService.deletePrinter(id);
         fetch(`${getApiSyncUrl()}?action=delete_printer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id })
         }).catch(() => {});
-        notify.success('Yazıcı Silindi', `[${name}] sistemden kaldırıldı.`);
+        const rerouted = result.clearedProducts + result.clearedCategories;
+        notify.success(
+          'Yazıcı Silindi',
+          rerouted > 0
+            ? `[${name}] kaldırıldı. Bu yazıcıya bağlı ${result.clearedProducts} ürün ve ${result.clearedCategories} kategorinin yazıcı ataması temizlendi; bunlara yeni yazıcı seçin.`
+            : `[${name}] sistemden kaldırıldı.`
+        );
         onRefresh();
       }
     });
