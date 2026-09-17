@@ -400,6 +400,10 @@
 
     async function apiFetch(action, options = {}) {
       const headers = { 'X-Device-UUID': deviceUuid, ...(options.headers || {}) };
+      // Kalıcı cihaz anahtarı: eşleşme sonrası sunucunun verdiği, iptal edilebilir kimlik.
+      if (typeof deviceToken === 'string' && deviceToken) {
+        headers['X-Device-Token'] = deviceToken;
+      }
       const tryEndpoints = [workingApiUrl, ...API_ENDPOINTS.filter(u => u !== workingApiUrl)];
       let lastError = null;
 
@@ -538,6 +542,15 @@
     }
     persistentSet('gtu_waiter_uuid', deviceUuid);
 
+    // Eşleşme sonrası sunucudan gelen kalıcı cihaz anahtarı.
+    let deviceToken = persistentGet('gtu_device_token') || '';
+
+    function storeDeviceToken(token) {
+      if (!token) return;
+      deviceToken = token;
+      persistentSet('gtu_device_token', token);
+    }
+
     let pairingScannerControls = null;
 
     function stopPairingScanner() {
@@ -602,10 +615,12 @@
         const result = await response.json();
         if (result && result.success) {
           const userObj = result.user || {};
+          storeDeviceToken(result.device_token);
+          // Eşleşme kodu PIN olarak saklanmaz: bu ikisi farklı şeylerdir ve kodu
+          // PIN yerine kaydetmek, kodu bilen herkesin giriş yapabilmesi demekti.
           const pairedObj = {
             id: userObj.id || result.waiterId || 'W1',
             name: userObj.ad || userObj.name || 'Garson',
-            pin: userObj.pin || code,
             deviceUuid: deviceUuid
           };
           persistentSet('gtu_paired_waiter', JSON.stringify(pairedObj));
@@ -710,37 +725,43 @@
       const status = document.getElementById('pairingStatus');
       if (status) status.innerText = 'Cihaz güvenli şekilde eşleştiriliyor...';
 
-      const completeLocalPair = (userName) => {
-        const finalName = userName || name || 'Garson';
-        const pairedObj = {
-          id: userId,
-          name: finalName,
-          pin: pin || '',
-          deviceUuid: deviceUuid
-        };
-        localStorage.setItem('gtu_paired_waiter', JSON.stringify(pairedObj));
-        selectedWaiter = pairedObj;
-        const greeting = document.getElementById('waiterGreeting');
-        if (greeting) greeting.innerText = `Seçildi: ${pairedObj.name}`;
-        showToast(`Cihaz ${pairedObj.name} hesabına başarıyla eşleştirildi. PIN ile giriş yapın.`, 'success');
-        showPinScreen();
-        loadActiveWaiters();
+      const failPairing = (message) => {
+        if (status) status.innerText = message;
+        showToast(message, 'error');
       };
 
       apiFetch('pair_device', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'pair_device', userId, token, device_uuid: deviceUuid, name, pin })
       }).then(async (response) => {
         const result = await response.json();
-        if (!response.ok || !result.success) {
-          completeLocalPair(name);
+        // Eşleştirme SUNUCU ONAYI gerektirir. Önceki kod, sunucu reddetse veya ağ
+        // hatası olsa bile cihazı eşleşmiş sayıyordu; bu, geçersiz bir QR ile
+        // eşleşme yapılabilmesi demekti.
+        if (!response.ok || !result || !result.success) {
+          failPairing((result && (result.error || result.message)) || 'Eşleştirme reddedildi. Kasadan yeni QR kod alın.');
           return;
         }
+
         const userObj = result.user || {};
-        completeLocalPair(userObj.ad || userObj.name || name);
+        storeDeviceToken(result.device_token);
+
+        const pairedObj = {
+          id: userObj.id || result.waiterId || userId,
+          name: userObj.ad || userObj.name || name || 'Garson',
+          deviceUuid: deviceUuid
+        };
+        persistentSet('gtu_paired_waiter', JSON.stringify(pairedObj));
+        selectedWaiter = pairedObj;
+
+        const greeting = document.getElementById('waiterGreeting');
+        if (greeting) greeting.innerText = `Seçildi: ${pairedObj.name}`;
+        showToast(`Cihaz ${pairedObj.name} hesabına eşleştirildi. PIN ile giriş yapın.`, 'success');
+        showPinScreen();
+        loadActiveWaiters();
       }).catch(() => {
-        completeLocalPair(name);
+        failPairing('Kasa sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.');
       });
     }
 
@@ -993,19 +1014,14 @@
         console.warn('[PIN] Sunucu erişiminde ağ sorunu, yerel eşleşme kontrol ediliyor...', err);
       }
 
-      // 2. Çevrimdışı / Yerel Eşleşme Doğrulaması (Sunucuya ulaşılamadığında kesintisiz giriş)
+      // Çevrimdışı PIN doğrulaması KALDIRILDI. PIN artık telefonda saklanmıyor ve
+      // giriş yalnızca sunucu tarafından doğrulanıyor. Zaten masa ve menü de
+      // sunucudan geldiği için bağlantı olmadan sipariş alınamaz.
       if (!loginSuccessful) {
-        // Sabit '1234'/'1453' kodları ve PIN'i olmayan garsona serbest giriş kaldırıldı:
-        // sunucuya ulaşılamadığında herkesin bildiği kodlarla giriş yapılabiliyordu.
-        if (waiterTarget && waiterTarget.pin && waiterTarget.pin === pinVal) {
-          loginSuccessful = true;
-          authenticatedWaiter = {
-            id: waiterTarget.id || 'w1',
-            name: waiterTarget.name || 'Garson',
-            role: 'WAITER',
-            pin: pinVal
-          };
-        }
+        showToast('Kasa sunucusuna ulaşılamıyor. İnternet bağlantınızı kontrol edin.', 'error');
+        enteredPin = '';
+        updateDots();
+        return;
       }
 
       if (loginSuccessful && authenticatedWaiter) {

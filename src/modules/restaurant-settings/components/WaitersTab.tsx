@@ -277,11 +277,13 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     if (!w) return '';
     const token = pairingToken || w.qrToken || `TOKEN-GTU-${(w.id || 'W1').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`;
     const code = pairingCode || w.pairingCode || '';
-    const query = `token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}&userId=${encodeURIComponent(w.id)}&name=${encodeURIComponent(w.name || '')}&pin=${encodeURIComponent(w.pin || '')}`;
-    if (qrTargetMode === 'REMOTE') {
-      return `https://garson.rymedya.com.tr/#/pair?${query}`;
-    }
+    // PIN QR koduna KONULMAZ: QR'ı fotoğraflayan herkes garsonun giriş kodunu
+    // öğrenirdi ve cihaz kilidi anlamsız hale gelirdi. Giriş sunucuda doğrulanır.
+    const query = `token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}&userId=${encodeURIComponent(w.id)}&name=${encodeURIComponent(w.name || '')}`;
     const publicBase = getPublicBaseUrl();
+    if (qrTargetMode === 'REMOTE') {
+      return publicBase ? `${publicBase}/#/pair?${query}` : '';
+    }
     const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     const origin = isLocal ? publicBase : (typeof window !== 'undefined' ? window.location.origin : publicBase);
     const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';

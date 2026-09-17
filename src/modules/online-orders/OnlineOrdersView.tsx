@@ -24,9 +24,11 @@ import {
   FileText,
   Power
 } from 'lucide-react';
-import { 
-  restaurantDataService, 
-  FoodPlatformsConfig 
+import {
+  restaurantDataService,
+  FoodPlatformsConfig,
+  getApiSyncUrl,
+  isApiSyncConfigured
 } from '../../services/restaurantDataService';
 import { 
   onlinePlatformService, 
@@ -159,7 +161,8 @@ export const OnlineOrdersView: React.FC = () => {
     let isSubscribed = true;
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch('https://api.rymedya.com.tr/index.php?action=get_online_orders', {
+        if (!isApiSyncConfigured()) return;
+        const res = await fetch(`${getApiSyncUrl()}?action=get_online_orders`, {
           headers: { 'Accept': 'application/json' }
         });
         if (res.ok) {
