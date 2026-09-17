@@ -52,7 +52,7 @@ if (empty($action) && isset($inputData['action'])) {
 }
 
 // Cihaz eşleme ve kimlik doğrulama işlemleri doğrudan auth.php tarafından ele alınır
-if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status'])) {
+if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status', 'device_lookup'])) {
     require __DIR__ . '/auth.php';
     exit;
 }

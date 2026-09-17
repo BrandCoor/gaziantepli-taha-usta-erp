@@ -2270,10 +2270,30 @@ class RestaurantDataService {
     this.savePrinters(printers);
   }
 
-  public deletePrinter(id: string) {
+  // Yazıcı silinince ona bağlı ürün/kategoriler ölü bir yazıcıya işaret etmeye devam
+  // ediyor ve mutfak fişi sessizce hiçbir yere gitmiyordu. Bağlantılar temizlenir.
+  public deletePrinter(id: string): { success: boolean; clearedProducts: number; clearedCategories: number } {
     const printers = this.getPrinters().filter(p => p.id !== id);
     this.savePrinters(printers);
+
+    const products = this.getProducts();
+    const affectedProducts = products.filter(p => p.printerId === id);
+    if (affectedProducts.length > 0) {
+      this.saveProducts(products.map(p => (p.printerId === id ? { ...p, printerId: undefined } : p)));
+    }
+
+    const categories = this.getCategories();
+    const affectedCategories = categories.filter(c => c.printerId === id);
+    if (affectedCategories.length > 0) {
+      this.saveCategories(categories.map(c => (c.printerId === id ? { ...c, printerId: undefined } : c)));
+    }
+
     this.deleteItemFromCloud('printers', id);
+    return {
+      success: true,
+      clearedProducts: affectedProducts.length,
+      clearedCategories: affectedCategories.length
+    };
   }
 
   public getCategories(): CategoryConfig[] {
@@ -2299,10 +2319,21 @@ class RestaurantDataService {
     this.saveCategories(categories);
   }
 
-  public deleteCategory(id: string) {
+  // Kategori silinince ürünleri sahipsiz kalıyordu: menüde görünmez oluyor ama
+  // depoda duruyorlardı. Bağlı ürün varsa silme engellenir, karar kullanıcıya bırakılır.
+  public deleteCategory(id: string): { success: boolean; message?: string } {
+    const linkedProducts = this.getProducts().filter(p => p.categoryId === id);
+    if (linkedProducts.length > 0) {
+      return {
+        success: false,
+        message: `Bu kategoride ${linkedProducts.length} ürün var (${linkedProducts.slice(0, 3).map(p => p.name).join(', ')}${linkedProducts.length > 3 ? '...' : ''}). Önce bu ürünleri başka bir kategoriye taşıyın veya silin.`
+      };
+    }
+
     const categories = this.getCategories().filter(c => c.id !== id);
     this.saveCategories(categories);
     this.deleteItemFromCloud('kategoriler', id);
+    return { success: true };
   }
 
   public getProducts(): ProductConfig[] {
