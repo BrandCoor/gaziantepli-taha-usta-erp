@@ -893,103 +893,157 @@ if ($action === 'get_active_waiters') {
 }
 
 if ($action === 'verify_waiter_pin' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    // ====================================================================
+    // GÜVENLİK: Giriş yalnızca DAHA ÖNCE EŞLEŞTİRİLMİŞ bir cihazdan ve
+    // sisteme tanımlı, aktif bir garson hesabıyla yapılabilir.
+    // Önceki kodda iki açık vardı:
+    //   1) PIN '1234' her zaman kabul ediliyordu (herkesin bildiği atlama kodu).
+    //   2) PIN doğruysa cihaz OTOMATİK olarak garsona bağlanıyordu; yani
+    //      eşleştirme adımı tamamen atlanabiliyordu.
+    // ====================================================================
     $input = json_decode(file_get_contents('php://input'), true);
     $pin = trim($input['pin'] ?? '');
     $waiterId = trim($input['waiterId'] ?? '');
     $deviceUuid = trim($input['device_uuid'] ?? ($_SERVER['HTTP_X_DEVICE_UUID'] ?? ''));
+    $deviceTokenIn = trim($input['device_token'] ?? ($_SERVER['HTTP_X_DEVICE_TOKEN'] ?? ''));
 
-    if (empty($pin)) {
-        echo json_encode(['success' => false, 'message' => 'Lütfen PIN kodunuzu girin!']);
+    if ($pin === '') {
+        echo json_encode(['success' => false, 'message' => 'Lütfen PIN kodunuzu girin!'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if ($deviceUuid === '' && $deviceTokenIn === '') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Bu cihaz tanımlı değil. Önce kasadan QR ile eşleştirin.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
     if ($useMysql) {
-        $stmt = null;
-        if (!empty($waiterId)) {
-            $stmt = $pdo->prepare("
-                SELECT `id`, `ad` as name, `rol` as role, `pin`, `device_uuid` 
-                FROM `personeller` 
-                WHERE `id` = ? AND `pin` = ? AND `aktif` = 1
-                UNION
-                SELECT `id`, `ad_soyad` as name, `rol` as role, `pin_kodu` as pin, `device_uuid` 
-                FROM `users` 
-                WHERE `id` = ? AND `pin_kodu` = ? AND `aktif` = 1
-                LIMIT 1
-            ");
-            $stmt->execute([$waiterId, $pin, $waiterId, $pin]);
-        } else {
-            $stmt = $pdo->prepare("
-                SELECT `id`, `ad` as name, `rol` as role, `pin`, `device_uuid` 
-                FROM `personeller` 
-                WHERE `pin` = ? AND `aktif` = 1
-                UNION
-                SELECT `id`, `ad_soyad` as name, `rol` as role, `pin_kodu` as pin, `device_uuid` 
-                FROM `users` 
-                WHERE `pin_kodu` = ? AND `aktif` = 1
-                LIMIT 1
-            ");
-            $stmt->execute([$pin, $pin]);
+        // 1) Cihazı tanı: yalnızca eşleştirilmiş cihaz giriş yapabilir.
+        $deviceOwnerId = null;
+        try {
+            if ($deviceTokenIn !== '') {
+                $tokHash = hash('sha256', $deviceTokenIn);
+                $dStmt = $pdo->prepare("SELECT `id` FROM `personeller` WHERE `device_token_hash` = ? AND `aktif` = 1 UNION SELECT `id` FROM `users` WHERE `device_token_hash` = ? AND `aktif` = 1 LIMIT 1");
+                $dStmt->execute([$tokHash, $tokHash]);
+                $deviceOwnerId = $dStmt->fetchColumn() ?: null;
+            }
+            if (!$deviceOwnerId && $deviceUuid !== '') {
+                $dStmt = $pdo->prepare("SELECT `id` FROM `personeller` WHERE `device_uuid` = ? AND `aktif` = 1 UNION SELECT `id` FROM `users` WHERE `device_uuid` = ? AND `aktif` = 1 LIMIT 1");
+                $dStmt->execute([$deviceUuid, $deviceUuid]);
+                $deviceOwnerId = $dStmt->fetchColumn() ?: null;
+            }
+        } catch (Exception $e) {}
+
+        if (!$deviceOwnerId) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Bu cihaz herhangi bir garsona tanımlı değil. Kasadan QR ile eşleştirin.'], JSON_UNESCAPED_UNICODE);
+            exit;
         }
+        if ($waiterId !== '' && $waiterId !== (string)$deviceOwnerId) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Bu cihaz başka bir garsona tanımlı.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // 2) Kaba kuvvete karşı kilit kontrolü
+        try {
+            $lockStmt = $pdo->prepare("SELECT `pin_denemesi`, `pin_kilit_bitis` FROM `personeller` WHERE `id` = ? LIMIT 1");
+            $lockStmt->execute([$deviceOwnerId]);
+            $lockRow = $lockStmt->fetch(PDO::FETCH_ASSOC);
+            if ($lockRow && !empty($lockRow['pin_kilit_bitis']) && strtotime($lockRow['pin_kilit_bitis']) > time()) {
+                $kalan = max(1, (int)ceil((strtotime($lockRow['pin_kilit_bitis']) - time()) / 60));
+                http_response_code(429);
+                echo json_encode(['success' => false, 'message' => "Çok fazla hatalı deneme. {$kalan} dakika sonra tekrar deneyin."], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        } catch (Exception $e) {}
+
+        // 3) PIN doğrulaması: yalnızca cihazın sahibi olan garson için
+        $stmt = $pdo->prepare("
+            SELECT `id`, `ad` as name, `rol` as role, `pin`
+            FROM `personeller`
+            WHERE `id` = ? AND `aktif` = 1
+            UNION
+            SELECT `id`, `ad_soyad` as name, `rol` as role, `pin_kodu` as pin
+            FROM `users`
+            WHERE `id` = ? AND `aktif` = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$deviceOwnerId, $deviceOwnerId]);
         $w = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($w && ($w['pin'] === $pin || $pin === '1234')) {
-            // Cihaz UUID kaydı kontrolü & otomatik bağlama
-            if (!empty($deviceUuid)) {
-                try {
-                    $pdo->prepare("UPDATE `personeller` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
-                        ->execute([$deviceUuid, $w['id']]);
-                    $pdo->prepare("UPDATE `users` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
-                        ->execute([$deviceUuid, $w['id']]);
-                    $pdo->prepare("INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `durum`, `eslesme_tarihi`) 
-                                   VALUES (?, ?, ?, 'APPROVED', NOW()) 
-                                   ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `durum` = 'APPROVED', `eslesme_tarihi` = NOW()")
-                        ->execute([$w['id'], $w['name'], $deviceUuid]);
-                } catch (Exception $e) {}
-            }
+        // Sabit '1234' atlama kodu KALDIRILDI. PIN'i tanımsız olan hesap giriş yapamaz.
+        if ($w && !empty($w['pin']) && hash_equals((string)$w['pin'], $pin)) {
+            try {
+                $pdo->prepare("UPDATE `personeller` SET `pin_denemesi` = 0, `pin_kilit_bitis` = NULL WHERE `id` = ?")->execute([$w['id']]);
+                $pdo->prepare("UPDATE `cihazlar` SET `son_gorulme` = NOW() WHERE `waiter_id` = ?")->execute([$w['id']]);
+            } catch (Exception $e) {}
 
+            // PIN yanıtta döndürülmez.
             echo json_encode([
-                'success' => true, 
+                'success' => true,
                 'waiter' => [
                     'id' => $w['id'],
                     'name' => $w['name'],
-                    'role' => $w['role'] ?? 'WAITER',
-                    'pin' => $w['pin']
-                ], 
-                'token' => 'WTR-' . md5($w['id'] . time() . 'gtu_salt')
+                    'role' => $w['role'] ?? 'WAITER'
+                ],
+                'token' => 'WTR-' . bin2hex(random_bytes(16))
             ], JSON_UNESCAPED_UNICODE);
             exit;
         }
 
-        echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Yalnızca sisteme tanımlanmış garsonlar giriş yapabilir.']);
+        // 4) Hatalı deneme: 5 denemeden sonra 10 dakika kilit
+        try {
+            $pdo->prepare("UPDATE `personeller` SET `pin_denemesi` = `pin_denemesi` + 1 WHERE `id` = ?")->execute([$deviceOwnerId]);
+            $cntStmt = $pdo->prepare("SELECT `pin_denemesi` FROM `personeller` WHERE `id` = ? LIMIT 1");
+            $cntStmt->execute([$deviceOwnerId]);
+            $deneme = (int)$cntStmt->fetchColumn();
+            if ($deneme >= 5) {
+                $pdo->prepare("UPDATE `personeller` SET `pin_denemesi` = 0, `pin_kilit_bitis` = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE `id` = ?")->execute([$deviceOwnerId]);
+                http_response_code(429);
+                echo json_encode(['success' => false, 'message' => 'Çok fazla hatalı deneme. Giriş 10 dakika kilitlendi.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        } catch (Exception $e) {}
+
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Geçersiz PIN kodu.'], JSON_UNESCAPED_UNICODE);
         exit;
     } else {
-        $emps = $db['employees'] ?? [];
-        foreach ($emps as $e) {
-            if (($e['pin'] ?? '') === $pin && ($e['isActive'] ?? true)) {
-                if (!empty($waiterId) && $e['id'] !== $waiterId) continue;
-                if (!empty($deviceUuid)) {
-                    $db['paired_devices'][$e['id']] = [
-                        'waiterId' => $e['id'],
-                        'waiterName' => $e['name'] ?? $e['fullName'] ?? 'Garson',
-                        'deviceUuid' => $deviceUuid,
-                        'pairedAt' => date('Y-m-d H:i:s'),
-                        'status' => 'APPROVED'
-                    ];
-                    @file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                }
+        // JSON dosya modu: cihaz yine önceden eşleşmiş olmalı.
+        $paired = $db['paired_devices'] ?? [];
+        $ownerId = null;
+        foreach ($paired as $wid => $info) {
+            $uuidMatch = $deviceUuid !== '' && (($info['device_uuid'] ?? $info['deviceUuid'] ?? '') === $deviceUuid);
+            $tokenMatch = $deviceTokenIn !== '' && !empty($info['device_token_hash']) && hash_equals($info['device_token_hash'], hash('sha256', $deviceTokenIn));
+            if ($uuidMatch || $tokenMatch) { $ownerId = (string)$wid; break; }
+        }
+        if ($ownerId === null) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Bu cihaz tanımlı değil. Kasadan QR ile eşleştirin.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        foreach (($db['employees'] ?? []) as $e) {
+            if ((string)($e['id'] ?? '') !== $ownerId) continue;
+            if (!($e['isActive'] ?? true)) break;
+            if (!empty($e['pin']) && hash_equals((string)$e['pin'], $pin)) {
                 echo json_encode([
                     'success' => true,
                     'waiter' => [
                         'id' => $e['id'],
-                        'name' => $e['name'] ?? $e['fullName'],
-                        'pin' => $e['pin']
+                        'name' => $e['name'] ?? $e['fullName'] ?? 'Garson',
+                        'role' => 'WAITER'
                     ],
-                    'token' => 'WTR-' . md5($e['id'] . time())
+                    'token' => 'WTR-' . bin2hex(random_bytes(16))
                 ], JSON_UNESCAPED_UNICODE);
                 exit;
             }
+            break;
         }
-        echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Tanımlı değilsiniz.']);
+
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Geçersiz PIN kodu.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 }
