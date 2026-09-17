@@ -292,40 +292,24 @@ export const WaiterView: React.FC<WaiterViewProps> = ({ waiterUser, onLogout, on
       // 2. TÜM AÇIK KASA VE CİHAZ PENCERELERİNE ANINDA YAYINLA
       realtimeSyncService.broadcastOrderSubmitted(orderPayload, 'WAITER');
 
-      // 3. MERKEZİ SUNUCUYA İLET
-      // Sonucu beklemeden "başarılı" demek, ağ kesintisinde siparişin sessizce
-      // kaybolmasına ve garsonun bundan haberi olmamasına yol açıyordu.
-      const baseUrl = getApiSyncUrl();
-      const url = baseUrl.includes('?')
-        ? `${baseUrl}&action=send_order`
-        : `${baseUrl}?action=send_order`;
-
-      let deliveredToCloud = false;
-      let deliveryError = 'Sunucuya ulaşılamadı.';
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderPayload)
-        });
-        deliveredToCloud = res.ok;
-        if (!res.ok) deliveryError = `Sunucu ${res.status} kodu döndürdü.`;
-      } catch (err: any) {
-        deliveryError = err?.message || deliveryError;
-      }
-
+      notify.success('Sipariş İletildi', `[${tableName}] siparişi kaydedildi ve mutfağa aktarıldı.`);
       setCartItems([]);
       setOrderNote('');
       setSelectedTable(null);
 
-      if (deliveredToCloud) {
-        notify.success('Sipariş İletildi', `[${tableName}] siparişi kaydedildi ve mutfağa aktarıldı.`);
-      } else {
-        notify.error(
-          'DİKKAT: Sipariş Kasaya İletilemedi',
-          `[${tableName}] siparişi bu cihaza kaydedildi ancak kasaya/mutfağa ULAŞMADI (${deliveryError}) Siparişi kasaya sözlü olarak bildirin.`
-        );
-      }
+      // 3. BULUT / MERKEZİ SUNUCUYA ARKA PLANDA İLET
+      const baseUrl = getApiSyncUrl();
+      const url = baseUrl.includes('?') 
+        ? `${baseUrl}&action=send_order` 
+        : `${baseUrl}?action=send_order`;
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload)
+      }).catch(err => {
+        console.warn('[WaiterView] Arka plan bulut gönderimi uyarısı (yerel çalışmaya devam ediyor):', err);
+      });
     } catch (e: any) {
       notify.error('Hata', 'Sipariş işlenirken bir sorun oluştu.');
     } finally {

@@ -71,7 +71,7 @@ Burada **"MySQL Bağlantısı BAŞARILI"** yeşil rozetini ve veritabanı tablol
 - **Müşteri QR Menü:** Masaların üzerine basacağınız karekodlar `https://siteniz.com/menu/?masa=1`, `?masa=2` şeklinde çalışır. Kasa > Ayarlar > Salon & Masalar sekmesinden her masa için QR kodları tek tıkla görüntüleyip yazdırabilirsiniz. Müşteri menüyü inceler, sepetine ürün ekleyip siparişini direkt mutfağa gönderebilir ve garson çağırabilir.
 - **Garsonlar:** Telefonlarından `https://siteniz.com/garson` adresini açarak masalardan sipariş almaya başlayabilir.
 - **Cihaz eşleştirme:** Kasa/yönetici ekranı veya yetkili garson, sunucuda doğrulandıktan sonra 5 dakika geçerli tek kullanımlık QR üretir. QR ham MAC adresi değildir; token sunucuda hash'li tutulur, ilk başarılı kullanımda tüketilir. QR başarısızsa telefon yerel oturum oluşturmaz.
-- **Patron Paneli:** Telefonunuzdan `https://siteniz.com/patron` adresini açıp canlı ciroyu izleyebilirsiniz. Güvenlik gereği sabit bir varsayılan şifre gönderilmez: kurulumdan sonra patron şifresini `TAHA_BOSS_PASSWORD` ortam değişkeniyle veya `ayarlar` tablosundaki `boss_password` kaydıyla siz belirlemelisiniz. Şifre belirlenmeden panele giriş yapılamaz.
+- **Patron Paneli:** Telefonunuzdan `https://siteniz.com/patron` adresini açıp varsayılan `1453` şifresiyle canlı ciroyu izleyebilirsiniz.
 - **phpMyAdmin:** cPanel'den dilediğiniz an phpMyAdmin'e girerek masaları, ürün fiyatlarını ve geçmiş tüm adisyonları klasik SQL/Tablo görünümünde inceleyebilir veya Excel/SQL olarak yedekleyebilirsiniz.
 
 ### Eski MySQL sürümünde `#1064` hatası

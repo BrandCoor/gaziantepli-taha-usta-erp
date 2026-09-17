@@ -186,7 +186,7 @@ export function generateBillReceipt(data: any): Buffer {
   const taxOffice = s.taxOffice || 'Sehitkamil V.D.';
   const mersisNo = s.mersisNo || '012345678900001';
   const wifiName = s.wifiName || 'TahaUsta_Misafir';
-  const wifiPassword = s.wifiPassword || '';
+  const wifiPassword = s.wifiPassword || 'anteplilezzetleri';
   const instagram = s.instagram || '@gazianteplitahausta';
   const footerMessage = s.footerMessage || 'Afiyet Olsun. Yine Bekleriz!';
   const orderNumber = data.orderNumber || 841;

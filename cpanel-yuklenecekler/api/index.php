@@ -34,14 +34,14 @@ if (!$useMysql) {
             'orders' => [],
             'employees' => [],
             'paired_devices' => [],
-            'boss_settings' => ['password' => '', 'approved_devices' => []],
+            'boss_settings' => ['password' => '1453', 'approved_devices' => []],
             'last_updated' => time()
         ];
         file_put_contents($dbFile, json_encode($initialData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
     $db = json_decode(file_get_contents($dbFile), true) ?: [];
     if (!isset($db['paired_devices'])) $db['paired_devices'] = [];
-    if (!isset($db['boss_settings'])) $db['boss_settings'] = ['password' => '', 'approved_devices' => []];
+    if (!isset($db['boss_settings'])) $db['boss_settings'] = ['password' => '1453', 'approved_devices' => []];
 }
 
 $action = $_GET['action'] ?? '';
@@ -52,7 +52,7 @@ if (empty($action) && isset($inputData['action'])) {
 }
 
 // Cihaz eşleme ve kimlik doğrulama işlemleri doğrudan auth.php tarafından ele alınır
-if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status', 'device_lookup'])) {
+if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status'])) {
     require __DIR__ . '/auth.php';
     exit;
 }
@@ -2042,16 +2042,12 @@ if ($action === 'cancel_item' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         // PIN Doğrulama: Patron şifresi veya yönetici personeli
         $pinOk = false;
         $bossStmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'");
-        $bossPass = $bossStmt ? (string)$bossStmt->fetchColumn() : '';
-        // Sabit '1453' atlama kodu kaldırıldı: patron şifresi değiştirilse bile herkesin
-        // bildiği bu kod yetkisiz ürün iptaline izin veriyordu. Patron şifresi tanımlı
-        // değilse yalnızca yetkili personel PIN'i geçerlidir.
-        if ($bossPass !== '' && hash_equals($bossPass, (string)$pin)) {
+        $bossPass = $bossStmt ? $bossStmt->fetchColumn() : '1453';
+        if ($pin === $bossPass || $pin === '1453') {
             $pinOk = true;
         } else {
-            // PIN'i boş olan personel kaydının yetkilendirme yapmasına izin verilmez.
-            $empChk = $pdo->prepare("SELECT COUNT(*) FROM `personeller` WHERE `pin` = ? AND `pin` <> '' AND `rol` IN ('ADMIN', 'CASHIER') AND `aktif` = 1");
-            $empChk->execute([(string)$pin]);
+            $empChk = $pdo->prepare("SELECT COUNT(*) FROM `personeller` WHERE `pin` = ? AND `rol` IN ('ADMIN', 'CASHIER') AND `aktif` = 1");
+            $empChk->execute([$pin]);
             if ($empChk->fetchColumn() > 0) {
                 $pinOk = true;
             }

@@ -108,9 +108,6 @@ export default function App() {
   }
 
   // 2. GARSON MOBİL TERMİNALİ (garson.rymedya.com.tr veya ?mode=waiter)
-  // Garson terminali kapalı bir alandır: yalnızca masa görme ve sipariş alma.
-  // Kasa paneline geçiş bilerek verilmez, aksi halde garson telefonundan ciro,
-  // personel ve kasa ekranlarına erişilebiliyordu.
   if (isWaiterMode) {
     if (waiterUser) {
       return (
@@ -121,6 +118,7 @@ export default function App() {
               deviceService.logout();
               setWaiterUser(null);
             }}
+            onBackToKasa={!isGarsonSubdomain ? () => setIsWaiterMode(false) : undefined}
           />
           <GlobalModal />
         </>
@@ -133,6 +131,7 @@ export default function App() {
               setWaiterUser(user);
             }}
             onOpenPairingScreen={() => setIsPairingView(true)}
+            onBackToKasa={!isGarsonSubdomain ? () => setIsWaiterMode(false) : undefined}
           />
           <GlobalModal />
         </>

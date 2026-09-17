@@ -12,6 +12,3 @@ bun.lock
 yedek_*/
 *.bak
 app/
-
-# Sunucuya özel veritabanı bilgileri (şablon: config.local.example.php)
-cpanel-yuklenecekler/api/config.local.php
