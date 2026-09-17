@@ -419,10 +419,11 @@
             signal: controller.signal
           });
           clearTimeout(timeoutId);
-          if (res.ok || res.status === 400 || res.status === 401 || res.status === 403) {
-            workingApiUrl = base;
-            return res;
-          }
+          // Sunucudan gelen HER yanıt (200, 400, 401, 403, 500...) gerçek bir
+          // bağlantı kurulduğu anlamına gelir; yalnızca ağ/DNS/zaman aşımı
+          // hataları (fetch reddi) bir sonraki adrese geçmeyi gerektirir.
+          workingApiUrl = base;
+          return res;
         } catch (err) {
           lastError = err;
         }
@@ -947,6 +948,7 @@
 
       let loginSuccessful = false;
       let authenticatedWaiter = null;
+      let serverReached = false;
 
       // 1. Sunucu API doğrulaması
       try {
@@ -955,19 +957,29 @@
           headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
           body: JSON.stringify(payload)
         });
+        // Sunucudan HERHANGİ bir yanıt geldiyse (hata kodu olsa bile) bağlantı
+        // vardır; "internete bağlanılamıyor" mesajı yalnızca gerçek ağ hatasında gösterilmeli.
+        serverReached = true;
         const data = await res.json();
 
         if (data.success && data.waiter) {
           loginSuccessful = true;
           authenticatedWaiter = data.waiter;
-        } else if (data.message && res.status === 401) {
+        } else if (data && data.message) {
           showToast(data.message, 'error');
           enteredPin = '';
           updateDots();
           return;
         }
       } catch (err) {
-        console.warn('[PIN] Sunucu erişiminde ağ sorunu, yerel eşleşme kontrol ediliyor...', err);
+        console.warn('[PIN] Sunucu erişiminde ağ sorunu:', err);
+      }
+
+      if (serverReached && !loginSuccessful) {
+        showToast('Geçersiz Garson PIN Kodu! Lütfen kontrol edip tekrar deneyin.', 'error');
+        enteredPin = '';
+        updateDots();
+        return;
       }
 
       // Çevrimdışı PIN doğrulaması KALDIRILDI. PIN artık telefonda saklanmıyor ve

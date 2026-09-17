@@ -960,6 +960,7 @@ if ($action === 'verify_waiter_pin' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        http_response_code(401);
         echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Yalnızca sisteme tanımlanmış garsonlar giriş yapabilir.']);
         exit;
     } else {
@@ -989,6 +990,7 @@ if ($action === 'verify_waiter_pin' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
         }
+        http_response_code(401);
         echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Tanımlı değilsiniz.']);
         exit;
     }
