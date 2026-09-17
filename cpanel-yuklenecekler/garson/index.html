@@ -502,10 +502,33 @@
       }, 3300);
     }
 
-    let deviceUuid = localStorage.getItem('gtu_waiter_uuid');
+    // Kalıcı depolama yardımcıları: localStorage silinse bile (iOS/PWA depolama
+    // temizliği) cihaz kimliğinin kaybolmaması için çerezle yedeklenir.
+    function persistentGet(key) {
+      try {
+        const v = localStorage.getItem(key);
+        if (v !== null) return v;
+      } catch (e) {}
+      try {
+        const escaped = key.replace(/[.$?*|{}()\[\]\\\/+^]/g, '\\$&');
+        const match = document.cookie.match(new RegExp('(?:^|; )' + escaped + '=([^;]*)'));
+        if (match) return decodeURIComponent(match[1]);
+      } catch (e) {}
+      return null;
+    }
+
+    function persistentSet(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+      try {
+        const oneYearSeconds = 60 * 60 * 24 * 365;
+        document.cookie = `${key}=${encodeURIComponent(value)}; max-age=${oneYearSeconds}; path=/; SameSite=Lax`;
+      } catch (e) {}
+    }
+
+    let deviceUuid = persistentGet('gtu_waiter_uuid');
     if (!deviceUuid) {
       deviceUuid = 'MOB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-      localStorage.setItem('gtu_waiter_uuid', deviceUuid);
+      persistentSet('gtu_waiter_uuid', deviceUuid);
     }
 
     // Eşleşme sonrası sunucudan gelen kalıcı cihaz anahtarı.
@@ -589,7 +612,7 @@
             name: userObj.ad || userObj.name || 'Garson',
             deviceUuid: deviceUuid
           };
-          localStorage.setItem('gtu_paired_waiter', JSON.stringify(pairedObj));
+          persistentSet('gtu_paired_waiter', JSON.stringify(pairedObj));
           selectedWaiter = pairedObj;
           showToast(`Cihaz [${pairedObj.name}] hesabına başarıyla mühürlendi!`, 'success');
           showPinScreen();
@@ -610,7 +633,7 @@
         pin: code,
         deviceUuid: deviceUuid
       };
-      localStorage.setItem('gtu_paired_waiter', JSON.stringify(fallbackWaiter));
+      persistentSet('gtu_paired_waiter', JSON.stringify(fallbackWaiter));
       selectedWaiter = fallbackWaiter;
       showToast(`Cihaz [${fallbackWaiter.name}] hesabına başarıyla eşleştirildi.`, 'success');
       showPinScreen();
@@ -768,7 +791,7 @@
     let currentWaiter = null;
 
     // Eğer önceden eşleşmiş bir garson varsa otomatik seç
-    const savedPairedStr = localStorage.getItem('gtu_paired_waiter');
+    const savedPairedStr = persistentGet('gtu_paired_waiter');
     if (savedPairedStr) {
       try {
         const parsed = JSON.parse(savedPairedStr);
@@ -910,7 +933,7 @@
       const pinVal = enteredPin;
       const waiterTarget = selectedWaiter || (function() {
         try {
-          const raw = localStorage.getItem('gtu_paired_waiter');
+          const raw = persistentGet('gtu_paired_waiter');
           return raw ? JSON.parse(raw) : null;
         } catch(e) { return null; }
       })();
