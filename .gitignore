@@ -15,3 +15,7 @@ app/
 
 # Sunucuya özel veritabanı bilgileri (şablon: config.local.example.php)
 cpanel-yuklenecekler/api/config.local.php
+
+# Sunucunun JSON yedek veri deposu (MySQL tanimli degilken kullanilir).
+# Icinde garson PIN kodlari, musteri ve siparis verisi bulunur; depoya girmemeli.
+cpanel-yuklenecekler/api/restaurant_sync.json
