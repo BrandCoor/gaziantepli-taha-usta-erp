@@ -1977,7 +1977,11 @@ class RestaurantDataService {
     const nextZNo = zReports.length > 0 ? Math.max(...zReports.map(z => z.zNo)) + 1 : 1;
 
     const netCash = xData.netCashInRegister;
-    const openingFloat = countData?.openingCashFloat ?? 1000;
+    // Acilis kasa parasi uydurulmaz: bir onceki Z raporunda kasada birakilan
+    // tutar devralinir, ilk Z raporunda 0 kabul edilir. Onceden sabit 1000 TL
+    // varsayiliyordu ve kasa sayim farki bastan yanlis hesaplaniyordu.
+    const previousZ = zReports.length > 0 ? zReports[zReports.length - 1] : undefined;
+    const openingFloat = countData?.openingCashFloat ?? (Number(previousZ?.transferredCash) || 0);
     const counted = countData?.countedCash ?? (netCash + openingFloat);
     const diff = countData?.cashDifference ?? (counted - (netCash + openingFloat));
     const transferred = countData?.transferredCash ?? openingFloat;
@@ -1985,7 +1989,7 @@ class RestaurantDataService {
     const zReport: ZReport = {
       id: `z-${Date.now()}`,
       zNo: nextZNo,
-      openedAt: xData.orders[0]?.orderTime || '09:00',
+      openedAt: xData.orders[0]?.orderTime || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
       closedAt: new Date().toLocaleString('tr-TR'),
       closedBy: closedBy,
       grossTotal: xData.grossTotal,

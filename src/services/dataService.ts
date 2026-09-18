@@ -1032,21 +1032,35 @@ class DataService {
         console.error(e);
       }
     }
+    // Varsayilan sifre GONDERILMEZ. Onceden yonetici '1', digerleri '123'
+    // sifresiyle geliyordu: kurulumu bilen herkes kasa paneline girebiliyordu.
+    // Ilk acilista yonetici sifresi giris ekraninda kullaniciya belirletilir.
     const defaultUsers: User[] = [
-      { id: 'u-1', username: 'admin', fullName: 'Taha Usta', password: '1', role: 'ADMIN', roleName: 'Yönetici (Tam Yetkili)', permissions: ['ALL'], isActive: true },
-      { id: 'u-2', username: 'kasa', fullName: 'Kasa Görevlisi', password: '123', role: 'CASHIER', roleName: 'Kasa Terminali', permissions: ['CUSTOMERS_VIEW', 'CUSTOMERS_TRANSACTION'], isActive: true },
-      { id: 'u-3', username: 'garson', fullName: 'Garson Terminali', password: '123', role: 'WAITER', roleName: 'Garson', permissions: [], isActive: true },
+      { id: 'u-1', username: 'admin', fullName: 'Yönetici', password: '', role: 'ADMIN', roleName: 'Yönetici (Tam Yetkili)', permissions: ['ALL'], isActive: true },
     ];
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(defaultUsers));
     return defaultUsers;
   }
 
+  /**
+   * Oturumdaki kullanici. Kayitli kopya yerine kullanici listesindeki GUNCEL
+   * kayit dondurulur: onceden oturum acildigi andaki kopya donuyordu, bu
+   * yuzden yoneticinin degistirdigi yetkiler/ad veya pasife alma islemi acik
+   * oturumda gecerli olmuyordu.
+   */
   public getCurrentUser(): User {
+    const users = this.getUsers();
     const saved = localStorage.getItem('gtu_erp_current_user');
+
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try {
+        const snapshot = JSON.parse(saved) as User;
+        const fresh = users.find(u => u.id === snapshot.id);
+        if (fresh) return fresh;
+      } catch {}
     }
-    return this.getUsers()[0];
+
+    return users[0];
   }
 
   public setCurrentUser(user: User): void {
@@ -1084,8 +1098,19 @@ class DataService {
     return true;
   }
 
+  /**
+   * Oturumdaki kullanicinin belirtilen yetkiye sahip olup olmadigini soyler.
+   * Onceden kosulsuz `true` donuyordu: kullanici yonetimi gibi ekranlar
+   * yetkisi olmayan kullaniciya da aciliyordu.
+   */
   public hasPermission(perm: string): boolean {
-    return true;
+    const user = this.getCurrentUser();
+    if (!user) return false;
+    if (user.isActive === false) return false;
+    if (user.role === 'ADMIN') return true;
+
+    const perms = user.permissions || [];
+    return perms.includes('ALL' as Permission) || perms.includes(perm as Permission);
   }
 
   public getCompanySettings(): CompanySettings {

@@ -8,11 +8,21 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onSwitchToWaiterMode }) => {
-  const users = dataService.getUsers();
+  const [users, setUsers] = useState<User[]>(() => dataService.getUsers());
   const company = dataService.getCompanySettings();
-  
-  const [selectedUserId, setSelectedUserId] = useState(users[0]?.id || '');
+
+  // Yalnizca giris yapabilecek (aktif) kullanicilar listelenir.
+  const activeUsers = users.filter(u => u.isActive !== false);
+
+  // Ilk kurulum: sistemde hic sifre tanimlanmamissa yonetici sifresi burada
+  // belirlenir. Yazilim artik hazir/varsayilan sifre ile gelmez.
+  const setupUser = activeUsers.find(u => !u.password);
+  const isFirstSetup = Boolean(setupUser) && activeUsers.every(u => !u.password);
+
+  const [selectedUserId, setSelectedUserId] = useState(activeUsers[0]?.id || '');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordRepeat, setNewPasswordRepeat] = useState('');
   const [error, setError] = useState('');
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
@@ -22,13 +32,41 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onSwitchTo
     }, 100);
   }, []);
 
+  const handleFirstSetup = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!setupUser) return;
+
+    if (newPassword.length < 4) {
+      setError('Şifre en az 4 karakter olmalıdır.');
+      return;
+    }
+    if (newPassword !== newPasswordRepeat) {
+      setError('Girdiğiniz iki şifre birbiriyle aynı değil.');
+      return;
+    }
+
+    const saved = dataService.saveUser({ ...setupUser, password: newPassword });
+    setUsers(dataService.getUsers());
+    setNewPassword('');
+    setNewPasswordRepeat('');
+    dataService.setCurrentUser(saved);
+    onLoginSuccess(saved);
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    const user = users.find(u => u.id === selectedUserId);
+    const user = activeUsers.find(u => u.id === selectedUserId);
     if (!user) {
       setError('Lütfen bir kullanıcı seçin');
+      return;
+    }
+
+    if (!user.password) {
+      setError('Bu kullanıcının şifresi tanımlı değil. Yöneticinizden şifre tanımlamasını isteyin.');
       return;
     }
 
@@ -72,6 +110,59 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onSwitchTo
           <p className="text-xs text-[#C4C4CC] mt-1">Cari, Finans & Personel Yönetim Sistemi</p>
         </div>
 
+        {isFirstSetup ? (
+        <form onSubmit={handleFirstSetup} className="space-y-4">
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-200 leading-relaxed">
+            <div className="font-black text-white mb-1 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <span>İlk Kurulum: Yönetici Şifrenizi Belirleyin</span>
+            </div>
+            <span>
+              Program hazır bir şifre ile gelmez. Kasa paneline yalnızca sizin belirlediğiniz
+              şifreyle girilebilir. Bu şifreyi unutmayacağınız bir yere not edin.
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#E4E4E8] mb-1.5">Yeni Yönetici Şifresi (en az 4 karakter)</label>
+            <input
+              ref={passwordInputRef}
+              type="password"
+              required
+              value={newPassword}
+              onChange={e => { setNewPassword(e.target.value); if (error) setError(''); }}
+              placeholder="Yeni şifrenizi yazın..."
+              className="w-full px-4 py-3 bg-[#1C1C20] border border-[#383844] focus:border-[#F5C877] rounded-2xl text-xs font-mono text-white focus:outline-none transition-colors select-text cursor-text"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#E4E4E8] mb-1.5">Şifreyi Tekrar Yazın</label>
+            <input
+              type="password"
+              required
+              value={newPasswordRepeat}
+              onChange={e => { setNewPasswordRepeat(e.target.value); if (error) setError(''); }}
+              placeholder="Aynı şifreyi tekrar yazın..."
+              className="w-full px-4 py-3 bg-[#1C1C20] border border-[#383844] focus:border-[#F5C877] rounded-2xl text-xs font-mono text-white focus:outline-none transition-colors select-text cursor-text"
+            />
+            {error && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs font-bold text-rose-400 animate-fadeIn">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-[#F5C877] hover:to-[#D4A351] text-white font-black rounded-2xl text-xs shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer mt-2"
+          >
+            <span>Şifreyi Kaydet ve Giriş Yap</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </form>
+        ) : (
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-[#E4E4E8] mb-1.5">Giriş Yapacak Kullanıcı</label>
@@ -84,7 +175,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onSwitchTo
               }}
               className="w-full px-4 py-3 bg-[#1C1C20] border border-[#383844] focus:border-[#F5C877] rounded-2xl text-xs font-bold text-white focus:outline-none transition-colors cursor-pointer"
             >
-              {users.map(u => (
+              {activeUsers.map(u => (
                 <option key={u.id} value={u.id}>
                   {u.fullName} ({u.roleName})
                 </option>
@@ -140,6 +231,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onSwitchTo
             </div>
           )}
         </form>
+        )}
       </div>
 
       {/* Alt Geliştirici & Lisans İmzası */}
