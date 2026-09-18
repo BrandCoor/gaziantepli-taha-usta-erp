@@ -11,7 +11,7 @@ $tableStats = [];
 if ($pdo) {
     ensureDatabaseTables($pdo);
     try {
-        $tables = ['bolumler', 'masalar', 'kategoriler', 'urunler', 'personeller', 'siparisler', 'online_siparisler', 'cihazlar', 'ayarlar'];
+        $tables = ['bolumler', 'masalar', 'kategoriler', 'urunler', 'personeller', 'siparisler', 'online_orders', 'cihazlar', 'ayarlar'];
         foreach ($tables as $t) {
             $stmt = $pdo->query("SELECT COUNT(*) FROM `$t`");
             $tableStats[$t] = (int)$stmt->fetchColumn();

@@ -82,8 +82,12 @@ export const SectionsTablesTab: React.FC<SectionsTablesTabProps> = ({ sections, 
       message: `[${name}] ve bu bölüme ait tüm masaları silmek istediğinize emin misiniz?`,
       type: 'danger',
       onConfirm: () => {
-        restaurantDataService.deleteSection(id);
-        notify.success('Bölüm Silindi', `[${name}] silindi.`);
+        const res = restaurantDataService.deleteSection(id);
+        if (!res.success) {
+          notify.error('Bölüm Silinemedi', res.message || 'Bu bölüm şu anda silinemez.');
+          return;
+        }
+        notify.success('Bölüm Silindi', `[${name}] ve bu bölüme ait masalar silindi.`);
         onRefresh();
       }
     });

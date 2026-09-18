@@ -297,8 +297,7 @@ export const OnlineOrdersView: React.FC = () => {
     const deliveryModel = isRest ? 'RESTAURANT_COURIER' : 'PLATFORM_COURIER';
 
     // 1. Sunucu API İsteği (cPanel MySQL ve platform webhook/gateway)
-    try {
-      await onlinePlatformService.acceptOrder({
+    const acceptResult = await onlinePlatformService.acceptOrder({
         id: order.id,
         platform: order.platform,
         platformOrderId: order.platformCode?.replace('#', '') || order.id,
@@ -315,22 +314,28 @@ export const OnlineOrdersView: React.FC = () => {
         assignedCourierName: assignedName,
         platformCourierName: order.platformCourierName,
         platformCourierPhone: order.platformCourierPhone,
-        handoverCode: order.handoverCode,
-      });
+      handoverCode: order.handoverCode,
+    });
 
-      if (assignedName && isRest) {
-        await onlinePlatformService.assignCourier(order.id, 'courier-' + Date.now(), assignedName, order.platform);
-      }
-    } catch (e) {}
+    let courierResult: { success: boolean; message: string } | null = null;
+    if (assignedName && isRest) {
+      courierResult = await onlinePlatformService.assignCourier(
+        order.id,
+        'courier-' + Date.now(),
+        assignedName,
+        order.platform
+      );
+    }
 
-    const ackCode = `ACK-${order.platform.slice(0, 2)}-${Math.floor(10000 + Math.random() * 90000)}`;
-
-    setOrders(prev => prev.map(o => o.id === order.id ? { 
-      ...o, 
-      status: 'PREPARING', 
+    setOrders(prev => prev.map(o => o.id === order.id ? {
+      ...o,
+      status: 'PREPARING',
       assignedCourierName: assignedName || o.assignedCourierName,
       preparationTimeMinutes: prepMinutes,
-      apiAckId: ackCode
+      // Doğrulama kodu YALNIZCA platformdan/sunucudan gelirse yazılır.
+      // Önceden burada rastgele bir kod üretilip platform onayı gibi
+      // gösteriliyordu.
+      apiAckId: acceptResult.ackId || o.apiAckId
     } : o));
 
     setApiProcessingId(null);
@@ -363,6 +368,17 @@ export const OnlineOrdersView: React.FC = () => {
       console.warn('Otomatik fiş basımı:', pErr);
     }
 
+    if (!acceptResult.success) {
+      // Platforma iletilemedi: kasiyer bunu bilmeli, aksi halde platform
+      // siparisi "onaylanmadi" sayip cezalandiriyor.
+      notify.error('Platforma İletİLEMEDİ', acceptResult.message);
+      return;
+    }
+
+    if (courierResult && !courierResult.success) {
+      notify.warning('Kurye Bilgisi İletilemedi', courierResult.message);
+    }
+
     if (isRest) {
       const isCashOrPos = order.paymentMethod.toLowerCase().includes('nakit') || order.paymentMethod.toLowerCase().includes('pos') || order.paymentMethod.toLowerCase().includes('kapı');
       notify.success(
@@ -372,7 +388,7 @@ export const OnlineOrdersView: React.FC = () => {
     } else {
       notify.success(
         'Sipariş Onaylandı (Platform Kuryesi)',
-        `[${order.platform} ${order.platformCode}] onaylandı. Mutfak sipariş fişleri ve paket üzerine zımbalanacak 4 haneli teslimat etiketi (#${order.handoverCode || '1842'}) yazdırıldı.`
+        `[${order.platform} ${order.platformCode}] onaylandı. Mutfak sipariş fişleri${order.handoverCode ? ` ve paket üzerine zımbalanacak teslimat etiketi (#${order.handoverCode})` : ''} yazdırıldı.`
       );
     }
   };
@@ -383,9 +399,7 @@ export const OnlineOrdersView: React.FC = () => {
     const order = rejectModalOrder;
     setApiProcessingId(order.id);
 
-    try {
-      await onlinePlatformService.rejectOrder(order.id, selectedRejectReason, order.platform);
-    } catch (e) {}
+    const rejectResult = await onlinePlatformService.rejectOrder(order.id, selectedRejectReason, order.platform);
 
     setOrders(prev => prev.map(o => o.id === order.id ? { 
       ...o, 
@@ -395,6 +409,12 @@ export const OnlineOrdersView: React.FC = () => {
 
     setApiProcessingId(null);
     setRejectModalOrder(null);
+
+    if (!rejectResult.success) {
+      notify.error('İptal Platforma İletilemedi', rejectResult.message);
+      return;
+    }
+
     notify.warning(
       'Sipariş İptal Edildi',
       `[${order.platform} ${order.platformCode}] iptal gerekçesi (${selectedRejectReason}) platform merkezine iletildi.`
@@ -531,9 +551,7 @@ export const OnlineOrdersView: React.FC = () => {
     const isRest = order.deliveryModel === 'RESTAURANT' || order.deliveryModel === 'RESTAURANT_COURIER';
 
     if (order.status === 'PREPARING') {
-      try {
-        await onlinePlatformService.dispatchOrder(order.id, order.platform);
-      } catch (e) {}
+      const res = await onlinePlatformService.dispatchOrder(order.id, order.platform);
 
       if (isRest) {
         setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'ON_WAY' } : o));
@@ -541,15 +559,20 @@ export const OnlineOrdersView: React.FC = () => {
       } else {
         // Platform kuryesi teslim aldı (Handover)
         setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'DELIVERED' } : o));
-        notify.success('Platform Kuryesine Devredildi', `Paket (#${order.handoverCode || '1842'}) platform kuryesine teslim edildi; teslimat süreci tamamlandı.`);
+        notify.success(
+          'Platform Kuryesine Devredildi',
+          `Paket${order.handoverCode ? ` (#${order.handoverCode})` : ''} platform kuryesine teslim edildi; teslimat süreci tamamlandı.`
+        );
       }
+
+      if (!res.success) notify.warning('Durum Platforma İletilemedi', res.message);
     } else if (order.status === 'ON_WAY') {
-      try {
-        await onlinePlatformService.deliverOrder(order.id, order.platform);
-      } catch (e) {}
+      const res = await onlinePlatformService.deliverOrder(order.id, order.platform);
 
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'DELIVERED' } : o));
       notify.success('Teslim Edildi', `Kurye teslimatı başarıyla tamamlandı.`);
+
+      if (!res.success) notify.warning('Durum Platforma İletilemedi', res.message);
     }
   };
 
@@ -876,7 +899,9 @@ export const OnlineOrdersView: React.FC = () => {
             const isPreparing = ord.status === 'PREPARING';
             const isOnWay = ord.status === 'ON_WAY';
             const isRestaurantCourier = ord.deliveryModel === 'RESTAURANT' || ord.deliveryModel === 'RESTAURANT_COURIER';
-            const handoverCode = ord.handoverCode || ord.platformCode?.replace(/[^0-9]/g, '').slice(-4) || '1842';
+            // Teslimat kodu yalnizca platformdan geldiyse gosterilir; uydurma
+            // bir kod ('1842') paket etiketine basiliyordu.
+            const handoverCode = ord.handoverCode || '';
 
             return (
               <div 
@@ -940,21 +965,22 @@ export const OnlineOrdersView: React.FC = () => {
                     )}
                   </div>
 
-                  {/* PLATFORM KURYESİ: 4 HANELİ TESLİMAT KODU & CANLI KURYE BİLGİSİ */}
+                  {/* PLATFORM KURYESİ: TESLİMAT KODU & CANLI KURYE BİLGİSİ */}
                   {!isRestaurantCourier && (
                     <div className="mb-3 space-y-2">
                       <div className="flex items-center gap-3 bg-purple-950/40 border border-purple-500/40 p-2.5 rounded-2xl">
                         <div className="w-10 h-10 rounded-xl bg-purple-600/40 text-purple-200 border border-purple-400/40 flex flex-col items-center justify-center font-black text-sm tracking-wider">
                           <span className="text-[8px] uppercase tracking-normal font-medium text-purple-300">KOD</span>
-                          <span>#{handoverCode}</span>
+                          <span>{handoverCode ? `#${handoverCode}` : '—'}</span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-[10px] font-black text-purple-300 uppercase tracking-wide flex items-center gap-1">
-                            <span>4 Haneli Teslimat Kodu</span>
-                            <span className="text-[9px] font-normal px-1.5 py-0.2 bg-purple-500/20 text-purple-200 rounded">Etiket Basıldı</span>
+                            <span>Teslimat Kodu</span>
                           </div>
                           <div className="text-[11px] text-slate-300 truncate">
-                            Platform kuryesine teslim ederken teyit ediniz.
+                            {handoverCode
+                              ? 'Platform kuryesine teslim ederken teyit ediniz.'
+                              : 'Bu sipariş için platform teslimat kodu göndermedi.'}
                           </div>
                         </div>
                       </div>
@@ -1156,7 +1182,7 @@ export const OnlineOrdersView: React.FC = () => {
                             className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
                           >
                             <Building2 className="w-4 h-4" />
-                            <span>Platform Kuryesine Teslim Edildi (#{handoverCode})</span>
+                            <span>Platform Kuryesine Teslim Edildi{handoverCode ? ` (#${handoverCode})` : ''}</span>
                           </button>
                         )}
                       </>

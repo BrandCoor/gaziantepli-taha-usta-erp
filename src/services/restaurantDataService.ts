@@ -1314,10 +1314,29 @@ class RestaurantDataService {
     this.saveSections(sections);
   }
 
-  public deleteSection(id: string) {
+  /**
+   * Bolum siler. Bolumde acik adisyonu olan masa varsa silme YAPILMAZ:
+   * onceden bolum silindiginde o masalar bagli olduklari bolum kalmadigi
+   * icin "sahipsiz" kaliyor, tahsil edilmemis hesaplar raporlarda bolumsuz
+   * gorunuyordu.
+   */
+  public deleteSection(id: string): { success: boolean; message?: string } {
+    const openTables = this.getTables().filter(
+      t => t.sectionId === id && t.order && (t.order.items?.length || 0) > 0
+    );
+
+    if (openTables.length > 0) {
+      const names = openTables.map(t => t.name).join(', ');
+      return {
+        success: false,
+        message: `Bu bölümde açık adisyonu olan masa var: ${names}. Önce hesapları kapatın veya masaları başka bölüme taşıyın.`
+      };
+    }
+
     const sections = this.getSections().filter(s => s.id !== id);
     this.saveSections(sections);
     this.deleteItemFromCloud('bolumler', id);
+    return { success: true };
   }
 
   public getTables(): TableState[] {

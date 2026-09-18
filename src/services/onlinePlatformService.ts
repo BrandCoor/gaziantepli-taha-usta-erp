@@ -429,27 +429,81 @@ class OnlinePlatformService {
   /**
    * Online Siparişleri Sunucudan ve Yerel Depodan Çeker
    */
-  public async fetchOrders(statusFilter: 'ACTIVE' | 'HISTORY' | 'ALL' = 'ACTIVE', platformFilter: 'ALL' | OnlinePlatformCode = 'ALL'): Promise<OnlineOrder[]> {
-    let fetchedOrders: OnlineOrder[] = [];
+  /**
+   * Sunucuya istek gonderir ve GERCEK sonucu dondurur.
+   * Onceden her istek try/catch icinde yutuluyor ve islem her halukarda
+   * "basarili" sayiliyordu: platforma hic ulasmamis bir onay/iptal kasada
+   * onaylanmis gorunuyordu.
+   */
+  private async postToServer(action: string, payload: any): Promise<{ ok: boolean; message: string; data?: any }> {
+    const base = this.getApiUrl();
+    if (!base) {
+      return { ok: false, message: 'Senkronizasyon sunucusu ayarlanmadı. Kasa ayarlarından sunucu adresini girin.' };
+    }
 
     try {
-      const res = await fetch(`${this.getApiUrl()}?action=get_online_orders&status=${statusFilter}&platform=${platformFilter}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.success && Array.isArray(data.orders)) {
-          fetchedOrders = data.orders;
-        }
-      }
-    } catch (e) {}
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`${base}?action=${encodeURIComponent(action)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    // Eğer sunucu ulaşılamazsa veya boşsa yerel depodan oku
-    if (fetchedOrders.length === 0) {
+      let data: any = null;
+      try { data = await res.json(); } catch {}
+
+      if (!res.ok) {
+        return { ok: false, message: data?.message || data?.error || `Sunucu ${res.status} hatası döndürdü.`, data };
+      }
+      if (data && data.success === false) {
+        return { ok: false, message: data.message || data.error || 'Sunucu isteği reddetti.', data };
+      }
+
+      return { ok: true, message: data?.message || 'İşlem sunucuya iletildi.', data };
+    } catch (e: any) {
+      const reason = e?.name === 'AbortError' ? 'Sunucu zaman aşımına uğradı.' : (e?.message || 'Sunucuya ulaşılamadı.');
+      return { ok: false, message: reason };
+    }
+  }
+
+  public async fetchOrders(statusFilter: 'ACTIVE' | 'HISTORY' | 'ALL' = 'ACTIVE', platformFilter: 'ALL' | OnlinePlatformCode = 'ALL'): Promise<OnlineOrder[]> {
+    let fetchedOrders: OnlineOrder[] = [];
+    // Sunucu "sipariş yok" dediginde bu bir HATA DEGILDIR. Onceden bos sonuc
+    // da basarisizlik sayilip yerel depodaki eski siparisler geri
+    // yukleniyordu; bu yuzden hic siparis yokken ekranda siparis gorunuyordu.
+    let serverAnswered = false;
+    const base = this.getApiUrl();
+
+    if (base) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(
+          `${base}?action=get_online_orders&status=${statusFilter}&platform=${platformFilter}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.orders)) {
+            fetchedOrders = data.orders;
+            serverAnswered = true;
+          }
+        }
+      } catch (e) {
+        console.warn('[Online] Sipariş listesi sunucudan alınamadı:', e);
+      }
+    }
+
+    // Yerel depoya YALNIZCA sunucuya ulasilamadiginda dusulur.
+    if (!serverAnswered) {
       try {
         const saved = localStorage.getItem(STORAGE_KEY_ORDERS);
-        if (saved) {
-          const list: OnlineOrder[] = JSON.parse(saved);
-          fetchedOrders = list;
-        }
+        if (saved) fetchedOrders = JSON.parse(saved);
       } catch (e) {}
     }
 
@@ -484,25 +538,19 @@ class OnlinePlatformService {
    * - Akıllı fırın/ocak/kurye yazıcılarına çıktı gönderilir
    * - Sipariş durumu 'HAZIRLANIYOR' olur
    */
-  public async acceptOrder(order: OnlineOrder): Promise<{ success: boolean; message: string }> {
-    try {
-      await fetch(`${this.getApiUrl()}?action=accept_online_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order.id,
-          platform: order.platform,
-          deliveryModel: order.deliveryModel,
-          assignedCourierId: order.assignedCourierId,
-          assignedCourierName: order.assignedCourierName,
-          platformCourierName: order.platformCourierName,
-          platformCourierPhone: order.platformCourierPhone,
-          handoverCode: order.handoverCode,
-        }),
-      });
-    } catch (e) {}
+  public async acceptOrder(order: OnlineOrder): Promise<{ success: boolean; message: string; ackId?: string }> {
+    const result = await this.postToServer('accept_online_order', {
+      orderId: order.id,
+      platform: order.platform,
+      deliveryModel: order.deliveryModel,
+      assignedCourierId: order.assignedCourierId,
+      assignedCourierName: order.assignedCourierName,
+      platformCourierName: order.platformCourierName,
+      platformCourierPhone: order.platformCourierPhone,
+      handoverCode: order.handoverCode,
+    });
 
-    // Durumu güncelle
+    // Durumu güncelle (mutfak calismaya baslasin diye yerel durum her halukarda ilerler)
     this.updateLocalOrderStatus(order.id, 'HAZIRLANIYOR');
 
     // Otomatik İstasyon & Kurye Çıktısı (Lojistik Model Ayrımı ile)
@@ -528,28 +576,26 @@ class OnlinePlatformService {
     }
 
     const modelLabel = order.deliveryModel === 'PLATFORM_COURIER' ? 'Platform Kuryesi' : 'Restoran Kuryesi';
+
+    if (!result.ok) {
+      return {
+        success: false,
+        message: `Sipariş kasada onaylandı ve fişleri basıldı (${modelLabel}), ANCAK platforma iletilemedi: ${result.message} Siparişi platformun kendi panelinden de onaylayın.`,
+      };
+    }
+
     return {
       success: true,
       message: `[${order.platform}] #${order.platformOrderId} onaylandı (${modelLabel}). İstasyon & teslimat fişleri yazdırıldı.`,
+      ackId: result.data?.ackId || result.data?.acknowledgementId,
     };
   }
 
   /**
    * Siparişe Restoran Kuryesi Atar
    */
-  public async assignCourier(orderId: string, courierId: string, courierName: string, platform?: OnlinePlatformCode): Promise<boolean> {
-    try {
-      await fetch(`${this.getApiUrl()}?action=assign_courier`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          courierId,
-          courierName,
-          platform,
-        }),
-      });
-    } catch (e) {}
+  public async assignCourier(orderId: string, courierId: string, courierName: string, platform?: OnlinePlatformCode): Promise<{ success: boolean; message: string }> {
+    const result = await this.postToServer('assign_courier', { orderId, courierId, courierName, platform });
 
     // Yerel depoda güncelle
     try {
@@ -570,59 +616,52 @@ class OnlinePlatformService {
       }
     } catch (e) {}
 
-    return true;
+    return {
+      success: result.ok,
+      message: result.ok
+        ? `Kurye [${courierName}] siparişe atandı.`
+        : `Kurye kasada atandı ancak platforma iletilemedi: ${result.message}`,
+    };
   }
 
   /**
    * Kasiyer Siparişi İptal Eder (Zorunlu Sebep ile)
    */
-  public async rejectOrder(orderId: string, reason: string, platform?: OnlinePlatformCode): Promise<boolean> {
-    try {
-      await fetch(`${this.getApiUrl()}?action=reject_online_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          platform,
-          cancelReason: reason,
-        }),
-      });
-    } catch (e) {}
+  public async rejectOrder(orderId: string, reason: string, platform?: OnlinePlatformCode): Promise<{ success: boolean; message: string }> {
+    const result = await this.postToServer('reject_online_order', { orderId, platform, cancelReason: reason });
 
     this.updateLocalOrderStatus(orderId, 'IPTAL', reason);
-    return true;
+
+    return {
+      success: result.ok,
+      message: result.ok
+        ? `İptal gerekçesi (${reason}) platform merkezine iletildi.`
+        : `Sipariş kasada iptal edildi ANCAK platforma iletilemedi: ${result.message} İptali platformun kendi panelinden de bildirin.`,
+    };
   }
 
   /**
    * Kuryeye Verildi / Yola Çıktı
    */
-  public async dispatchOrder(orderId: string, platform?: OnlinePlatformCode): Promise<boolean> {
-    try {
-      await fetch(`${this.getApiUrl()}?action=dispatch_online_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, platform }),
-      });
-    } catch (e) {}
-
+  public async dispatchOrder(orderId: string, platform?: OnlinePlatformCode): Promise<{ success: boolean; message: string }> {
+    const result = await this.postToServer('dispatch_online_order', { orderId, platform });
     this.updateLocalOrderStatus(orderId, 'YOLA_CIKTI');
-    return true;
+    return {
+      success: result.ok,
+      message: result.ok ? 'Sipariş yola çıktı olarak bildirildi.' : `Durum platforma iletilemedi: ${result.message}`,
+    };
   }
 
   /**
    * Teslim Edildi
    */
-  public async deliverOrder(orderId: string, platform?: OnlinePlatformCode): Promise<boolean> {
-    try {
-      await fetch(`${this.getApiUrl()}?action=deliver_online_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, platform }),
-      });
-    } catch (e) {}
-
+  public async deliverOrder(orderId: string, platform?: OnlinePlatformCode): Promise<{ success: boolean; message: string }> {
+    const result = await this.postToServer('deliver_online_order', { orderId, platform });
     this.updateLocalOrderStatus(orderId, 'TESLIM_EDILDI');
-    return true;
+    return {
+      success: result.ok,
+      message: result.ok ? 'Teslimat platforma bildirildi.' : `Teslimat bilgisi platforma iletilemedi: ${result.message}`,
+    };
   }
 
   /**
@@ -711,100 +750,6 @@ class OnlinePlatformService {
   /**
    * Test siparişi enjekte eder
    */
-  public async createTestOrder(platform: OnlinePlatformCode): Promise<OnlineOrder | null> {
-    const samples: Record<OnlinePlatformCode, { name: string; phone: string; address: string; note: string; items: OnlineOrderItem[] }> = {
-      YEMEKSEPETI: {
-        name: 'Ahmet Karadeniz',
-        phone: '0533 444 8899',
-        address: 'Acıbadem Mah. Çeçen Sok. No: 12 D: 4 Kadıköy / İstanbul',
-        note: 'Lütfen bol sumaklı ezme ve ekstra lavaş koyunuz. Kapıyı iki kere tıklatın.',
-        items: [
-          { name: 'Gaziantep Lahmacun', quantity: 3, price: 110, note: 'Gevrek olsun' },
-          { name: 'Ali Nazik Kebap', quantity: 1, price: 440, note: 'Tereyağı bol' },
-          { name: 'Açık Köy Ayranı', quantity: 2, price: 40 },
-        ],
-      },
-      TRENDYOL: {
-        name: 'Mehmet Taha Gümüş',
-        phone: '0532 555 1234',
-        address: 'Fenerbahçe Mah. Bağdat Cad. No: 184 D: 5 Kadıköy / İstanbul',
-        note: 'Sıcak gelsin lütfen. Zili çalmayın bebek uyuyor.',
-        items: [
-          { name: 'Antep Usulü Özel Lahmacun', quantity: 4, price: 110, note: 'Çıtır' },
-          { name: 'Küşleme Kebap Porsiyon', quantity: 1, price: 420 },
-          { name: 'Fıstıklı Havuç Dilim Baklava', quantity: 1, price: 240, note: 'Kaymaklı' },
-        ],
-      },
-      GETIR: {
-        name: 'Zeynep Kaya',
-        phone: '0544 222 3344',
-        address: 'Moda Cad. Ressam Şeref Akdik Sok. No: 8 Moda / Kadıköy',
-        note: 'Temassız teslimat, kapıya asınız.',
-        items: [
-          { name: 'Beyti Kebap Sarma', quantity: 1, price: 460 },
-          { name: 'Fındık Lahmacun (5 Adet)', quantity: 1, price: 280 },
-          { name: 'Şalgam Suyu (Acılı)', quantity: 1, price: 45 },
-        ],
-      },
-    };
-
-    const s = samples[platform];
-    const totalAmount = s.items.reduce((acc, it) => acc + (it.price * it.quantity), 0);
-    const platformConfig = this.getPlatform(platform);
-    const deliveryModel: DeliveryModel = platformConfig.deliveryModel || 'RESTAURANT_COURIER';
-    const isPlatformCourier = deliveryModel === 'PLATFORM_COURIER';
-
-    const courierPool = {
-      TRENDYOL: { name: 'Ali Yılmaz (Trendyol GO)', phone: '0530 111 2233' },
-      GETIR: { name: 'Emre Karaca (Getir Kuryesi)', phone: '0542 333 4455' },
-      YEMEKSEPETI: { name: 'Murat Şahin (Vale Kurye)', phone: '0533 666 7788' },
-    };
-
-    const handoverCode = isPlatformCourier ? String(Math.floor(1000 + Math.random() * 9000)) : undefined;
-    const platformCourier = isPlatformCourier ? courierPool[platform] : undefined;
-
-    const newOrder: OnlineOrder = {
-      id: 'onl-' + Date.now(),
-      platform,
-      platformOrderId: 'ORD-' + Math.floor(10000 + Math.random() * 90000),
-      customerName: s.name,
-      customerPhone: s.phone,
-      address: s.address,
-      orderNote: s.note,
-      items: s.items,
-      totalAmount,
-      paymentMethod: isPlatformCourier ? 'Online Kredi Kartı' : (Math.random() > 0.5 ? 'Kapıda Nakit' : 'Kapıda Kredi Kartı (POS)'),
-      status: 'BEKLIYOR',
-      createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-      deliveryModel,
-      handoverCode,
-      platformCourierName: platformCourier?.name,
-      platformCourierPhone: platformCourier?.phone,
-      platformCourierEtaMinutes: isPlatformCourier ? Math.floor(5 + Math.random() * 10) : undefined,
-    };
-
-    // Sunucuya gönder
-    try {
-      await fetch(`${this.getApiUrl()}?action=create_test_online_order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newOrder),
-      });
-    } catch (e) {}
-
-    // Yerel havuza ekle
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_ORDERS);
-      const list = saved ? JSON.parse(saved) : [];
-      list.unshift(newOrder);
-      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(list));
-    } catch (e) {}
-
-    // Yeni sipariş alarmını başlat
-    this.startContinuousAlarm();
-
-    return newOrder;
-  }
 }
 
 export const onlinePlatformService = new OnlinePlatformService();

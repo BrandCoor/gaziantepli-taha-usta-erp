@@ -169,59 +169,10 @@ if ($action === 'list' || $action === 'get_orders') {
     exit;
 }
 
-// 3. SİPARİŞ TEST ENJEKSİYONU (Manuel / Test Amaçlı)
-if ($action === 'create_test_order') {
-    $rawPayload = file_get_contents('php://input');
-    $data = json_decode($rawPayload, true) ?: [];
-
-    $platformCode = $data['platform'] ?? 'TRENDYOL';
-    $customerName = $data['customerName'] ?? 'Mehmet Taha Gümüş';
-    $customerPhone = $data['customerPhone'] ?? '0532 555 1234';
-    $deliveryAddress = $data['address'] ?? 'Fenerbahçe Mah. Bağdat Cad. No: 184 D: 5 Kadıköy/İstanbul';
-    $orderNote = $data['orderNote'] ?? 'Lütfen acılı ezme ve sıcak pide bol olsun. Zili çalmayın bebek uyuyor.';
-    $items = $data['items'] ?? [
-        ['name' => 'Antep Usulü Özel Lahmacun', 'quantity' => 4, 'price' => 110, 'note' => 'Çıtır olsun'],
-        ['name' => 'Küşleme Kebap Porsiyon', 'quantity' => 1, 'price' => 420, 'note' => 'Orta pişmiş'],
-        ['name' => 'Fıstıklı Havuç Dilim Baklava', 'quantity' => 1, 'price' => 240, 'note' => 'Kaymaklı']
-    ];
-    $totalAmount = 0;
-    foreach ($items as $it) {
-        $totalAmount += ($it['quantity'] * $it['price']);
-    }
-
-    $platformOrderId = 'TEST-' . strtoupper(substr($platformCode, 0, 2)) . '-' . rand(10000, 99999);
-    $itemsJson = json_encode($items, JSON_UNESCAPED_UNICODE);
-
-    $insertId = null;
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("
-                INSERT INTO `online_orders` (
-                    `platform_code`, `platform_order_id`, `customer_name`, `customer_phone`,
-                    `delivery_address`, `order_note`, `items_json`, `total_amount`,
-                    `payment_method`, `platform_status`, `local_status`, `created_at`
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, 'Online Kredi Kartı', 'NEW', 'BEKLIYOR', NOW()
-                )
-            ");
-            $stmt->execute([
-                $platformCode, $platformOrderId, $customerName, $customerPhone,
-                $deliveryAddress, $orderNote, $itemsJson, $totalAmount
-            ]);
-            $insertId = $pdo->lastInsertId();
-        } catch (Exception $e) {
-            error_log("Test order oluşturma hatası: " . $e->getMessage());
-        }
-    }
-
-    echo json_encode([
-        'success' => true,
-        'message' => "Test siparişi [{$platformCode}] başarıyla oluşturuldu.",
-        'orderId' => $insertId ?: ('test-' . time()),
-        'platformOrderId' => $platformOrderId,
-        'totalAmount' => $totalAmount
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+// NOT: "create_test_order" (sahte siparis enjeksiyonu) KALDIRILDI.
+// Bu ucu bilen herkes isletmenin canli siparis tablosuna uydurma siparis
+// yazabiliyordu; ustelik kayitlarda isletme sahibinin gercek ad/adres
+// bilgileri sabit olarak duruyordu. Siparisler artik yalnizca platform
+// webhook'lari uzerinden olusur.
 
 echo json_encode(['success' => false, 'error' => 'Geçersiz orders aksiyonu']);

@@ -58,7 +58,7 @@ if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_d
 }
 
 // Online Yemek Platformları (Yemeksepeti, Trendyol Yemek, GetirYemek)
-if (in_array($action, ['get_online_orders', 'list_online_orders', 'get_online_platforms', 'create_test_online_order'])) {
+if (in_array($action, ['get_online_orders', 'list_online_orders', 'get_online_platforms'])) {
     require __DIR__ . '/online/orders.php';
     exit;
 }
@@ -123,7 +123,7 @@ if ($action === 'test_db' || $action === 'health') {
     if ($useMysql) {
         $tableCounts = [];
         try {
-            $tables = ['bolumler', 'masalar', 'urunler', 'kategoriler', 'personeller', 'siparisler', 'online_siparisler', 'cihazlar'];
+            $tables = ['bolumler', 'masalar', 'urunler', 'kategoriler', 'personeller', 'siparisler', 'online_orders', 'cihazlar'];
             foreach ($tables as $tbl) {
                 $stmt = $pdo->query("SELECT COUNT(*) FROM `$tbl`");
                 $tableCounts[$tbl] = (int)$stmt->fetchColumn();
@@ -1461,126 +1461,16 @@ if ($action === 'ack_orders' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // ========================================================
 // 7. ONLINE YEMEK PLATFORMLARI (Trendyol / Getir / Yemeksepeti)
 // ========================================================
-if ($action === 'platform_webhook' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    if ($input) {
-        $platform = strtoupper($input['platform'] ?? 'TRENDYOL');
-        $code = $input['platformCode'] ?? ($platform === 'TRENDYOL' ? '#TY-' : ($platform === 'GETIR' ? '#GT-' : '#YS-')) . rand(1000, 9999);
-        $deliveryModel = strtoupper($input['deliveryModel'] ?? 'RESTAURANT');
-        if (!in_array($deliveryModel, ['RESTAURANT', 'PLATFORM'])) $deliveryModel = 'RESTAURANT';
-
-        $orderId = 'ord-' . time() . '-' . rand(100, 999);
-        $totalAmount = (float)($input['totalAmount'] ?? 0);
-        $itemsJson = json_encode($input['items'] ?? [], JSON_UNESCAPED_UNICODE);
-
-        if ($useMysql) {
-            $stmt = $pdo->prepare("INSERT INTO `online_siparisler` (`id`, `platform`, `platform_kodu`, `teslimat_modeli`, `musteri_adi`, `musteri_telefon`, `adres`, `siparis_notu`, `kalemler`, `toplam_tutar`, `odeme_yontemi`, `durum`, `olusturma_tarihi`) 
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', NOW())");
-            $stmt->execute([
-                $orderId,
-                $platform,
-                $code,
-                $deliveryModel,
-                $input['customerName'] ?? 'Online Müşteri',
-                $input['customerPhone'] ?? '0532 555 00 00',
-                $input['address'] ?? 'Şehitkamil / Gaziantep',
-                $input['orderNote'] ?? '',
-                $itemsJson,
-                $totalAmount,
-                $input['paymentMethod'] ?? ($platform . ' Online Ödeme')
-            ]);
-
-            echo json_encode([
-                'success' => true,
-                'order' => [
-                    'id' => $orderId,
-                    'platform' => $platform,
-                    'platformCode' => $code,
-                    'totalAmount' => $totalAmount,
-                    'status' => 'NEW'
-                ],
-                'message' => 'Platform siparişi MySQL veritabanına işlendi.'
-            ]);
-            exit;
-        } else {
-            if (!isset($db['online_orders'])) $db['online_orders'] = [];
-            $newOrder = [
-                'id' => $orderId,
-                'platform' => $platform,
-                'platformCode' => $code,
-                'deliveryModel' => $deliveryModel,
-                'customerName' => $input['customerName'] ?? 'Online Müşteri',
-                'customerPhone' => $input['customerPhone'] ?? '0532 555 00 00',
-                'address' => $input['address'] ?? 'Şehitkamil / Gaziantep',
-                'orderNote' => $input['orderNote'] ?? '',
-                'items' => $input['items'] ?? [],
-                'totalAmount' => $totalAmount,
-                'paymentMethod' => $input['paymentMethod'] ?? ($platform . ' Online Ödeme'),
-                'status' => 'NEW',
-                'createdAt' => date('H:i')
-            ];
-            array_unshift($db['online_orders'], $newOrder);
-            $db['online_orders'] = array_slice($db['online_orders'], 0, 100);
-            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            echo json_encode(['success' => true, 'order' => $newOrder, 'message' => 'Platform siparişi alındı.']);
-            exit;
-        }
-    }
-}
-
-if ($action === 'get_online_orders') {
-    if ($useMysql) {
-        $stmt = $pdo->query("SELECT `id`, `platform`, `platform_kodu` as platformCode, `teslimat_modeli` as deliveryModel, `musteri_adi` as customerName, `musteri_telefon` as customerPhone, `adres` as address, `siparis_notu` as orderNote, `kalemler` as items, `toplam_tutar` as totalAmount, `odeme_yontemi` as paymentMethod, `durum` as status, `red_nedeni` as rejectionReason, `hazirlik_suresi` as preparationTimeMinutes, `olusturma_tarihi` as createdAt 
-                             FROM `online_siparisler` 
-                             ORDER BY `olusturma_tarihi` DESC 
-                             LIMIT 100");
-        $rows = $stmt->fetchAll();
-        foreach ($rows as &$r) {
-            $r['items'] = json_decode($r['items'], true) ?: [];
-            $r['totalAmount'] = (float)$r['totalAmount'];
-        }
-        echo json_encode(['success' => true, 'orders' => $rows, 'mode' => 'MYSQL']);
-        exit;
-    } else {
-        echo json_encode(['success' => true, 'orders' => $db['online_orders'] ?? [], 'mode' => 'JSON']);
-        exit;
-    }
-}
-
-if ($action === 'update_platform_order_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    if ($input && !empty($input['orderId'])) {
-        $orderId = $input['orderId'];
-        $newStatus = $input['status'] ?? 'ACCEPTED';
-        $prepTime = $input['preparationTimeMinutes'] ?? 25;
-        $reason = $input['rejectionReason'] ?? '';
-
-        if ($useMysql) {
-            $stmt = $pdo->prepare("UPDATE `online_siparisler` SET `durum` = ?, `hazirlik_suresi` = ?, `red_nedeni` = ?, `guncelleme_tarihi` = NOW() WHERE `id` = ?");
-            $stmt->execute([$newStatus, $prepTime, $reason, $orderId]);
-        } else {
-            if (!empty($db['online_orders'])) {
-                foreach ($db['online_orders'] as &$ord) {
-                    if ($ord['id'] === $orderId) {
-                        $ord['status'] = $newStatus;
-                        $ord['rejectionReason'] = $reason;
-                        $ord['preparationTimeMinutes'] = $prepTime;
-                        $ord['updatedAt'] = date('Y-m-d H:i:s');
-                        break;
-                    }
-                }
-                file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            }
-        }
-
-        echo json_encode([
-            'success' => true,
-            'message' => 'Platform sipariş durumu güncellendi.',
-            'status' => $newStatus
-        ]);
-        exit;
-    }
-}
+// Bu bolumdeki platform_webhook / get_online_orders /
+// update_platform_order_status islemleri KALDIRILDI.
+//
+// Dosyanin basindaki yonlendirme (bkz. 'online/webhook.php',
+// 'online/orders.php', 'online/action.php') ayni aksiyon adlarini daha once
+// yakaladigi icin buradaki kod hicbir zaman calismiyordu. Ustelik burasi
+// `online_siparisler` tablosunu, calisan kod ise `online_orders` tablosunu
+// kullaniyordu: iki farkli tablo, ayni is icin. Karisikligi onlemek adina
+// olu kod silindi, online siparis islemleri tek yerde (online/ klasoru)
+// toplandi.
 
 // ========================================================
 // 8. PATRON GİRİŞİ (boss_login) & PAROLA DEĞİŞTİRME & ÖZET RAPORLAR
