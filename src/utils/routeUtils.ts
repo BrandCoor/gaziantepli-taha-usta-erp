@@ -1,15 +1,14 @@
 /**
- * Router ve URL parametre çözümleyici
- * Hem HTML5 History API (/pair) hem de HashRouter (/#/pair) rotalarını,
- * query parametrelerini (?token=...&userId=...) ve karma hash URL'lerini
- * sunucu konfigürasyonundan bağımsız olarak güvenle ayrıştırır.
+ * Router ve URL parametre cozumleyici.
+ *
+ * Garson girisi artik YALNIZCA PIN ile yapilir; QR eslestirme rotasi
+ * (/pair, /#/pair?token=...) kaldirilmistir. Daha once basilmis QR
+ * etiketleri/linkleri olu sayfaya dusmesin diye bu adresler garson PIN
+ * giris ekranina yonlendirilir.
  */
 
 export interface AppRouteState {
-  isPairRoute: boolean;
   isWaiterMode: boolean;
-  token: string;
-  userId: string;
   params: Record<string, string>;
   pathname: string;
   hashRoute: string;
@@ -18,10 +17,7 @@ export interface AppRouteState {
 export function parseAppRoute(): AppRouteState {
   if (typeof window === 'undefined') {
     return {
-      isPairRoute: false,
       isWaiterMode: false,
-      token: '',
-      userId: '',
       params: {},
       pathname: '/',
       hashRoute: ''
@@ -69,32 +65,28 @@ export function parseAppRoute(): AppRouteState {
     }
   }
 
-  // 3. Eşleştirme (Pairing) Ekranı Tespiti
-  const isPairPath = pathname === '/pair' || pathname.startsWith('/pair/');
-  const isPairHash = hashRoute === '/pair' || hashRoute === 'pair' || hashRoute.startsWith('/pair/');
-  const isPairParam = params['page'] === 'pair' || params['route'] === 'pair' || params['mode'] === 'pair';
-  const hasPairTokens = Boolean(params['token']) && (Boolean(params['userId']) || Boolean(params['id']));
-
-  const isPairRoute = isPairPath || isPairHash || isPairParam || hasPairTokens;
+  // 3. Eski QR eslestirme adresleri (artik PIN ekranina yonlendirilir)
+  const isLegacyPairRoute =
+    pathname === '/pair' ||
+    pathname.startsWith('/pair/') ||
+    hashRoute === '/pair' ||
+    hashRoute.startsWith('/pair/') ||
+    params['page'] === 'pair' ||
+    params['route'] === 'pair' ||
+    params['mode'] === 'pair';
 
   // 4. Garson Modu Tespiti
   const isGarsonSubdomain = window.location.hostname.startsWith('garson.');
-  const isWaiterQuery = 
-    params['mode'] === 'waiter' || 
-    params['role'] === 'waiter' || 
-    hashRoute === '/waiter' || 
-    hashRoute === 'waiter';
+  const isWaiterQuery =
+    params['mode'] === 'waiter' ||
+    params['role'] === 'waiter' ||
+    hashRoute === '/waiter' ||
+    hashRoute === '/garson';
 
-  const isWaiterMode = isGarsonSubdomain || isWaiterQuery || isPairRoute;
-
-  const token = params['token'] || '';
-  const userId = params['userId'] || params['id'] || '';
+  const isWaiterMode = isGarsonSubdomain || isWaiterQuery || isLegacyPairRoute;
 
   return {
-    isPairRoute,
     isWaiterMode,
-    token,
-    userId,
     params,
     pathname,
     hashRoute

@@ -13,7 +13,7 @@ import { ReportsView } from './modules/reports/ReportsView';
 import { UserManagementView } from './modules/users/UserManagementView';
 import { CompanySettingsView } from './modules/settings/CompanySettingsView';
 import { LoginView } from './modules/auth/LoginView';
-import { WaiterView, WaiterLoginView, WaiterPairingView, deviceService } from './modules/waiter';
+import { WaiterView, WaiterLoginView, deviceService } from './modules/waiter';
 import { GlobalModal } from './components/common/GlobalModal';
 import { CallerIdPopup } from './components/common/CallerIdPopup';
 import { dataService } from './services/dataService';
@@ -27,24 +27,18 @@ export default function App() {
   const [targetPosTableId, setTargetPosTableId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Rota ve Garson Eşleşme Durumu (Hem /pair hem #/pair destekli)
-  const [routeState, setRouteState] = useState(() => parseAppRoute());
-  const isGarsonSubdomain = typeof window !== 'undefined' && window.location.hostname.startsWith('garson.');
+  // Rota durumu. Garson girisi yalnizca PIN ile yapilir, QR eslestirme
+  // ekrani kaldirilmistir.
+  const [, setRouteState] = useState(() => parseAppRoute());
 
-  const [isWaiterMode, setIsWaiterMode] = useState<boolean>(() => routeState.isWaiterMode);
-  const [isPairingView, setIsPairingView] = useState<boolean>(() => (
-    routeState.isPairRoute || (isGarsonSubdomain && !deviceService.hasPairedDevice() && !deviceService.getActiveSession())
-  ));
+  const [isWaiterMode, setIsWaiterMode] = useState<boolean>(() => parseAppRoute().isWaiterMode);
   const [waiterUser, setWaiterUser] = useState<any>(() => deviceService.getActiveSession());
 
   useEffect(() => {
     const handleLocationChange = () => {
       const current = parseAppRoute();
       setRouteState(current);
-      if (current.isPairRoute) {
-        setIsPairingView(true);
-        setIsWaiterMode(true);
-      } else if (current.isWaiterMode) {
+      if (current.isWaiterMode) {
         setIsWaiterMode(true);
       }
     };
@@ -73,42 +67,7 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // 1. QR KOD EŞLEŞTİRME EKRANI (/pair veya /#/pair?token=...&userId=...)
-  if (isPairingView) {
-    return (
-      <>
-        <WaiterPairingView
-          initialToken={routeState.token}
-          initialUserId={routeState.userId}
-          onPairedSuccess={(devInfo: any) => {
-            setIsPairingView(false);
-            setIsWaiterMode(true);
-            setWaiterUser(devInfo);
-            if (typeof window !== 'undefined' && window.location.hash.includes('pair')) {
-              window.history.replaceState({}, document.title, window.location.pathname + '#/');
-            }
-          }}
-          onGoToLogin={() => {
-            setIsPairingView(false);
-            setIsWaiterMode(true);
-            if (typeof window !== 'undefined' && window.location.hash.includes('pair')) {
-              window.history.replaceState({}, document.title, window.location.pathname + '#/');
-            }
-          }}
-          onCancel={() => {
-            setIsPairingView(false);
-            if (!isGarsonSubdomain) setIsWaiterMode(false);
-            if (typeof window !== 'undefined' && window.location.hash.includes('pair')) {
-              window.history.replaceState({}, document.title, window.location.pathname + '#/');
-            }
-          }}
-        />
-        <GlobalModal />
-      </>
-    );
-  }
-
-  // 2. GARSON MOBİL TERMİNALİ (garson.rymedya.com.tr veya ?mode=waiter)
+  // 1. GARSON MOBİL TERMİNALİ (garson.rymedya.com.tr veya ?mode=waiter)
   // Garson terminali kapalı bir alandır: yalnızca masa görme ve sipariş alma.
   // Kasa paneline geçiş bilerek verilmez, aksi halde garson telefonundan ciro,
   // personel ve kasa ekranlarına erişilebiliyordu.
@@ -133,7 +92,6 @@ export default function App() {
             onLoginSuccess={(user) => {
               setWaiterUser(user);
             }}
-            onOpenPairingScreen={() => setIsPairingView(true)}
           />
           <GlobalModal />
         </>
@@ -141,7 +99,7 @@ export default function App() {
     }
   }
 
-  // 3. KASA GİRİŞİ (Desktop / Tablet Kasa Paneli)
+  // 2. KASA GİRİŞİ (Desktop / Tablet Kasa Paneli)
   if (!isAuthenticated) {
     return (
       <>

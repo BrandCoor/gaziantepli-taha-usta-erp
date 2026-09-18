@@ -6,7 +6,6 @@
   <title>Gaziantepli Taha Usta - Garson Mobil Terminali</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script src="./zxing-browser.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js'"></script>
   <style>
     body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -86,57 +85,6 @@
       <button onclick="submitPin()" class="h-14 bg-gradient-to-r from-[#F5C877] to-[#D4A351] active:scale-95 text-[#141416] rounded-2xl text-lg font-black shadow-lg shadow-[#F5C877]/20 transition-transform flex items-center justify-center">
         <i class="fa-solid fa-arrow-right"></i>
       </button>
-    </div>
-  </div>
-
-  <!-- ========================================== -->
-  <!-- 1B. İLK CİHAZ QR & KOD EŞLEŞTİRME EKRANI       -->
-  <!-- ========================================== -->
-  <div id="pairingScreen" class="hidden flex-1 flex-col items-center justify-center p-5 max-w-md mx-auto w-full text-center">
-    <div class="w-full bg-[#18181C] border border-[#2C2C34] rounded-3xl p-5 shadow-2xl space-y-4">
-      <div class="w-14 h-14 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-2xl flex items-center justify-center mx-auto text-xl">
-        <i class="fa-solid fa-mobile-screen-button"></i>
-      </div>
-      <div>
-        <h1 class="text-lg font-black text-white">Telefonu Eşleştirin</h1>
-        <p class="text-xs text-[#A0A0AA] mt-1">Kasadaki QR kodu okutun veya 6 haneli kodu girin.</p>
-      </div>
-
-      <!-- Sekme Seçici -->
-      <div class="grid grid-cols-2 gap-1 p-1 bg-[#121214] rounded-2xl border border-[#2C2C34] text-xs font-bold">
-        <button id="btnTabQr" onclick="switchPairingTab('qr')" class="py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40">
-          <i class="fa-solid fa-qrcode mr-1"></i> QR Okut
-        </button>
-        <button id="btnTabCode" onclick="switchPairingTab('code')" class="py-2 rounded-xl text-[#8E8E98] hover:text-white">
-          <i class="fa-solid fa-hashtag mr-1"></i> 6 Haneli Kod
-        </button>
-      </div>
-
-      <div id="boxPairingQr" class="space-y-3">
-        <div class="aspect-square overflow-hidden rounded-2xl border border-[#383844] bg-black">
-          <video id="pairingVideo" class="h-full w-full object-cover" autoplay muted playsinline></video>
-        </div>
-        <p id="pairingStatus" class="text-xs text-[#F5C877] font-bold">Kamera başlatılıyor...</p>
-        <button id="pairingRetryButton" onclick="startPairingScanner()" class="hidden w-full py-2.5 bg-[#24242C] border border-[#383844] text-white rounded-2xl text-xs font-bold">
-          <i class="fa-solid fa-rotate mr-1"></i> Kamerayı Yeniden Aç
-        </button>
-      </div>
-
-      <div id="boxPairingCode" class="hidden space-y-3 pt-2">
-        <p class="text-xs text-[#A0A0AA]">Kasa ekranında personel kartındaki <b>6 Haneli Kodu</b> yazın:</p>
-        <input id="inputPairingCode" type="text" maxlength="6" placeholder="842195" class="w-full text-center py-3 bg-[#121214] border-2 border-[#383844] focus:border-amber-400 rounded-2xl text-2xl font-mono font-black text-amber-300 tracking-widest outline-none" />
-        <button onclick="submitPairingCode()" class="w-full py-3 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-slate-950 rounded-2xl text-xs font-black shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2">
-          <i class="fa-solid fa-shield-halved"></i>
-          <span>Cihazı Eşleştir</span>
-        </button>
-      </div>
-
-      <div class="pt-2 border-t border-[#2C2C34]">
-        <button onclick="showPinScreen()" class="w-full py-2.5 bg-[#24242C] hover:bg-[#2C2C34] text-[#A0A0AA] hover:text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2">
-          <i class="fa-solid fa-key"></i>
-          <span>PIN Kodu Ekranına Geç</span>
-        </button>
-      </div>
     </div>
   </div>
 
@@ -553,217 +501,10 @@
 
     let pairingScannerControls = null;
 
-    function stopPairingScanner() {
-      if (pairingScannerControls) {
-        pairingScannerControls.stop();
-        pairingScannerControls = null;
-      }
-    }
-
     function showPinScreen() {
-      stopPairingScanner();
-      document.getElementById('pairingScreen').classList.add('hidden');
-      document.getElementById('pairingScreen').classList.remove('flex');
       document.getElementById('pinScreen').classList.remove('hidden');
     }
 
-    function showPairingScreen() {
-      document.getElementById('pinScreen').classList.add('hidden');
-      document.getElementById('pairingScreen').classList.remove('hidden');
-      document.getElementById('pairingScreen').classList.add('flex');
-      startPairingScanner();
-    }
-
-    function switchPairingTab(mode) {
-      const btnQr = document.getElementById('btnTabQr');
-      const btnCode = document.getElementById('btnTabCode');
-      const boxQr = document.getElementById('boxPairingQr');
-      const boxCode = document.getElementById('boxPairingCode');
-
-      if (mode === 'qr') {
-        btnQr.className = 'py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40';
-        btnCode.className = 'py-2 rounded-xl text-[#8E8E98] hover:text-white';
-        boxQr.classList.remove('hidden');
-        boxCode.classList.add('hidden');
-        startPairingScanner();
-      } else {
-        btnCode.className = 'py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40';
-        btnQr.className = 'py-2 rounded-xl text-[#8E8E98] hover:text-white';
-        boxCode.classList.remove('hidden');
-        boxQr.classList.add('hidden');
-        stopPairingScanner();
-        const inp = document.getElementById('inputPairingCode');
-        if (inp) inp.focus();
-      }
-    }
-
-    async function submitPairingCode() {
-      const inp = document.getElementById('inputPairingCode');
-      const code = inp ? inp.value.replace(/\s+/g, '').trim() : '';
-      if (!code || code.length < 4) {
-        showToast('Lütfen 6 haneli eşleşme kodunu girin.', 'error');
-        return;
-      }
-
-      showToast('Cihaz eşleştiriliyor...', 'info');
-      try {
-        const response = await apiFetch('pair_with_code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
-          body: JSON.stringify({ action: 'pair_with_code', code: code, pairingCode: code, device_uuid: deviceUuid })
-        });
-        const result = await response.json();
-        if (result && result.success) {
-          const userObj = result.user || {};
-          storeDeviceToken(result.device_token);
-          // Eşleşme kodu PIN olarak saklanmaz: bu ikisi farklı şeylerdir ve kodu
-          // PIN yerine kaydetmek, kodu bilen herkesin giriş yapabilmesi demekti.
-          const pairedObj = {
-            id: userObj.id || result.waiterId || 'W1',
-            name: userObj.ad || userObj.name || 'Garson',
-            deviceUuid: deviceUuid
-          };
-          persistentSet('gtu_paired_waiter', JSON.stringify(pairedObj));
-          selectedWaiter = pairedObj;
-          showToast(`Cihaz [${pairedObj.name}] hesabına başarıyla mühürlendi!`, 'success');
-          showPinScreen();
-          loadActiveWaiters();
-          return;
-        } else if (result && result.error) {
-          showToast(result.error, 'error');
-          return;
-        }
-      } catch (e) {
-        console.warn('Eşleşme API hatası:', e);
-      }
-
-      // Cihaz eşleştirme bir güvenlik işlemidir ve SUNUCU ONAYI OLMADAN yapılamaz.
-      // Önceki kod, sunucuya ulaşılamadığında girilen kodu doğru kabul edip uydurma
-      // bir garson hesabı oluşturuyordu; bu hem kasada olmayan bir garson yaratıyor
-      // hem de herhangi bir 6 haneli kodla giriş yapılmasına izin veriyordu.
-      showToast('Eşleştirme yapılamadı: kasa sunucusuna ulaşılamıyor. İnternet bağlantınızı kontrol edip tekrar deneyin.', 'error');
-    }
-
-    function getPairingParams(scannedText) {
-      const candidates = [String(scannedText || '')];
-      try { candidates.push(decodeURIComponent(candidates[0])); } catch (e) {}
-
-      for (const candidate of candidates) {
-        try {
-          const json = JSON.parse(candidate);
-          const jsonToken = json.token || json.pairingToken || json.pairing_token;
-          const jsonUserId = json.userId || json.user_id || json.waiterId || json.personelId || json.id;
-          const jsonName = json.name || json.ad || '';
-          const jsonPin = json.pin || '';
-          if (jsonToken && jsonUserId) return { token: String(jsonToken), userId: String(jsonUserId), name: jsonName, pin: jsonPin };
-        } catch (e) {}
-
-        try {
-          const scannedUrl = new URL(candidate, window.location.origin);
-          const queryStrings = [scannedUrl.search];
-          if (scannedUrl.hash.includes('?')) queryStrings.push(scannedUrl.hash.substring(scannedUrl.hash.indexOf('?')));
-          const params = new URLSearchParams();
-          queryStrings.forEach((query) => new URLSearchParams(query).forEach((value, key) => params.set(key, value)));
-          const token = params.get('token') || params.get('pairingToken') || params.get('pairing_token') || '';
-          const userId = params.get('userId') || params.get('user_id') || params.get('waiterId') || params.get('personelId') || params.get('id') || '';
-          const name = params.get('name') || params.get('ad') || '';
-          const pin = params.get('pin') || '';
-          if (token && userId) return { token, userId, name, pin };
-        } catch (e) {}
-      }
-
-      return { token: '', userId: '', name: '', pin: '' };
-    }
-
-    function startPairingScanner() {
-      const video = document.getElementById('pairingVideo');
-      const status = document.getElementById('pairingStatus');
-      const retry = document.getElementById('pairingRetryButton');
-      if (!video || document.getElementById('pairingScreen').classList.contains('hidden')) return;
-      stopPairingScanner();
-      retry.classList.add('hidden');
-      status.innerText = 'Kamera başlatılıyor...';
-
-      if (window.location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-        status.innerText = 'Güvenli bağlantıya geçiliyor...';
-        window.location.replace(`https://${window.location.host}${window.location.pathname}${window.location.search}${window.location.hash}`);
-        return;
-      }
-
-      if (!window.ZXingBrowser || !window.ZXingBrowser.BrowserQRCodeReader) {
-        status.innerText = 'QR tarayıcı yüklenemedi. zxing-browser.min.js dosyasını yükleyin.';
-        retry.classList.remove('hidden');
-        return;
-      }
-
-      const reader = new ZXingBrowser.BrowserQRCodeReader();
-      reader.decodeFromVideoDevice(undefined, video, (result) => {
-        if (!result) return;
-        let pairing;
-        try {
-          pairing = getPairingParams(result.getText());
-        } catch (e) {
-          status.innerText = 'Geçersiz QR kod. Kasa eşleştirme QR kodunu okutun.';
-          return;
-        }
-        if (!pairing.token || !pairing.userId) {
-          status.innerText = 'Bu QR kodda tek kullanımlık eşleştirme tokenı yok. Kasadan yeni QR üretin.';
-          return;
-        }
-        stopPairingScanner();
-        pairDeviceFromQr(pairing.userId, pairing.token, pairing.name, pairing.pin);
-      }).then((controls) => {
-        pairingScannerControls = controls;
-        status.innerText = 'Kasa QR kodunu kameraya gösterin.';
-      }).catch(() => {
-        status.innerText = 'Kamera açılamadı. Kamera iznini verip tekrar deneyin.';
-        retry.classList.remove('hidden');
-      });
-    }
-
-    function pairDeviceFromQr(userId, token, name, pin) {
-      const status = document.getElementById('pairingStatus');
-      if (status) status.innerText = 'Cihaz güvenli şekilde eşleştiriliyor...';
-
-      const failPairing = (message) => {
-        if (status) status.innerText = message;
-        showToast(message, 'error');
-      };
-
-      apiFetch('pair_device', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'pair_device', userId, token, device_uuid: deviceUuid, name, pin })
-      }).then(async (response) => {
-        const result = await response.json();
-        // Eşleştirme SUNUCU ONAYI gerektirir. Önceki kod, sunucu reddetse veya ağ
-        // hatası olsa bile cihazı eşleşmiş sayıyordu; bu, geçersiz bir QR ile
-        // eşleşme yapılabilmesi demekti.
-        if (!response.ok || !result || !result.success) {
-          failPairing((result && (result.error || result.message)) || 'Eşleştirme reddedildi. Kasadan yeni QR kod alın.');
-          return;
-        }
-
-        const userObj = result.user || {};
-        storeDeviceToken(result.device_token);
-
-        const pairedObj = {
-          id: userObj.id || result.waiterId || userId,
-          name: userObj.ad || userObj.name || name || 'Garson',
-          deviceUuid: deviceUuid
-        };
-        persistentSet('gtu_paired_waiter', JSON.stringify(pairedObj));
-        selectedWaiter = pairedObj;
-
-        const greeting = document.getElementById('waiterGreeting');
-        if (greeting) greeting.innerText = `Seçildi: ${pairedObj.name}`;
-        showToast(`Cihaz ${pairedObj.name} hesabına eşleştirildi. PIN ile giriş yapın.`, 'success');
-        showPinScreen();
-        loadActiveWaiters();
-      }).catch(() => {
-        failPairing('Kasa sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.');
-      });
-    }
 
     // URL parametreleri ile QR eşleşmesi (Hem search ? hem hash # desteği)
     function extractParams() {
@@ -779,77 +520,24 @@
       return p;
     }
 
+    // QR eşleştirme kaldırıldı. Adreste eski bir eşleştirme bağlantısı kalmışsa
+    // (token/pin gibi parametreler) bunlar yok sayılır ve adres temizlenir;
+    // giriş her durumda PIN ile yapılır.
     const urlParams = extractParams();
-    const qrToken = urlParams.get('token') || urlParams.get('pairingToken') || urlParams.get('pairing_token');
-    const qrPin = urlParams.get('pin');
-    const qrName = urlParams.get('name');
-    const qrUserId = urlParams.get('userId') || urlParams.get('id') || urlParams.get('user_id') || urlParams.get('waiterId');
-
-    if (qrToken && qrUserId) {
-      pairDeviceFromQr(qrUserId, qrToken, qrName, qrPin);
+    if (urlParams.get('token') || urlParams.get('pin') || urlParams.get('userId')) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    let activeWaitersList = [];
-    let selectedWaiter = null;
+    // Giriş öncesi hiçbir garson "seçili" değildir: kimin girdiğini PIN belirler.
     let currentWaiter = null;
-
-    // Eğer önceden eşleşmiş bir garson varsa otomatik seç
-    const savedPairedStr = persistentGet('gtu_paired_waiter');
-    if (savedPairedStr) {
-      try {
-        const parsed = JSON.parse(savedPairedStr);
-        if (parsed && parsed.name) {
-          selectedWaiter = parsed;
-          setTimeout(() => {
-            const greetingEl = document.getElementById('waiterGreeting');
-            if (greetingEl) greetingEl.innerText = `Seçildi: ${parsed.name}`;
-          }, 100);
-        }
-      } catch(e) {}
-    }
 
     // Telefonun yerel hafızası (localStorage + çerez) tamamen silinmiş olabilir.
     // Bu durumda bile cihaz sunucuda kayıtlıysa QR okutmaya gerek yoktur: cihaz
     // kimliğinden eşleşme geri yüklenir ve doğrudan PIN ekranına geçilir.
-    async function restorePairingFromServer() {
-      if (selectedWaiter) return true;
-      try {
-        const res = await apiFetch('device_lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'device_lookup', device_uuid: deviceUuid })
-        });
-        const data = await res.json();
-        if (data && data.success && data.is_paired && data.waiter && data.waiter.id) {
-          const restored = {
-            id: data.waiter.id,
-            name: data.waiter.name || 'Garson',
-            pin: '',
-            deviceUuid: deviceUuid
-          };
-          persistentSet('gtu_paired_waiter', JSON.stringify(restored));
-          selectedWaiter = restored;
-          const greetingEl = document.getElementById('waiterGreeting');
-          if (greetingEl) greetingEl.innerText = `Seçildi: ${restored.name}`;
-          return true;
-        }
-      } catch (e) {
-        console.warn('Cihaz eşleşmesi sunucudan sorgulanamadı:', e);
-      }
-      return false;
-    }
 
-    if (!selectedWaiter && !qrToken) {
-      restorePairingFromServer().then((restored) => {
-        if (restored) {
-          showPinScreen();
-          loadActiveWaiters();
-        } else {
-          showPairingScreen();
-        }
-      });
-    }
+    // Giriş artık yalnızca PIN ile yapılır: QR eşleştirme ekranı kaldırıldı.
+    // Uygulama doğrudan PIN tuş takımıyla açılır.
+    showPinScreen();
 
     function updateWaiterUI() {
       if (currentWaiter) {
@@ -858,72 +546,14 @@
       }
     }
 
-    async function loadActiveWaiters() {
+    // Giriş ekranında personel listesi GÖSTERİLMEZ. Garson yalnızca PIN ile
+    // tanındığı için seçim gerekmez; ayrıca herkese açık bu adreste tüm personel
+    // isimlerini listelemek gereksiz bir bilgi sızıntısıydı.
+    function loadActiveWaiters() {
       const pillsContainer = document.getElementById('quickWaiterPills');
-      if (selectedWaiter) {
-        pillsContainer.innerHTML = `
-          <button type="button" id="waiter-pill-${selectedWaiter.id}" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] flex items-center gap-1.5">
-            <i class="fa-solid fa-lock text-[10px] text-[#F5C877]"></i> <span>${selectedWaiter.name}</span>
-          </button>
-        `;
-        return;
-      }
-      try {
-        const res = await apiFetch('get_active_waiters');
-        const data = await res.json();
-        if (data.success && data.waiters && data.waiters.length > 0) {
-          activeWaitersList = data.waiters;
-          pillsContainer.innerHTML = '';
-          data.waiters.forEach((w, idx) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.id = `waiter-pill-${w.id}`;
-            const isSel = selectedWaiter && String(selectedWaiter.id) === String(w.id);
-            btn.className = `px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
-              isSel ? 'border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877]' : 'border-[#2C2C34] bg-[#1C1C20] text-[#A0A0AA] hover:border-[#F5C877]'
-            }`;
-            btn.innerHTML = `<i class="fa-solid fa-user-tie text-[10px] text-[#F5C877]"></i> <span>${w.name}</span>`;
-            btn.onclick = () => selectWaiter(w);
-            pillsContainer.appendChild(btn);
-          });
-        } else {
-          if (selectedWaiter) {
-            pillsContainer.innerHTML = `
-              <button type="button" id="waiter-pill-${selectedWaiter.id}" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] flex items-center gap-1.5">
-                <i class="fa-solid fa-user-tie text-[10px] text-[#F5C877]"></i> <span>${selectedWaiter.name}</span>
-              </button>
-            `;
-          } else {
-            pillsContainer.innerHTML = '<span class="text-[11px] text-[#A0A0AA]">Sisteme tanımlı aktif garson bulunamadı</span>';
-          }
-        }
-      } catch (e) {
-        const pillsContainer = document.getElementById('quickWaiterPills');
-        if (selectedWaiter) {
-          pillsContainer.innerHTML = `
-            <button type="button" id="waiter-pill-${selectedWaiter.id}" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] flex items-center gap-1.5">
-              <i class="fa-solid fa-user-tie text-[10px] text-[#F5C877]"></i> <span>${selectedWaiter.name}</span>
-            </button>
-          `;
-        } else {
-          pillsContainer.innerHTML = '<span class="text-[11px] text-[#A0A0AA]">Garson listesi hazır</span>';
-        }
-      }
+      if (pillsContainer) pillsContainer.innerHTML = '';
     }
 
-    function selectWaiter(w) {
-      selectedWaiter = w;
-      document.querySelectorAll('#quickWaiterPills button').forEach(b => {
-        b.className = 'px-3 py-1.5 rounded-xl text-xs font-bold border border-[#2C2C34] bg-[#1C1C20] text-[#A0A0AA] transition-all flex items-center gap-1.5';
-      });
-      const selectedBtn = document.getElementById(`waiter-pill-${w.id}`);
-      if (selectedBtn) {
-        selectedBtn.className = 'px-3 py-1.5 rounded-xl text-xs font-bold border border-[#F5C877] bg-[#F5C877]/10 text-[#F5C877] transition-all flex items-center gap-1.5 shadow-sm';
-      }
-      document.getElementById('waiterGreeting').innerText = `Seçildi: ${w.name}`;
-      enteredPin = '';
-      updateDots();
-    }
 
     loadActiveWaiters();
 
@@ -975,28 +605,22 @@
       if (enteredPin.length !== 4) return;
       
       const pinVal = enteredPin;
-      const waiterTarget = selectedWaiter || (function() {
-        try {
-          const raw = persistentGet('gtu_paired_waiter');
-          return raw ? JSON.parse(raw) : null;
-        } catch(e) { return null; }
-      })();
 
+      // Garson YALNIZCA PIN ile tanınır: personel seçimi veya cihaz eşleştirmesi
+      // gönderilmez. PIN'ler benzersiz olduğu için sunucu kimin girdiğini bilir.
       const payload = {
         action: 'verify_waiter_pin',
         pin: pinVal,
-        waiterId: waiterTarget ? waiterTarget.id : '',
         device_uuid: deviceUuid
       };
 
       let loginSuccessful = false;
       let authenticatedWaiter = null;
 
-      // 1. Sunucu API doğrulaması
       try {
         const res = await apiFetch('verify_waiter_pin', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Device-UUID': deviceUuid },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const data = await res.json();
@@ -1004,14 +628,15 @@
         if (data.success && data.waiter) {
           loginSuccessful = true;
           authenticatedWaiter = data.waiter;
-        } else if (data.message && res.status === 401) {
-          showToast(data.message, 'error');
+        } else {
+          // Hatalı PIN, kilitlenme (429) veya çift PIN (409) mesajını olduğu gibi göster.
+          showToast(data.message || 'Geçersiz PIN kodu.', 'error');
           enteredPin = '';
           updateDots();
           return;
         }
       } catch (err) {
-        console.warn('[PIN] Sunucu erişiminde ağ sorunu, yerel eşleşme kontrol ediliyor...', err);
+        console.warn('[PIN] Sunucuya ulaşılamadı:', err);
       }
 
       // Çevrimdışı PIN doğrulaması KALDIRILDI. PIN artık telefonda saklanmıyor ve
@@ -1041,7 +666,6 @@
 
     function logout() {
       currentWaiter = null;
-      selectedWaiter = null;
       enteredPin = '';
       updateDots();
       document.getElementById('mainApp').classList.add('hidden');

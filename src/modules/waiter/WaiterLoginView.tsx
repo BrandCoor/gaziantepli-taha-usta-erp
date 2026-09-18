@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
-import { Lock, Smartphone, ShieldAlert, ArrowRight, Delete, Sparkles, CheckCircle2, QrCode } from 'lucide-react';
+import { Smartphone, ShieldAlert, Delete } from 'lucide-react';
 import { deviceService } from '../../services/deviceService';
 
 interface WaiterLoginViewProps {
   onLoginSuccess: (user: any) => void;
-  onOpenPairingScreen?: () => void;
-  onBackToKasa?: () => void;
 }
 
-export const WaiterLoginView: React.FC<WaiterLoginViewProps> = ({ onLoginSuccess, onOpenPairingScreen, onBackToKasa }) => {
+export const WaiterLoginView: React.FC<WaiterLoginViewProps> = ({ onLoginSuccess }) => {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isDeviceLocked, setIsDeviceLocked] = useState(false);
+  const [errorTitle, setErrorTitle] = useState('');
+  const [isBlocking, setIsBlocking] = useState(false);
 
   const deviceUuid = deviceService.getOrCreateDeviceUuid();
 
@@ -21,7 +20,7 @@ export const WaiterLoginView: React.FC<WaiterLoginViewProps> = ({ onLoginSuccess
       const newPin = pin + digit;
       setPin(newPin);
       setErrorMessage('');
-      setIsDeviceLocked(false);
+      setIsBlocking(false);
 
       if (newPin.length === 4) {
         submitLogin(newPin);
@@ -32,35 +31,44 @@ export const WaiterLoginView: React.FC<WaiterLoginViewProps> = ({ onLoginSuccess
   const handleBackspace = () => {
     setPin(prev => prev.slice(0, -1));
     setErrorMessage('');
-    setIsDeviceLocked(false);
+    setIsBlocking(false);
   };
 
   const handleClear = () => {
     setPin('');
     setErrorMessage('');
-    setIsDeviceLocked(false);
+    setIsBlocking(false);
   };
 
   const submitLogin = async (pinToSubmit: string) => {
     setLoading(true);
     setErrorMessage('');
-    setIsDeviceLocked(false);
+    setErrorTitle('');
+    setIsBlocking(false);
 
     try {
       const res = await deviceService.waiterLogin(pinToSubmit);
 
       if (res.success && res.user) {
         onLoginSuccess(res.user);
-      } else {
-        if (res.error_code === 'DEVICE_NOT_PAIRED') {
-          setIsDeviceLocked(true);
-          setErrorMessage(res.error || 'Bu cihaz bu hesapla eşleştirilmemiştir. Lütfen kasanızdan QR kod okutarak cihazınızı yetkilendirin.');
-        } else {
-          setErrorMessage(res.error || 'Hatalı PIN kodu. Lütfen tekrar deneyin.');
-        }
-        setPin('');
+        return;
       }
+
+      if (res.error_code === 'TOO_MANY_ATTEMPTS') {
+        setIsBlocking(true);
+        setErrorTitle('Giriş Geçici Olarak Kilitlendi');
+        setErrorMessage(res.error || 'Çok fazla hatalı deneme yapıldı. Lütfen bir süre sonra tekrar deneyin.');
+      } else if (res.error_code === 'DUPLICATE_PIN') {
+        setIsBlocking(true);
+        setErrorTitle('PIN Kodu Benzersiz Değil');
+        setErrorMessage(res.error || 'Bu PIN birden fazla personele tanımlı. Yöneticinizden PIN kodunuzu değiştirmesini isteyin.');
+      } else {
+        setErrorTitle('Giriş Başarısız');
+        setErrorMessage(res.error || 'Hatalı PIN kodu. Lütfen tekrar deneyin.');
+      }
+      setPin('');
     } catch (e: any) {
+      setErrorTitle('Bağlantı Hatası');
       setErrorMessage('Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.');
       setPin('');
     } finally {
@@ -78,6 +86,7 @@ export const WaiterLoginView: React.FC<WaiterLoginViewProps> = ({ onLoginSuccess
           </div>
           <h1 className="text-lg font-black tracking-tight text-white">Gaziantepli Taha Usta</h1>
           <p className="text-xs text-[#8E8E98] mt-0.5">Garson Mobil Sipariş Terminali</p>
+          <p className="text-[11px] text-[#70707A] mt-1.5">Size verilen 4 haneli PIN kodunu girin</p>
         </div>
 
         {/* PIN Gösterge Noktaları */}
@@ -98,16 +107,16 @@ export const WaiterLoginView: React.FC<WaiterLoginViewProps> = ({ onLoginSuccess
         {errorMessage && (
           <div
             className={`p-3.5 rounded-2xl border text-xs leading-relaxed animate-fadeIn ${
-              isDeviceLocked
+              isBlocking
                 ? 'bg-red-500/15 border-red-500/40 text-red-200'
                 : 'bg-amber-500/15 border-amber-500/40 text-amber-200'
             }`}
           >
             <div className="flex items-start gap-2">
-              <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${isDeviceLocked ? 'text-red-400' : 'text-amber-400'}`} />
+              <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${isBlocking ? 'text-red-400' : 'text-amber-400'}`} />
               <div className="space-y-1">
                 <div className="font-bold text-white">
-                  {isDeviceLocked ? 'Cihaz Yetki Kilidi (Eşleşme Bulunamadı)' : 'Giriş Başarısız'}
+                  {errorTitle || 'Giriş Başarısız'}
                 </div>
                 <div className="text-[11px] text-[#E0E0E6]">{errorMessage}</div>
               </div>
@@ -150,29 +159,13 @@ export const WaiterLoginView: React.FC<WaiterLoginViewProps> = ({ onLoginSuccess
           </button>
         </div>
 
-        {/* Alt Cihaz Parmak İzi & QR Eşleme Yönlendirmesi */}
-        <div className="pt-2 border-t border-[#26262E] space-y-2">
-          {onOpenPairingScreen && (
-            <button
-              onClick={onOpenPairingScreen}
-              className="w-full py-2.5 bg-[#202026] hover:bg-[#282832] border border-[#343440] text-amber-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all"
-            >
-              <QrCode className="w-3.5 h-3.5" />
-              <span>QR Kod ile Cihazı Eşleştir</span>
-            </button>
-          )}
-
-          {onBackToKasa && (
-            <button
-              onClick={onBackToKasa}
-              className="w-full py-2 bg-transparent hover:bg-[#202026] text-[#A0A0AA] hover:text-white font-medium text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <span>← Kasa Paneline Dön</span>
-            </button>
-          )}
-
-          <div className="text-[10px] text-[#70707A] text-center font-mono truncate">
-            Cihaz UUID: {deviceUuid.substring(0, 18)}...
+        {/* Alt Cihaz Parmak İzi */}
+        <div className="pt-2 border-t border-[#26262E] space-y-1.5">
+          <div className="text-[10px] text-[#70707A] text-center leading-relaxed">
+            PIN kodunuzu bilmiyorsanız kasadan öğrenebilirsiniz. PIN'iniz size özeldir, kimseyle paylaşmayın.
+          </div>
+          <div className="text-[10px] text-[#54545C] text-center font-mono truncate">
+            Cihaz: {deviceUuid.substring(0, 12)}...
           </div>
         </div>
       </div>

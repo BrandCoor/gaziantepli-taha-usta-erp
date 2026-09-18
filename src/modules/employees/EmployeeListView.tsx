@@ -33,7 +33,6 @@ import {
   ArrowDownCircle,
   ArrowUpCircle
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { Employee, EmployeePayment, dataService, SalaryType, WEEKDAY_LABELS } from '../../services/dataService';
 import { restaurantDataService, WaiterConfig } from '../../services/restaurantDataService';
 import { exportService } from '../../services/exportService';
@@ -313,24 +312,34 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         isActive: true,
       });
 
-      // Eğer garson ise garson listesine de telefon ve otomatik cihaz kimliği ile ekle
+      // Garson ise garson listesine de eklenir. PIN sabit verilemez: garson
+      // terminaline giriş yalnızca PIN ile yapıldığı için her garsonun PIN'i
+      // benzersiz olmak zorundadır (önceden herkese '1111' atanıyordu).
+      let assignedPin = '';
       if (formPosition.toLowerCase().includes('garson')) {
-        restaurantDataService.addWaiter({
-          name: formName.trim(),
-          phone: formPhone.trim(),
-          pin: '1111',
-          allowedSections: ['ALL'],
-          permissions: {
-            canDiscount: false,
-            canVoidItem: false,
-            canGift: false,
-            canTransferTable: true,
-            canPrintBill: true,
-          },
-        });
+        assignedPin = restaurantDataService.generateUniquePin();
+        if (assignedPin) {
+          restaurantDataService.addWaiter({
+            name: formName.trim(),
+            phone: formPhone.trim(),
+            pin: assignedPin,
+            allowedSections: ['ALL'],
+            permissions: {
+              canDiscount: false,
+              canVoidItem: false,
+              canGift: false,
+              canTransferTable: true,
+              canPrintBill: true,
+            },
+          });
+        }
       }
 
-      notify.success(`${formName} kadroya eklendi.`);
+      notify.success(
+        assignedPin
+          ? `${formName} kadroya eklendi. Garson giriş PIN kodu: ${assignedPin}`
+          : `${formName} kadroya eklendi.`
+      );
     }
 
     setIsEmployeeModalOpen(false);

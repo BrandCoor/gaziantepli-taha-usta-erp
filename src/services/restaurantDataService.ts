@@ -2455,7 +2455,34 @@ class RestaurantDataService {
     this.saveWaiters(Array.from(byId.values()));
   }
 
-  public addWaiter(waiter: Partial<WaiterConfig> & { name: string; pin: string }): WaiterConfig {
+  /**
+   * Garson artık YALNIZCA PIN ile tanınır; bu yüzden PIN benzersiz olmak zorundadır.
+   * Aynı PIN iki kişide olursa giriş yapan kişinin kim olduğu belirlenemez ve
+   * siparişler yanlış garsona yazılır.
+   */
+  public findWaiterByPin(pin: string): WaiterConfig | undefined {
+    const clean = String(pin || '').trim();
+    if (!clean) return undefined;
+    return this.getWaiters().find(w => String(w.pin || '').trim() === clean);
+  }
+
+  public isPinTaken(pin: string, exceptWaiterId?: string): boolean {
+    const match = this.findWaiterByPin(pin);
+    return Boolean(match && match.id !== exceptWaiterId);
+  }
+
+  /** Kullanılmayan, benzersiz bir 4 haneli PIN üretir. */
+  public generateUniquePin(): string {
+    const used = new Set(this.getWaiters().map(w => String(w.pin || '').trim()));
+    for (let i = 0; i < 500; i++) {
+      const candidate = String(Math.floor(1000 + Math.random() * 9000));
+      if (!used.has(candidate)) return candidate;
+    }
+    return '';
+  }
+
+  public addWaiter(waiter: Partial<WaiterConfig> & { name: string; pin: string }): WaiterConfig | null {
+    if (this.isPinTaken(waiter.pin)) return null;
     const waiters = this.getWaiters();
     const token = `TOKEN-GTU-${Math.random().toString(36).substring(2, 9).toUpperCase()}-${Date.now().toString().slice(-4)}`;
     const pairingCode = waiter.pairingCode || this.generatePairingCode();
@@ -2485,7 +2512,10 @@ class RestaurantDataService {
     return newW;
   }
 
-  public updateWaiter(id: string, partial: Partial<WaiterConfig>) {
+  public updateWaiter(id: string, partial: Partial<WaiterConfig>): boolean {
+    // PIN değiştiriliyorsa başka bir garsonda kullanılmadığından emin olunur.
+    if (partial.pin !== undefined && this.isPinTaken(partial.pin, id)) return false;
+
     const waiters = this.getWaiters().map(w => {
       if (w.id === id) {
         return {
@@ -2497,6 +2527,7 @@ class RestaurantDataService {
       return w;
     });
     this.saveWaiters(waiters);
+    return true;
   }
 
   public deleteWaiter(id: string) {

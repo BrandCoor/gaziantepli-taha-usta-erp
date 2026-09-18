@@ -1,32 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Smartphone, 
-  Plus, 
-  Trash2, 
-  Edit3, 
-  QrCode, 
-  Copy, 
-  Check, 
-  RotateCcw, 
-  ShieldCheck, 
-  ExternalLink,
+import {
+  Smartphone,
+  Plus,
+  Trash2,
+  Edit3,
+  Copy,
+  Check,
+  RotateCcw,
+  ShieldCheck,
   Search,
   Phone,
-  Radio,
-  Printer,
   Sparkles,
   Wifi,
   Lock,
   Hash,
-  CheckCircle2,
-  Clock
+  Globe
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { WaiterConfig, SectionConfig, restaurantDataService, getPublicBaseUrl, setPublicBaseUrl } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
 import { deviceService } from '../../../services/deviceService';
 import { realtimeSyncService } from '../../../services/realtimeSyncService';
-import { dataService } from '../../../services/dataService';
 
 export interface WaitersTabProps {
   waiters: WaiterConfig[];
@@ -43,110 +36,20 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [qrModalWaiter, setQrModalWaiter] = useState<WaiterConfig | null>(null);
-  const [pairingToken, setPairingToken] = useState<string>('');
-  const [pairingCode, setPairingCode] = useState<string>('');
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [qrTargetMode, setQrTargetMode] = useState<'LOCAL' | 'REMOTE'>('LOCAL');
-  const [customDomainInput, setCustomDomainInput] = useState<string>(() => getPublicBaseUrl());
+  const [publicBase, setPublicBase] = useState<string>(() => getPublicBaseUrl());
   const [showDomainConfig, setShowDomainConfig] = useState<boolean>(false);
 
-  // QR Modal açıldığında personele özel geçerli pairing token ve 6 haneli kod üret
-  const handleOpenQrModal = async (w: WaiterConfig) => {
-    const defaultToken = w.qrToken || `TOKEN-GTU-${Math.random().toString(36).substring(2, 9).toUpperCase()}-${Date.now().toString().slice(-4)}`;
-    const code = w.pairingCode || restaurantDataService.generatePairingCode();
-    
-    if (!w.qrToken || !w.pairingCode) {
-      restaurantDataService.updateWaiter(w.id, { qrToken: defaultToken, pairingCode: code });
-    }
-    
-    setPairingToken(defaultToken);
-    setPairingCode(code);
-    setQrModalWaiter({ ...w, qrToken: defaultToken, pairingCode: code });
-
-    try {
-      const currentUser = dataService.getCurrentUser();
-      const actorPin = w.pin || currentUser.password || '1234';
-      const res = await deviceService.createPairingToken(w.id, { id: w.id, pin: actorPin });
-      if (res && res.success) {
-        if (res.token) setPairingToken(res.token);
-        if (res.pairingCode) setPairingCode(res.pairingCode);
-      }
-    } catch (e) {
-      // Arka plan senkron hatası olsa bile yerel QR kodu kesintisiz görüntülenir
-    }
-  };
-
-  // GERÇEK ZAMANLI EŞLEŞME DİNLEYİCİSİ (Telefon QR okuttuğu veya kod girdiği an kasanın anında güncellenmesi)
+  // Garson telefonu PIN ile giris yaptiginda kasa listesi anlik tazelensin.
   useEffect(() => {
     const unsub = realtimeSyncService.subscribe((event) => {
-      if (event.type === 'WAITER_PAIRED') {
+      if (event.type === 'WAITER_PAIRED' || event.type === 'WAITER_RESET') {
         onRefresh();
-        if (qrModalWaiter && qrModalWaiter.id === event.payload?.waiterId) {
-          setQrModalWaiter(prev => prev ? ({
-            ...prev,
-            status: 'APPROVED',
-            deviceName: event.payload.deviceName || 'Mobil Telefon',
-            deviceUuid: event.payload.deviceUuid,
-            macAddress: event.payload.deviceUuid
-          }) : null);
-          notify.success(
-            'Cihaz Eşleşti!',
-            `[${qrModalWaiter.name}] garsonunun telefonu başarıyla bağlandı ve mühürlendi.`
-          );
-        }
-      } else if (event.type === 'WAITER_RESET') {
-        onRefresh();
-        if (qrModalWaiter && qrModalWaiter.id === event.payload?.waiterId) {
-          setQrModalWaiter(prev => prev ? ({
-            ...prev,
-            status: 'NOT_PAIRED',
-            deviceUuid: '',
-            macAddress: ''
-          }) : null);
-        }
       }
     });
-
     return () => unsub();
-  }, [qrModalWaiter?.id]);
-
-  // Arka plan yedek sorgulama (QR Modal açıkken 2 saniyede bir kontrol)
-  useEffect(() => {
-    if (!qrModalWaiter || qrModalWaiter.status === 'APPROVED') return;
-
-    const pollId = setInterval(async () => {
-      try {
-        const check = await deviceService.checkDeviceStatus(qrModalWaiter.id);
-        if (check && check.is_paired) {
-          restaurantDataService.updateWaiter(qrModalWaiter.id, {
-            status: 'APPROVED',
-            deviceName: check.deviceName || 'Mobil Telefon',
-            deviceUuid: check.deviceUuid || 'paired'
-          });
-
-          setQrModalWaiter(prev => prev ? ({
-            ...prev,
-            status: 'APPROVED',
-            deviceName: check.deviceName || 'Mobil Telefon',
-            deviceUuid: check.deviceUuid || 'paired'
-          }) : null);
-
-          notify.success(
-            'Cihaz Eşleşti!',
-            `[${qrModalWaiter.name}] için mobil telefon başarıyla mühürlendi.`
-          );
-
-          onRefresh();
-          clearInterval(pollId);
-        }
-      } catch (err) {}
-    }, 2000);
-
-    return () => clearInterval(pollId);
-  }, [qrModalWaiter]);
+  }, [onRefresh]);
 
   const [form, setForm] = useState({
     name: '',
@@ -162,9 +65,8 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     },
   });
 
-  const generateRandomPin = () => {
-    return Math.floor(1000 + Math.random() * 9000).toString();
-  };
+  // PIN, garsonun tek kimligidir: baska bir garsonda kullanilmayan bir kod uretir.
+  const generateRandomPin = () => restaurantDataService.generateUniquePin();
 
   const openNewWaiterModal = () => {
     setEditingId(null);
@@ -207,14 +109,24 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     if (!form.name.trim()) return notify.error('Eksik Bilgi', 'Garson adını giriniz.');
     if (!form.pin || form.pin.length !== 4) return notify.error('Geçersiz PIN', 'Giriş şifresi 4 haneli rakam olmalıdır.');
 
+    // Garson yalnızca PIN ile tanındığı için aynı PIN iki kişide olamaz.
+    const pinOwner = restaurantDataService.findWaiterByPin(form.pin.trim());
+    if (pinOwner && pinOwner.id !== editingId) {
+      return notify.error(
+        'Bu PIN Kullanılıyor',
+        `${form.pin} PIN kodu [${pinOwner.name}] adlı garsona tanımlı. Her garsonun PIN'i benzersiz olmalıdır.`
+      );
+    }
+
     if (editingId) {
-      restaurantDataService.updateWaiter(editingId, {
+      const ok = restaurantDataService.updateWaiter(editingId, {
         name: form.name.trim(),
         phone: form.phone.trim(),
         pin: form.pin.trim(),
         allowedSections: form.allowedSections,
         permissions: form.permissions,
       });
+      if (!ok) return notify.error('Kaydedilemedi', 'Bu PIN kodu başka bir garsonda kullanılıyor.');
       notify.success('Garson Güncellendi', `[${form.name}] bilgileri kaydedildi.`);
       setModalOpen(false);
       onRefresh();
@@ -227,14 +139,13 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
         allowedSections: form.allowedSections,
         permissions: form.permissions,
       });
-      notify.success('Garson Eklendi', `[${form.name}] sisteme kaydedildi. Şimdi QR kod veya 6 haneli kod ile telefonunu eşleştirebilirsiniz.`);
+      if (!newWaiter) return notify.error('Kaydedilemedi', 'Bu PIN kodu başka bir garsonda kullanılıyor.');
+      notify.success(
+        'Garson Eklendi',
+        `[${form.name}] kaydedildi. Telefondan garson uygulamasını açıp ${form.pin} PIN kodu ile giriş yapabilir.`
+      );
       setModalOpen(false);
       onRefresh();
-
-      // Garson kaydedildiği an otomatik olarak QR Kod modalını aç
-      if (newWaiter) {
-        setTimeout(() => handleOpenQrModal(newWaiter), 150);
-      }
     }
   };
 
@@ -256,40 +167,8 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
       await deviceService.resetDevicePairing(w.id);
     } catch (e) {}
     restaurantDataService.resetWaiterDevice(w.id);
-    notify.info('Cihaz Sıfırlandı', `[${w.name}] garsonunun cihaz bağlantısı sıfırlandı. Yeni QR okutularak telefon tekrar bağlanabilir.`);
+    notify.info('Cihaz Sıfırlandı', `[${w.name}] garsonunun kayıtlı telefonu silindi. Garson PIN kodu ile tekrar giriş yaptığında yeni telefonu kaydedilir.`);
     onRefresh();
-  };
-
-  const handleQuickPair = (w: WaiterConfig) => {
-    deviceService.quickApproveAndPair(w.id);
-    notify.success('Cihaz Mühürlendi', `[${w.name}] garson cihazı başarıyla onaylandı ve mühürlendi.`);
-    if (qrModalWaiter?.id === w.id) {
-      setQrModalWaiter(prev => prev ? ({
-        ...prev,
-        status: 'APPROVED',
-        deviceName: prev.deviceName || 'Mobil Telefon'
-      }) : null);
-    }
-    onRefresh();
-  };
-
-  const getWaiterConnectUrl = (w: WaiterConfig) => {
-    if (!w) return '';
-    const token = pairingToken || w.qrToken || `TOKEN-GTU-${(w.id || 'W1').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`;
-    const code = pairingCode || w.pairingCode || '';
-    // PIN QR koduna KONULMAZ: QR'ı fotoğraflayan herkes garsonun giriş kodunu
-    // öğrenirdi ve cihaz kilidi anlamsız hale gelirdi. Giriş sunucuda doğrulanır.
-    const query = `token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}&userId=${encodeURIComponent(w.id)}&name=${encodeURIComponent(w.name || '')}`;
-    const publicBase = getPublicBaseUrl();
-    if (qrTargetMode === 'REMOTE') {
-      return publicBase ? `${publicBase}/#/pair?${query}` : '';
-    }
-    const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    const origin = isLocal ? publicBase : (typeof window !== 'undefined' ? window.location.origin : publicBase);
-    const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
-    const cleanPath = isLocal ? '' : (pathname.endsWith('/') ? pathname : pathname + '/');
-    const baseWithSlash = isLocal ? (origin.endsWith('/') ? origin : origin + '/') : (cleanPath === '/' ? (origin.endsWith('/') ? origin : origin + '/') : origin + cleanPath);
-    return `${baseWithSlash}#/pair?${query}`;
   };
 
   const getAppWaiterTerminalUrl = () => {
@@ -302,16 +181,18 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     return `${baseWithSlash}#/garson`;
   };
 
-  const handleCopyLink = (w: WaiterConfig) => {
-    const url = getWaiterConnectUrl(w);
-    if (!url) {
-      notify.error('Geçersiz QR', 'Önce sunucudan yeni bir QR eşleştirme kodu üretin.');
-      return;
+  const handleSaveDomain = () => {
+    const value = publicBase.trim().replace(/\/+$/, '');
+    if (value && !/^https?:\/\//i.test(value)) {
+      return notify.error('Geçersiz Adres', 'Adres http:// veya https:// ile başlamalıdır.');
     }
-    navigator.clipboard.writeText(url);
-    setCopiedToken(w.qrToken);
-    setTimeout(() => setCopiedToken(null), 2000);
-    notify.info('Giriş Linki Kopyalandı', `${w.name} için eşleştirme linki panoya kopyalandı.`);
+    setPublicBaseUrl(value);
+    setPublicBase(value);
+    notify.success(
+      'Garson Uygulama Adresi Kaydedildi',
+      value ? `Garson terminali adresi: ${value}` : 'Adres temizlendi. Terminal bağlantısı bu cihazın adresini kullanacak.'
+    );
+    setShowDomainConfig(false);
   };
 
   const handleCopyCode = (code: string) => {
@@ -330,7 +211,6 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
       (w.phone || '').toLowerCase().includes(term) ||
       (w.deviceName || '').toLowerCase().includes(term) ||
       (w.deviceUuid || '').toLowerCase().includes(term) ||
-      (w.pairingCode || '').includes(term) ||
       (w.pin || '').includes(term)
     );
   });
@@ -350,11 +230,11 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
               <h2 className="text-sm font-black text-white flex items-center gap-2">
                 <span>Garson Mobil Telefon & Cihaz Eşleştirme Yönetimi</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Otomatik Senkron
+                  PIN ile Giriş
                 </span>
               </h2>
               <p className="text-xs text-[#A0A0AA]">
-                Personel telefonunu <b>QR Kod okutarak</b> veya <b>6 haneli Eşleşme Kodu</b> girerek bağlayın. Telefon bağlandığı an kasa ekranında otomatik olarak <b>Bağlı & Mühürlü</b> durumuna geçer.
+                Garson, telefonundan garson uygulamasını açıp <b>kendi 4 haneli PIN kodunu</b> girerek giriş yapar. PIN kodları benzersizdir; garson yalnızca PIN'i ile tanınır. İlk girişte kullandığı telefon kayda alınır ve bu ekranda <b>Bağlı & Mühürlü</b> olarak görünür.
               </p>
             </div>
           </div>
@@ -372,10 +252,51 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
             className="px-4 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:brightness-110 text-slate-950 text-xs font-black rounded-2xl flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Yeni Garson & Telefon Tanımla</span>
+            <span>Yeni Garson Tanımla</span>
+          </button>
+
+          <button
+            onClick={() => setShowDomainConfig(v => !v)}
+            className="px-3.5 py-2.5 bg-[#141416] hover:bg-[#232329] border border-[#2C2C34] text-[#C4C4CC] text-xs font-bold rounded-2xl flex items-center gap-1.5 cursor-pointer transition-colors"
+            title="Garson uygulamasının internet adresini ayarla"
+          >
+            <Globe className="w-4 h-4 text-sky-400" />
+            <span>Uygulama Adresi</span>
           </button>
         </div>
       </div>
+
+      {/* GARSON UYGULAMA ADRESİ AYARI */}
+      {showDomainConfig && (
+        <div className="bg-[#1C1C20] rounded-3xl p-5 border border-[#2C2C34] space-y-3">
+          <div className="space-y-1">
+            <h3 className="text-xs font-black text-white flex items-center gap-2">
+              <Globe className="w-4 h-4 text-sky-400" />
+              <span>Garson Uygulaması İnternet Adresi</span>
+            </h3>
+            <p className="text-[11px] text-[#8E8E98]">
+              Garsonların telefonundan açacağı adres. Hosting'inize yüklediğiniz garson klasörünün adresini yazın
+              (örnek: <span className="font-mono text-[#C4C4CC]">https://garson.isletmeadi.com</span>). Boş bırakılırsa
+              "Terminali Aç" bağlantısı bu bilgisayarın adresini kullanır.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={publicBase}
+              onChange={(e) => setPublicBase(e.target.value)}
+              placeholder="https://garson.isletmeadi.com"
+              className="flex-1 px-3.5 py-2.5 bg-[#141416] border border-[#383844] rounded-2xl text-xs font-mono text-white placeholder-[#6E6E78] focus:outline-none focus:border-sky-400"
+            />
+            <button
+              onClick={handleSaveDomain}
+              className="px-5 py-2.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 text-xs font-black rounded-2xl cursor-pointer transition-colors"
+            >
+              Kaydet
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. ARAMA & FİLTRELEME ÇUBUĞU */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -419,7 +340,6 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredWaiters.map((w) => {
           const isPaired = w.status === 'APPROVED' && Boolean(w.deviceUuid || w.macAddress);
-          const pairingCodeDisplay = w.pairingCode || '123 456';
 
           return (
             <div 
@@ -498,32 +418,34 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                     </strong>
                   </div>
 
-                  {/* 6 Haneli Hızlı Eşleşme Kodu */}
-                  {!isPaired ? (
-                    <div className="flex items-center justify-between bg-amber-500/10 p-2 rounded-xl border border-amber-500/20">
-                      <span className="text-amber-300 text-[11px] font-bold flex items-center gap-1">
-                        <Hash className="w-3.5 h-3.5" />
-                        Eşleşme Kodu:
+                  {/* Giriş artık yalnızca PIN ile yapılır; QR ve eşleşme kodu kaldırıldı. */}
+                  <div className="flex items-center justify-between bg-amber-500/10 p-2 rounded-xl border border-amber-500/20">
+                    <span className="text-amber-300 text-[11px] font-bold flex items-center gap-1">
+                      <Hash className="w-3.5 h-3.5" />
+                      Giriş PIN Kodu:
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-sm font-black text-amber-300 tracking-widest">
+                        {w.pin || '----'}
                       </span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-xs font-black text-amber-300 tracking-wider">
-                          {pairingCodeDisplay.slice(0, 3)} {pairingCodeDisplay.slice(3)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyCode(w.pairingCode || '')}
-                          className="p-1 text-amber-400 hover:text-white rounded transition-colors cursor-pointer"
-                          title="Kodu Kopyala"
-                        >
-                          <Copy className="w-3 h-3" />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCode(w.pin || '')}
+                        className="p-1 text-amber-400 hover:text-white rounded transition-colors cursor-pointer"
+                        title="PIN Kodunu Kopyala"
+                      >
+                        {copiedCode === w.pin && w.pin
+                          ? <Check className="w-3 h-3 text-emerald-400" />
+                          : <Copy className="w-3 h-3" />}
+                      </button>
                     </div>
-                  ) : (
+                  </div>
+
+                  {isPaired && (
                     <div className="flex items-center justify-between text-[#8E8E98]">
                       <span className="flex items-center gap-1">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        Cihaz Kimliği:
+                        Son Giriş Cihazı:
                       </span>
                       <span className="font-mono text-[11px] text-emerald-300 truncate max-w-[140px]">
                         {(w.deviceUuid || w.macAddress || '').slice(0, 12)}...
@@ -559,62 +481,41 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                 </div>
               </div>
 
-              {/* QR Kod & Giriş Aksiyonları */}
+              {/* Giriş aksiyonları — QR kaldırıldı, giriş yalnızca PIN ile yapılır */}
               <div className="space-y-2 pt-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => handleOpenQrModal(w)}
-                    className="py-2.5 bg-[#141416] hover:bg-[#282830] border border-[#383844] text-white text-xs font-black rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                {Boolean(getAppWaiterTerminalUrl()) && (
+                  <a
+                    href={getAppWaiterTerminalUrl()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                    title="Garson terminalini yeni sekmede aç"
                   >
-                    <QrCode className="w-4 h-4 text-[#F5C877]" />
-                    <span>{isPaired ? 'Eşleşme QR' : '📱 QR / Kod ile Eşle'}</span>
-                  </button>
+                    <Smartphone className="w-4 h-4 text-amber-400" />
+                    <span>Terminali Aç</span>
+                  </a>
+                )}
 
-                  {isPaired ? (
-                    <a
-                      href={getAppWaiterTerminalUrl()}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-                      title="Garson terminalini bu tarayıcıda yeni sekmede aç"
-                    >
-                      <Smartphone className="w-4 h-4 text-amber-400" />
-                      <span>Terminali Aç</span>
-                    </a>
-                  ) : (
-                    <button
-                      onClick={() => handleQuickPair(w)}
-                      className="py-2.5 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-700/80 text-emerald-300 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-                      title="QR okutmadan kasadan doğrudan anında onayla"
-                    >
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      <span>⚡ Hızlı Onayla</span>
-                    </button>
-                  )}
-                </div>
 
                 <div className="flex items-center justify-between px-1">
-                  <button
-                    onClick={() => handleCopyLink(w)}
-                    className="text-[11px] text-[#A0A0AA] hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-                  >
-                    {copiedToken === w.qrToken ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-sky-400" />}
-                    <span>{copiedToken === w.qrToken ? 'Kopyalandı' : 'Linki Kopyala'}</span>
-                  </button>
+                  <span className="text-[11px] text-[#8E8E98] flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>Giriş: PIN {w.pin || '----'}</span>
+                  </span>
 
                   {isPaired ? (
                     <button
                       onClick={() => handleResetDevice(w)}
                       className="text-[11px] text-[#8E8E98] hover:text-rose-400 flex items-center gap-1 cursor-pointer transition-colors"
-                      title="Cihaz eşleşmesini kaldırıp yeni QR okutmasını sağla"
+                      title="Kayıtlı telefonu sil (garson yeni telefonundan PIN ile girebilsin)"
                     >
                       <RotateCcw className="w-3 h-3" />
-                      <span>Eşleşmeyi Sıfırla</span>
+                      <span>Telefonu Sıfırla</span>
                     </button>
                   ) : (
                     <span className="text-[10px] text-amber-400/80 font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                      Eşleşme Bekleniyor
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      Henüz Giriş Yapmadı
                     </span>
                   )}
                 </div>
@@ -625,174 +526,6 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
       </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 4. BÜYÜK QR KOD & 6 HANELİ EŞLEŞME MODALI */}
-      {/* ========================================================================= */}
-      {qrModalWaiter && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#18181C] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#2C2C34] text-center space-y-4 max-h-[95vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
-              <div className="text-left">
-                <h3 className="text-base font-black text-white flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-amber-400" />
-                  <span>{qrModalWaiter.name}</span>
-                </h3>
-                <p className="text-[11px] text-[#8E8E98]">Mobil Garson Telefonu Eşleştirme</p>
-              </div>
-              <button 
-                onClick={() => setQrModalWaiter(null)} 
-                className="text-[#A0A0AA] hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* 6 Haneli Kolay Eşleşme Kutusu */}
-            <div className="p-3.5 bg-gradient-to-r from-amber-500/10 to-amber-600/5 rounded-2xl border border-amber-500/30 text-center space-y-1.5">
-              <span className="text-[10px] font-black uppercase text-amber-300 tracking-wider block">
-                6 Haneli Hızlı Eşleşme Kodu
-              </span>
-              <div className="flex items-center justify-center gap-3">
-                <span className="text-2xl font-mono font-black text-amber-400 tracking-widest bg-[#121214] px-4 py-1 rounded-xl border border-amber-500/40">
-                  {pairingCode ? `${pairingCode.slice(0, 3)} ${pairingCode.slice(3)}` : '123 456'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleCopyCode(pairingCode)}
-                  className="p-2 bg-[#282830] hover:bg-[#343440] text-amber-400 rounded-xl cursor-pointer transition-colors"
-                  title="Kodu Kopyala"
-                >
-                  {copiedCode === pairingCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="text-[10px] text-[#A0A0AA]">
-                Garson telefonunda bu 6 haneli kodu yazarak veya aşağıdaki QR kodu okutarak bağlanabilir.
-              </p>
-            </div>
-
-            {/* Beyaz Çerçeve İçi QR Kod */}
-            {getWaiterConnectUrl(qrModalWaiter) ? (
-              <div className="p-4 bg-white rounded-3xl inline-block shadow-2xl mx-auto border-4 border-amber-400/30">
-                <QRCodeSVG
-                  value={getWaiterConnectUrl(qrModalWaiter)}
-                  size={190}
-                  level="H"
-                  includeMargin={false}
-                />
-              </div>
-            ) : (
-              <div className="p-4 rounded-3xl border border-rose-500/40 bg-rose-500/10 text-left space-y-2.5">
-                <p className="text-xs font-black text-rose-200">
-                  QR kod üretilemiyor: garson uygulamasının adresi tanımlı değil.
-                </p>
-                <p className="text-[10px] text-[#C4C4CC] leading-relaxed">
-                  Garson uygulamasını yüklediğiniz adresi girin. Telefon bu adresi okutarak eşleşecek.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    value={customDomainInput}
-                    onChange={(e) => setCustomDomainInput(e.target.value)}
-                    placeholder="https://alanadiniz.com.tr/garson"
-                    className="flex-1 px-3 py-2 bg-[#141416] border border-[#383844] focus:border-[#F5C877] rounded-xl text-[11px] font-mono text-white focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const value = customDomainInput.trim();
-                      if (!value) {
-                        notify.error('Adres Gerekli', 'Lütfen garson uygulamasının adresini girin.');
-                        return;
-                      }
-                      setPublicBaseUrl(value);
-                      setCustomDomainInput(getPublicBaseUrl());
-                      notify.success('Adres Kaydedildi', 'QR kod bu adrese yönlendirecek şekilde güncellendi.');
-                    }}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-[11px] cursor-pointer"
-                  >
-                    Kaydet
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Canlı Eşleşme Durumu Göstergesi */}
-            <div className="p-3 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-2 text-xs text-left">
-              <div className="flex items-center justify-between">
-                <span className="text-[#8E8E98]">Kasa Bağlantı Durumu:</span>
-                {qrModalWaiter.status === 'APPROVED' ? (
-                  <span className="inline-flex items-center gap-1.5 text-emerald-300 font-black bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>✓ BAĞLANDI & EŞLEŞTİ</span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-amber-300 font-bold bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/30">
-                    <Clock className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                    <span>Telefonun Bağlanması Bekleniyor...</span>
-                  </span>
-                )}
-              </div>
-
-              {qrModalWaiter.status === 'APPROVED' && (
-                <div className="flex items-center justify-between text-[#8E8E98] pt-1 border-t border-[#2C2C34]">
-                  <span>Bağlanan Cihaz:</span>
-                  <strong className="text-white font-mono">{qrModalWaiter.deviceName || 'Mobil Telefon'}</strong>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-[#8E8E98] pt-1 border-t border-[#2C2C34]">
-                <span>Giriş PIN Kodu:</span>
-                <strong className="text-sm font-mono font-black text-amber-300 bg-[#282830] px-2.5 py-0.5 rounded-lg border border-amber-500/30">
-                  {qrModalWaiter.pin}
-                </strong>
-              </div>
-            </div>
-
-            {/* Hızlı Aksiyon: Kasadan Tek Tıkla Onayla */}
-            {qrModalWaiter.status !== 'APPROVED' && (
-              <button
-                type="button"
-                onClick={() => handleQuickPair(qrModalWaiter)}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition-all"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>⚡ Kasadan Anında Onayla & Eşleştir</span>
-              </button>
-            )}
-
-            {/* Butonlar */}
-            <div className="space-y-2 pt-1">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => handleCopyLink(qrModalWaiter)}
-                  className="py-2.5 bg-[#282830] hover:bg-[#343440] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Copy className="w-4 h-4 text-sky-400" />
-                  <span>Linki Kopyala</span>
-                </button>
-
-                {/* Bu bağlantı yalnızca garson uygulamasının GERÇEK adresi tanımlıysa
-                    gösterilir. Adres yokken kasa uygulamasının kendi dosya yolunu
-                    açıyor ve garson uygulaması yerine kasa penceresi geliyordu. */}
-                {/^https?:\/\//i.test(getWaiterConnectUrl(qrModalWaiter)) ? (
-                  <a
-                    href={getWaiterConnectUrl(qrModalWaiter)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] hover:brightness-110 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/20"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Tarayıcıda Aç</span>
-                  </a>
-                ) : (
-                  <div className="py-2.5 px-3 bg-[#141416] border border-[#2C2C34] text-[#8E8E98] text-[10px] rounded-xl flex items-center justify-center text-center leading-tight">
-                    Garson uygulaması adresi tanımlanmadan bağlantı açılamaz
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* 5. YENİ GARSON TANIMLA / DÜZENLE MODALI */}
@@ -803,7 +536,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
             <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
               <h3 className="text-base font-black text-white flex items-center gap-2">
                 <Smartphone className="w-5 h-5 text-[#F5C877]" />
-                <span>{editingId ? 'Garson Bilgilerini Düzenle' : 'Yeni Garson & Telefon Tanımla'}</span>
+                <span>{editingId ? 'Garson Bilgilerini Düzenle' : 'Yeni Garson Tanımla'}</span>
               </h3>
               <button onClick={() => setModalOpen(false)} className="text-[#A0A0AA] hover:text-white text-xs font-bold cursor-pointer">✕ Kapat</button>
             </div>
@@ -835,9 +568,9 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
               </div>
 
               {/* Bilgilendirme Notu */}
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-2.5 text-xs text-amber-300">
-                <Sparkles className="w-4 h-4 flex-shrink-0 text-amber-400" />
-                <span>Garsonu kaydettikten sonra açılacak <b>QR Kod</b> veya <b>6 Haneli Kod</b> ile telefon otomatik eşleşir.</span>
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-2.5 text-xs text-amber-300">
+                <Sparkles className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
+                <span>Garson, telefonundan garson uygulamasını açıp aşağıdaki <b>PIN kodunu</b> girerek giriş yapar. Her garsonun PIN kodu benzersiz olmalıdır; PIN'i başka birine vermeyin.</span>
               </div>
 
               {/* PIN Kodu */}
@@ -978,7 +711,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                   type="submit"
                   className="px-5 py-2 bg-[#F5C877] hover:bg-[#e4b764] text-slate-950 rounded-xl text-xs font-black shadow-lg cursor-pointer"
                 >
-                  {editingId ? 'Güncelle' : 'Garsonu Kaydet & Eşleştir'}
+                  {editingId ? 'Güncelle' : 'Garsonu Kaydet'}
                 </button>
               </div>
             </form>
