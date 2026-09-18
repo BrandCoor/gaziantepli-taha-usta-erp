@@ -65,4 +65,5 @@ Bu komut tamamlandığında `release/` klasörü içinde **`Gaziantepli Taha Ust
 
 ### Seçenek 2: Kendi cPanel / MySQL Sunucunuz
 - Proje kök dizininde yer alan **`cpanel-yuklenecekler`** klasöründeki dosyaları kendi hosting/cPanel sunucunuza yükleyerek verilerinizi kendi MySQL veritabanınızda tutabilirsiniz.
-- Zaten sistemde `https://api.rymedya.com.tr/` API köprüsü hazır tanımlıdır.
+- Yükleme sonrası kasa ekranındaki **Sunucu Adresi** alanına kendi adresinizi yazın (örnek: `https://isletmeadi.com/api`). Sistem başka hiçbir sunucuya veri göndermez; adres girilmezse cihazlar arası senkronizasyon çalışmaz.
+- Veritabanı bilgilerinizi `api/config.local.php` dosyasına yazın (`api/config.local.example.php` dosyasını kopyalayarak oluşturabilirsiniz). Bu dosya git deposuna gönderilmez.

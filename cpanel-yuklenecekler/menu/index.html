@@ -390,9 +390,9 @@
           endpoints.push(new URL('api/index.php', window.location.href).href);
         } catch (e) {}
       }
-      endpoints.push('https://api.rymedya.com.tr/index.php');
-      endpoints.push('https://garson.rymedya.com.tr/api/index.php');
-      endpoints.push('https://rymedya.com.tr/api/index.php');
+      // Gelistiricinin sunucu adresleri yedek olarak kaldirildi: kendi
+      // sunucunuza ulasilamadiginda menu verisi baska bir sunucudan
+      // cekiliyordu. Adresler yalnizca bu sayfanin alan adindan turetilir.
       endpoints.push('../api/index.php');
       endpoints.push('/api/index.php');
       return Array.from(new Set(endpoints));

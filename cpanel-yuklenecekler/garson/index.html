@@ -328,46 +328,56 @@
   </div>
 
   <script>
-    // Dinamik API Endpoint Yönetimi (Fallback ve Cross-Domain Desteği)
+    // API adresleri YALNIZCA bu uygulamanin yuklendigi alan adindan turetilir.
+    // Daha once burada gelistiricinin sunucu adresleri (rymedya.com.tr) yedek
+    // olarak duruyordu: kendi sunucunuza ulasilamadigi anda garsonun PIN kodu
+    // ve siparisler baska bir sunucuya gonderiliyordu. Sabit dis adresler
+    // kaldirildi; istege bagli ozel adres CUSTOM_API_URL ile ayarlanabilir.
     const API_ENDPOINTS = (function() {
       const list = [];
-      const custom = localStorage.getItem('CUSTOM_API_URL');
-      if (custom && custom.trim() !== '') list.push(custom.trim());
+      const custom = (localStorage.getItem('CUSTOM_API_URL') || '').trim();
+      if (custom) list.push(custom);
       if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
         list.push(new URL('../api/index.php', window.location.href).href);
         list.push(new URL('/api/index.php', window.location.href).href);
-        list.push(new URL('../api/auth.php', window.location.href).href);
       }
-      list.push('https://api.rymedya.com.tr/index.php');
-      list.push('https://garson.rymedya.com.tr/api/index.php');
-      list.push('https://rymedya.com.tr/api/index.php');
       return Array.from(new Set(list));
     })();
 
-    let workingApiUrl = API_ENDPOINTS[0] || '../api/index.php';
+    let workingApiUrl = API_ENDPOINTS[0] || '';
 
     async function apiFetch(action, options = {}) {
+      if (API_ENDPOINTS.length === 0) {
+        throw new Error('Sunucu adresi bulunamadı. Bu sayfa kendi hosting adresinizden açılmalıdır.');
+      }
+
       const headers = { 'X-Device-UUID': deviceUuid, ...(options.headers || {}) };
-      // Kalıcı cihaz anahtarı: eşleşme sonrası sunucunun verdiği, iptal edilebilir kimlik.
+      // Kalici cihaz anahtari: sunucunun verdigi, kasadan iptal edilebilir kimlik.
       if (typeof deviceToken === 'string' && deviceToken) {
         headers['X-Device-Token'] = deviceToken;
       }
-      const tryEndpoints = [workingApiUrl, ...API_ENDPOINTS.filter(u => u !== workingApiUrl)];
+      const tryEndpoints = [workingApiUrl, ...API_ENDPOINTS.filter(u => u !== workingApiUrl)].filter(Boolean);
       let lastError = null;
+
+      // Sunucu bir karar dondurduyse (gecersiz PIN, kilit, yetki) yanit
+      // dogrudan dondurulur. Aksi halde 429 gibi yanitlar "sunucuya
+      // ulasilamadi" gibi gorunur ve deneme siniri baska adrese gecilerek
+      // asilabilirdi.
+      const ANSWERED = [400, 401, 403, 404, 409, 422, 423, 429];
 
       for (const base of tryEndpoints) {
         try {
           const sep = base.includes('?') ? '&' : '?';
           const fullUrl = `${base}${sep}action=${encodeURIComponent(action)}`;
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 4000);
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
           const res = await fetch(fullUrl, {
             ...options,
             headers,
             signal: controller.signal
           });
           clearTimeout(timeoutId);
-          if (res.ok || res.status === 400 || res.status === 401 || res.status === 403) {
+          if (res.ok || ANSWERED.indexOf(res.status) !== -1) {
             workingApiUrl = base;
             return res;
           }
@@ -377,8 +387,6 @@
       }
       throw lastError || new Error('Sunucuya ulaşılamadı');
     }
-
-    const API_URL = workingApiUrl;
 
     // SÜREKLİ KULLANILAN RESTORAN HAZIR NOTLARI
     const RESTAURANT_QUICK_TAGS = [
