@@ -12,11 +12,11 @@ import {
   Phone,
   Sparkles,
   Wifi,
-  Lock,
   Hash,
-  Globe
+  Globe,
+  AlertTriangle
 } from 'lucide-react';
-import { WaiterConfig, SectionConfig, restaurantDataService, getPublicBaseUrl, setPublicBaseUrl } from '../../../services/restaurantDataService';
+import { WaiterConfig, SectionConfig, restaurantDataService, getPublicBaseUrl, setPublicBaseUrl, isApiSyncConfigured } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
 import { deviceService } from '../../../services/deviceService';
 import { realtimeSyncService } from '../../../services/realtimeSyncService';
@@ -216,7 +216,9 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     );
   });
 
-  const activePairedCount = waiters.filter(w => w.status === 'APPROVED' && (w.deviceUuid || w.macAddress)).length;
+  // Giris yapmis garson = PIN ile en az bir kez giris yapip telefonu kaydedilmis olan.
+  const loggedInCount = waiters.filter(w => Boolean(w.deviceUuid || w.macAddress)).length;
+  const syncReady = isApiSyncConfigured();
 
   return (
     <div className="space-y-5">
@@ -235,7 +237,8 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-[#A0A0AA]">
-                Garson, telefonundan garson uygulamasını açıp <b>kendi 4 haneli PIN kodunu</b> girerek giriş yapar. PIN kodları benzersizdir; garson yalnızca PIN'i ile tanınır. İlk girişte kullandığı telefon kayda alınır ve bu ekranda <b>Bağlı & Mühürlü</b> olarak görünür.
+                Garson, telefonundan garson uygulamasını açıp <b>kendi 4 haneli PIN kodunu</b> girerek giriş yapar.
+                PIN kodları benzersizdir; garson yalnızca PIN'i ile tanınır. Kullandığı telefon kayıt altına alınır.
               </p>
             </div>
           </div>
@@ -243,9 +246,9 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="bg-[#141416] px-3.5 py-2 rounded-2xl border border-[#2C2C34] flex items-center gap-2.5 text-xs">
-            <Wifi className="w-4 h-4 text-emerald-400" />
-            <span className="text-[#A0A0AA]">Bağlı Telefon:</span>
-            <span className="font-mono font-black text-white">{activePairedCount} / {waiters.length}</span>
+            <Wifi className={`w-4 h-4 ${loggedInCount > 0 ? 'text-emerald-400' : 'text-[#6E6E78]'}`} />
+            <span className="text-[#A0A0AA]">Giriş Yapan:</span>
+            <span className="font-mono font-black text-white">{loggedInCount} / {waiters.length}</span>
           </div>
 
           <button
@@ -295,6 +298,25 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
             >
               Kaydet
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* SUNUCU AYARI UYARISI — web üzerinden girişin ön koşulu */}
+      {!syncReady && (
+        <div className="bg-rose-950/40 border border-rose-500/40 rounded-3xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+          <div className="flex-1 space-y-0.5">
+            <h3 className="text-xs font-black text-rose-200">
+              Sunucu adresi tanımlı değil — garsonlar web üzerinden giriş YAPAMAZ
+            </h3>
+            <p className="text-[11px] text-rose-200/80 leading-relaxed">
+              Buradaki PIN kodları yalnızca bu bilgisayarda duruyor. Garsonların telefondan giriş
+              yapabilmesi için PIN'lerin sunucu veritabanınıza yazılması gerekir.
+              <b> Ayarlar &gt; Sistem &amp; Yedekleme</b> ekranından sunucu adresinizi girin
+              (örnek: <span className="font-mono">https://isletmeadi.com/api</span>), ardından bu
+              ekranda bir garsonu kaydedin; PIN'ler otomatik olarak sunucuya gönderilir.
+            </p>
           </div>
         </div>
       )}
@@ -367,10 +389,6 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                         ) : (
                           <span className="text-[10px] text-slate-500 italic">Telefon No Yok</span>
                         )}
-                        <span className="text-[10px] font-mono text-amber-300 font-black bg-[#141416] px-2 py-0.5 rounded-lg border border-[#2C2C34] flex items-center gap-1">
-                          <Lock className="w-2.5 h-2.5 text-amber-400" />
-                          PIN: {w.pin}
-                        </span>
                       </div>
                     </div>
                   </div>
@@ -393,60 +411,65 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                   </div>
                 </div>
 
-                {/* Bağlı Cihaz & Eşleşme Bilgileri */}
-                <div className="mt-4 p-3.5 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-2.5 text-xs">
-                  {/* Durum Rozeti */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[#8E8E98]">Cihaz Durumu:</span>
-                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                      isPaired 
-                        ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' 
-                        : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${isPaired ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                      {isPaired ? 'Bağlı & Mühürlü' : 'Eşleşme Bekliyor'}
-                    </span>
-                  </div>
-
-                  {/* Cihaz Modeli */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[#8E8E98] flex items-center gap-1">
-                      <Smartphone className="w-3.5 h-3.5 text-amber-400" />
-                      Cihaz Modeli:
-                    </span>
-                    <strong className="text-white font-medium truncate max-w-[150px]">
-                      {w.deviceName || (isPaired ? 'Mobil Telefon' : 'Henüz Bağlanmadı')}
-                    </strong>
-                  </div>
-
-                  {/* Giriş artık yalnızca PIN ile yapılır; QR ve eşleşme kodu kaldırıldı. */}
-                  <div className="flex items-center justify-between bg-amber-500/10 p-2 rounded-xl border border-amber-500/20">
-                    <span className="text-amber-300 text-[11px] font-bold flex items-center gap-1">
-                      <Hash className="w-3.5 h-3.5" />
-                      Giriş PIN Kodu:
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-sm font-black text-amber-300 tracking-widest">
+                {/* PIN — garsonun tek giriş bilgisi, kartın ana öğesi */}
+                <div className="mt-4 space-y-2.5 text-xs">
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Hash className="w-4 h-4 text-amber-400" />
+                      <div className="leading-tight">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-amber-300">Giriş PIN Kodu</div>
+                        <div className="text-[10px] text-amber-200/70">Garson bu kodla giriş yapar</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-2xl font-black text-amber-300 tracking-[0.2em]">
                         {w.pin || '----'}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleCopyCode(w.pin || '')}
-                        className="p-1 text-amber-400 hover:text-white rounded transition-colors cursor-pointer"
+                        className="p-1.5 text-amber-400 hover:text-white hover:bg-amber-500/20 rounded-lg transition-colors cursor-pointer"
                         title="PIN Kodunu Kopyala"
                       >
                         {copiedCode === w.pin && w.pin
-                          ? <Check className="w-3 h-3 text-emerald-400" />
-                          : <Copy className="w-3 h-3" />}
+                          ? <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          : <Copy className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
+
+                  <div className="p-3.5 bg-[#141416] rounded-2xl border border-[#2C2C34] space-y-2.5">
+                  {/* Giriş Durumu */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#8E8E98]">Giriş Durumu:</span>
+                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                      isPaired
+                        ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-[#1C1C20] text-[#8E8E98] border border-[#2C2C34]'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isPaired ? 'bg-emerald-400' : 'bg-[#54545C]'}`}></span>
+                      {isPaired ? 'Giriş Yaptı' : 'Henüz Giriş Yapmadı'}
+                    </span>
+                  </div>
+
+                  {/* Kullandığı telefon — yalnızca giriş yapmışsa gösterilir */}
+                  {isPaired && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#8E8E98] flex items-center gap-1">
+                        <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                        Kullandığı Telefon:
+                      </span>
+                      <strong className="text-white font-medium truncate max-w-[150px]">
+                        {w.deviceName || 'Mobil Telefon'}
+                      </strong>
+                    </div>
+                  )}
 
                   {isPaired && (
                     <div className="flex items-center justify-between text-[#8E8E98]">
                       <span className="flex items-center gap-1">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        Son Giriş Cihazı:
+                        Cihaz Kimliği:
                       </span>
                       <span className="font-mono text-[11px] text-emerald-300 truncate max-w-[140px]">
                         {(w.deviceUuid || w.macAddress || '').slice(0, 12)}...
@@ -479,6 +502,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                       Fiş Yazdır
                     </span>
                   </div>
+                  </div>
                 </div>
               </div>
 
@@ -498,28 +522,18 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                 )}
 
 
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[11px] text-[#8E8E98] flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-amber-400" />
-                    <span>Giriş: PIN {w.pin || '----'}</span>
-                  </span>
-
-                  {isPaired ? (
+                {isPaired && (
+                  <div className="flex items-center justify-end px-1">
                     <button
                       onClick={() => handleResetDevice(w)}
                       className="text-[11px] text-[#8E8E98] hover:text-rose-400 flex items-center gap-1 cursor-pointer transition-colors"
                       title="Kayıtlı telefonu sil (garson yeni telefonundan PIN ile girebilsin)"
                     >
                       <RotateCcw className="w-3 h-3" />
-                      <span>Telefonu Sıfırla</span>
+                      <span>Kayıtlı Telefonu Sıfırla</span>
                     </button>
-                  ) : (
-                    <span className="text-[10px] text-amber-400/80 font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                      Henüz Giriş Yapmadı
-                    </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           );

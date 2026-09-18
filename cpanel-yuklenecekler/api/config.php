@@ -647,3 +647,80 @@ function ensureDatabaseTables($pdo) {
         return false;
     }
 }
+
+/**
+ * =====================================================================
+ * PIN İLE PERSONEL ARAMA (Garson girişinin tek doğrulama noktası)
+ * =====================================================================
+ * Personel kayıtları kuruluma göre `personeller` tablosunda, bazı eski
+ * kurulumlarda ise ayrıca `users` tablosunda durur.
+ *
+ * Bu iki tablo ÖNCEDEN tek bir UNION sorgusunda birleştiriliyordu. `users`
+ * tablosu bulunmayan kurulumlarda (varsayılan kurulum bu tabloyu hiç
+ * oluşturmaz) sorgunun tamamı hata veriyor, hata da yutuluyor ve DOĞRU PIN
+ * bile "geçersiz PIN" olarak reddediliyordu. Garsonların web üzerinden
+ * giriş yapamamasının sebebi buydu.
+ *
+ * Artık her tablo AYRI sorgulanır:
+ *  - Tablo veya sütun yoksa (SQLSTATE 42S02 / 42S22) o kaynak sessizce atlanır.
+ *  - Gerçek bir veritabanı hatası olursa YUTULMAZ; çağıran tarafa bildirilir
+ *    ki kullanıcıya "yanlış PIN" yerine gerçek hata gösterilsin.
+ *  - Aynı kişi iki tabloda da varsa id'ye göre tekilleştirilir; aksi halde
+ *    tek kişi "aynı PIN iki kişide" sanılıp giriş reddedilebiliyordu.
+ *
+ * @return array{rows: array<int, array{id:string,name:string,role:string}>, error: ?string}
+ */
+function gtuFindStaffByPin(PDO $pdo, string $pin): array
+{
+    $sources = [
+        ['table' => 'personeller', 'id' => 'id', 'name' => 'ad',       'pin' => 'pin',      'role' => 'rol', 'active' => 'aktif'],
+        ['table' => 'users',       'id' => 'id', 'name' => 'ad_soyad', 'pin' => 'pin_kodu', 'role' => 'rol', 'active' => 'aktif'],
+    ];
+
+    $found = [];
+    $errors = [];
+
+    foreach ($sources as $src) {
+        try {
+            $sql = sprintf(
+                "SELECT `%s` AS id, `%s` AS name, `%s` AS role
+                 FROM `%s`
+                 WHERE `%s` = ? AND `%s` <> '' AND `%s` = 1
+                 LIMIT 5",
+                $src['id'], $src['name'], $src['role'],
+                $src['table'],
+                $src['pin'], $src['pin'], $src['active']
+            );
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$pin]);
+
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                // Aynı id iki tabloda da varsa tek kişi sayılır.
+                $found[(string)$row['id']] = [
+                    'id'   => (string)$row['id'],
+                    'name' => (string)($row['name'] ?? ''),
+                    'role' => (string)($row['role'] ?? 'WAITER'),
+                ];
+            }
+        } catch (PDOException $e) {
+            $errors[] = $src['table'] . ': ' . $e->getMessage();
+            error_log('[gtuFindStaffByPin] ' . $src['table'] . ' sorgu hatası: ' . $e->getMessage());
+        }
+    }
+
+    // ÖNEMLİ: bir kaynaktan kayıt bulunduysa, diğer kaynağın hatası girişi
+    // ENGELLEMEZ. Personel `personeller` tablosunda bulunmuşken `users`
+    // tablosunun yokluğu yüzünden garsonun içeri alınmaması tam olarak
+    // düzeltilen hatanın kendisiydi.
+    if (!empty($found)) {
+        return ['rows' => array_values($found), 'error' => null];
+    }
+
+    // Hiçbir kayıt bulunamadı. Tüm kaynaklar hata verdiyse bu "yanlış PIN"
+    // değil, veritabanı sorunudur ve öyle bildirilmelidir.
+    if (count($errors) === count($sources)) {
+        return ['rows' => [], 'error' => implode(' | ', $errors)];
+    }
+
+    return ['rows' => [], 'error' => null];
+}

@@ -2603,7 +2603,7 @@ class RestaurantDataService {
         pairingCode: emp.pairingCode || this.generatePairingCode(),
         macAddress: '',
         deviceUuid: '',
-        deviceName: 'Eşleşme Bekliyor',
+        deviceName: '',
         status: 'NOT_PAIRED'
       } as WaiterConfig);
     });

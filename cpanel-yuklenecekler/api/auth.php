@@ -483,24 +483,24 @@ switch ($action) {
                 }
             } catch (Exception $e) {}
 
-            // 2) PIN ile personeli bul (PIN benzersizdir)
-            $rows = [];
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT `id`, `ad_soyad` AS ad, `rol`, `device_uuid`, `device_paired_at`
-                    FROM `users`
-                    WHERE `pin_kodu` = ? AND `pin_kodu` <> '' AND `aktif` = 1
-                    UNION
-                    SELECT `id`, `ad`, `rol`, `device_uuid`, `device_paired_at`
-                    FROM `personeller`
-                    WHERE `pin` = ? AND `pin` <> '' AND `aktif` = 1
-                    LIMIT 2
-                ");
-                $stmt->execute([$pin, $pin]);
-                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {
-                $rows = [];
+            // 2) PIN ile personeli bul (PIN benzersizdir).
+            // config.php'deki gtuFindStaffByPin kullanilir: her tablo ayri
+            // sorgulanir, olmayan tablo atlanir, gercek veritabani hatasi
+            // yutulmaz. Onceden tek UNION sorgusu vardi ve `users` tablosu
+            // bulunmayan kurulumlarda DOGRU PIN bile reddediliyordu.
+            $lookup = gtuFindStaffByPin($pdo, $pin);
+
+            if ($lookup['error'] !== null) {
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'error_code' => 'DB_ERROR',
+                    'error' => 'Veritabanı hatası nedeniyle giriş doğrulanamadı. PIN kodunuz yanlış değil; lütfen yöneticinize bildirin.'
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
             }
+
+            $rows = $lookup['rows'];
 
             // Ayni PIN birden fazla kisideyse kimin girdigi belirlenemez.
             if (count($rows) > 1) {
@@ -513,7 +513,16 @@ switch ($action) {
                 exit;
             }
 
-            $user = $rows[0] ?? null;
+            $user = null;
+            if (count($rows) === 1) {
+                $user = [
+                    'id'  => $rows[0]['id'],
+                    'ad'  => $rows[0]['name'],
+                    'rol' => $rows[0]['role'],
+                    'device_uuid' => null,
+                    'device_paired_at' => null,
+                ];
+            }
         } else {
             $json = loadJsonData($dbFile);
             $allEmployees = $json['employees'] ?? [];
@@ -592,11 +601,18 @@ switch ($action) {
         //    Garson telefonunu degistirdiginde PIN'i ile girmeye devam eder.
         if ($incomingDeviceUuid !== '') {
             if ($useMysql) {
+                // Her ifade AYRI try icinde: `users` tablosu bulunmayan
+                // kurulumlarda ilk ifade hata verince digerleri hic
+                // calismiyor ve cihaz kaydi hic tutulmuyordu.
                 try {
                     $pdo->prepare("UPDATE `users` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
                         ->execute([$incomingDeviceUuid, $user['id']]);
+                } catch (Exception $e) {}
+                try {
                     $pdo->prepare("UPDATE `personeller` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
                         ->execute([$incomingDeviceUuid, $user['id']]);
+                } catch (Exception $e) {}
+                try {
                     $pdo->prepare("INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `durum`, `eslesme_tarihi`, `son_gorulme`)
                                    VALUES (?, ?, ?, 'APPROVED', NOW(), NOW())
                                    ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `durum` = 'APPROVED', `son_gorulme` = NOW()")

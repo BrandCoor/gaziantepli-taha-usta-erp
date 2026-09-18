@@ -48,9 +48,30 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
     setApiUrlState(getApiSyncUrl());
   }, []);
 
-  const handleSaveApiUrl = () => {
+  const handleSaveApiUrl = async () => {
     setApiSyncUrl(apiUrl);
-    notify.success('API Adresi Kaydedildi', 'Tüm sipariş ve bulut senkronizasyonları bu adres üzerinden yürütülecektir.');
+
+    if (!apiUrl.trim()) {
+      notify.warning('Sunucu Adresi Boş', 'Adres girilmeden garson uygulaması, QR menü ve patron paneli bu kasayla senkronize olmaz.');
+      return;
+    }
+
+    // Adres kaydedilir kaydedilmez mevcut veriler (ozellikle garson PIN'leri)
+    // sunucuya gonderilir. Aksi halde daha once tanimlanmis garsonlar sunucu
+    // veritabaninda olmadigi icin telefondan giris yapamiyordu.
+    const pushed = await restaurantDataService.pushStateToCloud();
+
+    if (pushed) {
+      notify.success(
+        'Sunucu Adresi Kaydedildi',
+        'Menü, masalar ve garson PIN kodları sunucu veritabanınıza gönderildi. Garsonlar artık telefondan PIN ile giriş yapabilir.'
+      );
+    } else {
+      notify.error(
+        'Adres Kaydedildi Ama Sunucuya Ulaşılamadı',
+        'Veriler gönderilemedi. Adresi kontrol edin ve aşağıdaki "Veritabanı Bağlantısını Test Et" düğmesiyle deneyin. Bağlantı kurulmadan garsonlar telefondan giriş yapamaz.'
+      );
+    }
   };
 
   const handleResetApiUrl = () => {

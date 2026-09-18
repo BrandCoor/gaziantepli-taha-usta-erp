@@ -933,26 +933,33 @@ if ($action === 'verify_waiter_pin' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Exception $e) {}
 
-        // 2) PIN ile garsonu bul (PIN benzersizdir)
+        // 2) PIN ile garsonu bul (PIN benzersizdir).
+        // Arama config.php'deki gtuFindStaffByPin ile yapilir: her tablo ayri
+        // sorgulanir, olmayan tablo atlanir, GERCEK veritabani hatasi ise
+        // yutulmaz. Onceden tek UNION sorgusu kullaniliyordu ve `users` tablosu
+        // bulunmayan kurulumlarda DOGRU PIN bile "gecersiz" sayiliyordu.
+        $lookup = gtuFindStaffByPin($pdo, $pin);
+
+        if ($lookup['error'] !== null) {
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Veritabanı hatası nedeniyle giriş doğrulanamadı. PIN kodunuz yanlış değil; lütfen yöneticinize bildirin.'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $rows = $lookup['rows'];
         $w = null;
-        try {
-            $stmt = $pdo->prepare("
-                SELECT `id`, `ad` AS name, `rol` AS role FROM `personeller` WHERE `pin` = ? AND `pin` <> '' AND `aktif` = 1
-                UNION
-                SELECT `id`, `ad_soyad` AS name, `rol` AS role FROM `users` WHERE `pin_kodu` = ? AND `pin_kodu` <> '' AND `aktif` = 1
-                LIMIT 2
-            ");
-            $stmt->execute([$pin, $pin]);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            // Aynı PIN birden fazla kişide ise kimin girdiği belirlenemez: giriş reddedilir.
-            if (count($rows) === 1) {
-                $w = $rows[0];
-            } elseif (count($rows) > 1) {
-                http_response_code(409);
-                echo json_encode(['success' => false, 'message' => 'Bu PIN birden fazla personele tanımlı. Yöneticinizden PIN kodunu değiştirmesini isteyin.'], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-        } catch (Exception $e) {}
+
+        if (count($rows) === 1) {
+            $w = $rows[0];
+        } elseif (count($rows) > 1) {
+            // Ayni PIN birden fazla kiside ise kimin girdigi belirlenemez.
+            http_response_code(409);
+            echo json_encode(['success' => false, 'message' => 'Bu PIN birden fazla personele tanımlı. Yöneticinizden PIN kodunu değiştirmesini isteyin.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
 
         if ($w) {
             try {
