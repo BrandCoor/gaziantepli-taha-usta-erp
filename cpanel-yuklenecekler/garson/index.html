@@ -459,7 +459,7 @@
     }
 
     // Cihaz kimliği ve eşleşme yalnızca localStorage'da tutulduğunda, iOS/Safari bir
-    // süre kullanılmayan siteyi temizleyince telefon her açılışta yeniden QR istiyordu.
+    // süre kullanılmayan siteyi temizleyince cihaz kimliği kayboluyordu.
     // Bu yüzden aynı değer 1 yıllık çerezle de yedekleniyor; ikisinden biri sağ kalırsa
     // eşleşme korunur. İkisi birden silinse bile sunucudaki cihaz kaydından geri alınır.
     function persistentSet(key, value) {
@@ -507,14 +507,12 @@
       persistentSet('gtu_device_token', token);
     }
 
-    let pairingScannerControls = null;
-
     function showPinScreen() {
       document.getElementById('pinScreen').classList.remove('hidden');
     }
 
 
-    // URL parametreleri ile QR eşleşmesi (Hem search ? hem hash # desteği)
+    // Adresteki parametreleri okur (hem ?search hem #hash desteği).
     function extractParams() {
       const p = new URLSearchParams(window.location.search);
       if (window.location.hash) {
@@ -539,12 +537,8 @@
     // Giriş öncesi hiçbir garson "seçili" değildir: kimin girdiğini PIN belirler.
     let currentWaiter = null;
 
-    // Telefonun yerel hafızası (localStorage + çerez) tamamen silinmiş olabilir.
-    // Bu durumda bile cihaz sunucuda kayıtlıysa QR okutmaya gerek yoktur: cihaz
-    // kimliğinden eşleşme geri yüklenir ve doğrudan PIN ekranına geçilir.
-
-    // Giriş artık yalnızca PIN ile yapılır: QR eşleştirme ekranı kaldırıldı.
-    // Uygulama doğrudan PIN tuş takımıyla açılır.
+    // Giriş yalnızca PIN ile yapılır; uygulama doğrudan PIN tuş takımıyla açılır.
+    // Telefonun yerel hafızası silinse bile garson PIN'i ile girmeye devam eder.
     showPinScreen();
 
     function updateWaiterUI() {
@@ -1311,8 +1305,9 @@
         waiterName: currentWaiter.name,
       });
 
+      let requested = false;
       try {
-        await apiFetch('send_order', {
+        const res = await apiFetch('send_order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1322,9 +1317,16 @@
             waiterName: currentWaiter.name,
           })
         });
+        const data = await res.json().catch(() => null);
+        requested = Boolean(res.ok && data && data.success);
       } catch (e) {}
 
-      showToast(`🖨️ ${selectedTable.name} için Kasadan Hesap Fişi talebi iletildi!`, 'success');
+      showToast(
+        requested
+          ? `🖨️ ${selectedTable.name} için Kasadan Hesap Fişi talebi iletildi!`
+          : 'Hesap talebi kasaya iletilemedi. Bağlantınızı kontrol edip tekrar deneyin.',
+        requested ? 'success' : 'error'
+      );
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-print text-sm"></i> <span>🖨️ Kasadan Hesap Fişi Çıkar / Adisyon İste</span>';
       closeExistingBillModal();
@@ -1410,8 +1412,9 @@
         waiterName: currentWaiter.name,
       });
 
+      let transferred = false;
       try {
-        await apiFetch('send_order', {
+        const res = await apiFetch('send_order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1421,7 +1424,15 @@
             waiterName: currentWaiter.name,
           })
         });
+        const data = await res.json().catch(() => null);
+        transferred = Boolean(res.ok && data && data.success);
       } catch (e) {}
+
+      if (!transferred) {
+        showToast('Masa taşıma kasaya iletilemedi. Bağlantınızı kontrol edip tekrar deneyin.', 'error');
+        fetchLiveState();
+        return;
+      }
 
       showToast(`✅ ${selectedTable.name} siparişi ${targetTable.name} masasına taşındı!`, 'success');
       closeTransferTableSelector();
@@ -1454,17 +1465,37 @@
 
       broadcastRealtime('ORDER_SUBMITTED', orderPayload);
 
+      // Sunucunun yanıtı BEKLENİR. Önceden hata yutulup her durumda
+      // "mutfağa iletildi" deniyordu; bağlantı koptuğunda garson siparişin
+      // gitmediğini fark etmiyordu.
+      let delivered = false;
+      let failReason = 'Sunucuya ulaşılamadı.';
+
       try {
-        await apiFetch('send_order', {
+        const res = await apiFetch('send_order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderPayload)
         });
-      } catch (e) {}
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && data.success) {
+          delivered = true;
+        } else {
+          failReason = (data && (data.message || data.error)) || `Sunucu ${res.status} hatası döndürdü.`;
+        }
+      } catch (e) {
+        failReason = e && e.message ? e.message : failReason;
+      }
 
-      showToast(`✅ ${selectedTable.name} siparişi mutfağa iletildi ve fiş basıldı!`, 'success');
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-fire text-base"></i> <span>Siparişi Onayla & Mutfağa Gönder</span>';
+
+      if (!delivered) {
+        showToast(`DİKKAT: Sipariş kasaya İLETİLEMEDİ (${failReason}) Sepet korundu, tekrar deneyin.`, 'error');
+        return;
+      }
+
+      showToast(`✅ ${selectedTable.name} siparişi mutfağa iletildi!`, 'success');
 
       closeCartDrawer();
       closeOrderModal();

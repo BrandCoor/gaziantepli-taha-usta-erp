@@ -1208,22 +1208,47 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                                        VALUES (?, ?, ?, 'BILL_REQUEST', '[]', 0, 0, 'NEW')");
                 $stmt->execute(['req-' . time(), $input['tableId'], $input['tableName'] ?? 'Masa']);
             } elseif ($type === 'TRANSFER_TABLE') {
-                $srcId = $input['sourceTableId'];
-                $tgtId = $input['targetTableId'];
+                // Hedef masa doluysa adisyonlar BIRLESTIRILIR. Onceden hedefin
+                // adisyonu kosulsuz uzerine yaziliyordu ve tahsil edilmemis hesap
+                // kayboluyordu.
+                $srcId = $input['sourceTableId'] ?? '';
+                $tgtId = $input['targetTableId'] ?? '';
 
-                $stmt = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ?");
-                $stmt->execute([$srcId]);
-                $src = $stmt->fetch();
+                if ($srcId !== '' && $tgtId !== '' && $srcId !== $tgtId) {
+                    $stmt = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ?");
+                    $stmt->execute([$srcId]);
+                    $src = $stmt->fetch();
 
-                if ($src && !empty($src['aktif_siparis'])) {
-                    // Kaynak masayı boşalt
-                    $pdo->prepare("UPDATE `masalar` SET `durum` = 'EMPTY', `aktif_siparis` = NULL, `toplam_tutar` = 0 WHERE `id` = ?")->execute([$srcId]);
-                    // Hedef masaya aktar
-                    $pdo->prepare("UPDATE `masalar` SET `durum` = 'OCCUPIED', `aktif_siparis` = ?, `toplam_tutar` = ? WHERE `id` = ?")->execute([
-                        $src['aktif_siparis'],
-                        $src['toplam_tutar'],
-                        $tgtId
-                    ]);
+                    if ($src && !empty($src['aktif_siparis'])) {
+                        $stmt->execute([$tgtId]);
+                        $tgt = $stmt->fetch();
+
+                        $srcOrder = json_decode($src['aktif_siparis'], true) ?: [];
+                        $tgtOrder = ($tgt && !empty($tgt['aktif_siparis'])) ? (json_decode($tgt['aktif_siparis'], true) ?: []) : [];
+
+                        $srcItems = isset($srcOrder['items']) && is_array($srcOrder['items']) ? $srcOrder['items'] : [];
+                        $tgtItems = isset($tgtOrder['items']) && is_array($tgtOrder['items']) ? $tgtOrder['items'] : [];
+
+                        if (!empty($tgtItems)) {
+                            $mergedOrder = $tgtOrder;
+                            $mergedOrder['items'] = array_merge($tgtItems, $srcItems);
+                            $mergedTotal = (float)($tgt['toplam_tutar'] ?? 0) + (float)($src['toplam_tutar'] ?? 0);
+                        } else {
+                            $mergedOrder = $srcOrder;
+                            $mergedOrder['items'] = $srcItems;
+                            $mergedTotal = (float)($src['toplam_tutar'] ?? 0);
+                        }
+                        $mergedOrder['totalAmount'] = $mergedTotal;
+
+                        // Kaynak masayı boşalt
+                        $pdo->prepare("UPDATE `masalar` SET `durum` = 'EMPTY', `aktif_siparis` = NULL, `toplam_tutar` = 0 WHERE `id` = ?")->execute([$srcId]);
+                        // Hedef masaya birleştirilmiş adisyonu yaz
+                        $pdo->prepare("UPDATE `masalar` SET `durum` = 'OCCUPIED', `aktif_siparis` = ?, `toplam_tutar` = ? WHERE `id` = ?")->execute([
+                            json_encode($mergedOrder, JSON_UNESCAPED_UNICODE),
+                            $mergedTotal,
+                            $tgtId
+                        ]);
+                    }
                 }
             } elseif ($type === 'WAITER_CALL') {
                 $stmt = $pdo->prepare("INSERT INTO `siparisler` (`id`, `masa_id`, `masa_adi`, `garson_adi`, `siparis_turu`, `kalemler`, `toplam_tutar`, `yazdirildi`, `durum`, `olusturma_tarihi`) 
@@ -1231,13 +1256,46 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute(['call-' . time(), $input['tableId'], $input['tableName'] ?? 'Masa']);
             } else {
                 // Standart Yemek Siparişi
+                //
+                // FIYATLAR ISTEMCIYE GUVENILEREK ALINMAZ. Onceden kalem fiyatlari
+                // ve hatta toplam tutar dogrudan istekten okunuyordu; bu adresi
+                // bilen biri (ozellikle herkese acik QR menu uzerinden) istedigi
+                // urunu istedigi fiyata siparis edebiliyordu. Fiyat artik
+                // `urunler` tablosundan okunur; istemcinin gonderdigi fiyat ve
+                // toplam tutar yok sayilir.
                 $newItems = $input['items'] ?? [];
+                if (!is_array($newItems)) $newItems = [];
+
+                $priceStmt = $pdo->prepare("SELECT `fiyat` FROM `urunler` WHERE `id` = ? LIMIT 1");
                 $orderTotal = 0;
-                foreach ($newItems as $it) {
-                    $orderTotal += ((float)($it['price'] ?? 0)) * ((int)($it['quantity'] ?? 1));
-                }
-                if (!empty($input['totalAmount'])) {
-                    $orderTotal = (float)$input['totalAmount'];
+
+                foreach ($newItems as $idx => $it) {
+                    $qty = max(1, (int)($it['quantity'] ?? 1));
+                    $unitPrice = null;
+
+                    $productId = $it['productId'] ?? $it['urun_id'] ?? $it['id'] ?? '';
+                    if ($productId !== '') {
+                        try {
+                            $priceStmt->execute([$productId]);
+                            $found = $priceStmt->fetchColumn();
+                            if ($found !== false && $found !== null) $unitPrice = (float)$found;
+                        } catch (Exception $e) {}
+                    }
+
+                    // Urun kataloqda bulunamadiysa (ikram, ozel kalem) istemcinin
+                    // fiyati kullanilir ama kalem bu sekilde isaretlenir.
+                    if ($unitPrice === null) {
+                        $unitPrice = (float)($it['price'] ?? 0);
+                        $newItems[$idx]['priceSource'] = 'CLIENT';
+                    } else {
+                        $newItems[$idx]['priceSource'] = 'CATALOG';
+                    }
+
+                    if (!empty($it['isGift'])) $unitPrice = 0.0;
+
+                    $newItems[$idx]['price'] = $unitPrice;
+                    $newItems[$idx]['quantity'] = $qty;
+                    $orderTotal += $unitPrice * $qty;
                 }
 
                 // Masadaki mevcut açık adisyonu al ve birleştir
@@ -1306,10 +1364,11 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $input['id'] = 'req-' . time();
                 $db['orders'][] = $input;
             } elseif ($type === 'TRANSFER_TABLE') {
-                $srcId = $input['sourceTableId'];
-                $tgtId = $input['targetTableId'];
+                // Hedef masa doluysa adisyonlar birleştirilir (bkz. MySQL modu).
+                $srcId = $input['sourceTableId'] ?? '';
+                $tgtId = $input['targetTableId'] ?? '';
                 $savedOrder = null;
-                if (!empty($db['tables'])) {
+                if (!empty($db['tables']) && $srcId !== '' && $tgtId !== '' && $srcId !== $tgtId) {
                     foreach ($db['tables'] as &$tbl) {
                         if ($tbl['id'] === $srcId) {
                             $savedOrder = $tbl['order'] ?? null;
@@ -1318,14 +1377,29 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                             break;
                         }
                     }
+                    unset($tbl);
+
                     if ($savedOrder) {
                         foreach ($db['tables'] as &$tbl) {
-                            if ($tbl['id'] === $tgtId) {
-                                $tbl['status'] = 'OCCUPIED';
-                                $tbl['order'] = $savedOrder;
-                                break;
+                            if ($tbl['id'] !== $tgtId) continue;
+
+                            $tgtOrder = $tbl['order'] ?? null;
+                            $tgtItems = (is_array($tgtOrder) && isset($tgtOrder['items']) && is_array($tgtOrder['items'])) ? $tgtOrder['items'] : [];
+                            $srcItems = (isset($savedOrder['items']) && is_array($savedOrder['items'])) ? $savedOrder['items'] : [];
+
+                            if (!empty($tgtItems)) {
+                                $merged = $tgtOrder;
+                                $merged['items'] = array_merge($tgtItems, $srcItems);
+                                $merged['totalAmount'] = (float)($tgtOrder['totalAmount'] ?? 0) + (float)($savedOrder['totalAmount'] ?? 0);
+                            } else {
+                                $merged = $savedOrder;
                             }
+
+                            $tbl['status'] = 'OCCUPIED';
+                            $tbl['order'] = $merged;
+                            break;
                         }
+                        unset($tbl);
                     }
                 }
                 $db['orders'][] = $input;

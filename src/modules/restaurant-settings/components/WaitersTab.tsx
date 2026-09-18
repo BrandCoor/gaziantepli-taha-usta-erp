@@ -195,12 +195,13 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     setShowDomainConfig(false);
   };
 
+  // PIN kopyalama (kart uzerindeki kopyala dugmesi)
   const handleCopyCode = (code: string) => {
     if (!code) return;
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
-    notify.info('Kod Kopyalandı', `Eşleştirme kodu [${code}] panoya kopyalandı.`);
+    notify.info('PIN Kopyalandı', `Giriş PIN kodu [${code}] panoya kopyalandı.`);
   };
 
   const filteredWaiters = waiters.filter(w => {
@@ -228,7 +229,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
             </div>
             <div>
               <h2 className="text-sm font-black text-white flex items-center gap-2">
-                <span>Garson Mobil Telefon & Cihaz Eşleştirme Yönetimi</span>
+                <span>Garson Tanımları & PIN Yönetimi</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   PIN ile Giriş
                 </span>
@@ -325,7 +326,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
           <div className="max-w-md mx-auto space-y-1">
             <h3 className="text-base font-black text-white">Kayıtlı Garson / Mobil Terminal Yok</h3>
             <p className="text-xs text-[#8E8E98]">
-              Sistemde henüz tanımlı garson bulunmuyor. Yeni bir garson veya telefon eşleştirmesi oluşturmak için yukarıdaki butonu kullanabilirsiniz.
+              Sistemde henüz tanımlı garson bulunmuyor. Yukarıdaki butondan garson ekleyin; kendisine verilecek PIN kodu otomatik oluşturulur.
             </p>
           </div>
           <button
