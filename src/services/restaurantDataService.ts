@@ -451,6 +451,7 @@ const STORAGE_KEYS = {
   COMPLETED_ORDERS: 'gtu_pos_completed_orders',
   Z_REPORTS: 'gtu_pos_z_reports',
   CANCEL_LOGS: 'gtu_pos_cancel_logs',
+  ORDER_COUNTER: 'gtu_pos_order_counter',
   CALL_LOGS: 'gtu_pos_call_logs',
   FOOD_PLATFORMS: 'gtu_pos_food_platforms',
   ONLINE_ORDERS: 'gtu_online_orders',
@@ -760,7 +761,28 @@ class RestaurantDataService {
   private kitchenPrintCallback?: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void;
   private billPrintCallback?: (table: TableState, items: OrderItemState[]) => void;
   private isProcessingRemoteSync = false;
-  private processedIncomingOrderIds: Set<string> = new Set();
+  // Islenmis siparis kimlikleri. Yalnizca bellekte tutuldugunda uygulama her
+  // yeniden acildiginda ayni siparis tekrar isleniyor ve mutfak fisi ikinci
+  // kez basiliyordu; bu yuzden localStorage'a da yazilir.
+  private processedIncomingOrderIds: Set<string> = new Set(
+    (() => {
+      try {
+        const raw = localStorage.getItem('gtu_pos_processed_order_ids');
+        return raw ? (JSON.parse(raw) as string[]) : [];
+      } catch {
+        return [];
+      }
+    })()
+  );
+
+  private persistProcessedOrderIds(): void {
+    try {
+      localStorage.setItem(
+        'gtu_pos_processed_order_ids',
+        JSON.stringify(Array.from(this.processedIncomingOrderIds))
+      );
+    } catch {}
+  }
 
   public onKitchenOrderPrint(cb: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void) {
     this.kitchenPrintCallback = cb;
@@ -1148,41 +1170,84 @@ class RestaurantDataService {
       const res = await fetch(`${getApiSyncUrl()}?action=pull_pending_orders`);
       const data = await res.json();
       if (data.success && data.orders && data.orders.length > 0) {
-        data.orders.forEach((ord: any) => {
-          if (ord.type === 'BILL_REQUEST') {
-            this.setBillRequested(ord.tableId);
-            const tbl = this.getTables().find(t => t.id === ord.tableId);
-            if (tbl && tbl.order?.items && tbl.order.items.length > 0 && this.billPrintCallback) {
-              this.billPrintCallback(tbl, tbl.order.items);
+        // Sunucu siparisleri ancak biz islediğimizi onayladiktan sonra kapatir.
+        // Islenemeyenler (ornegin masa bu cihazda henuz yoksa) onaylanmaz ve
+        // bir sonraki cekiste tekrar gelir; boylece siparis kaybolmaz.
+        const handledIds: string[] = [];
+
+        for (const ord of data.orders) {
+          let handled = false;
+          try {
+            if (ord.type === 'BILL_REQUEST') {
+              const tbl = this.getTables().find(t => t.id === ord.tableId);
+              if (tbl) {
+                this.setBillRequested(ord.tableId);
+                const fresh = this.getTables().find(t => t.id === ord.tableId);
+                if (fresh?.order?.items && fresh.order.items.length > 0 && this.billPrintCallback) {
+                  this.billPrintCallback(fresh, fresh.order.items);
+                }
+                handled = true;
+              }
+            } else if (ord.type === 'TRANSFER_TABLE') {
+              handled = this.transferTable(ord.sourceTableId, ord.targetTableId);
+            } else {
+              handled = this.processIncomingOrder(ord);
             }
-          } else if (ord.type === 'TRANSFER_TABLE') {
-            this.transferTable(ord.sourceTableId, ord.targetTableId);
-          } else {
-            this.processIncomingOrder(ord);
+          } catch (orderErr) {
+            console.error('[Senkron] Sipariş işlenemedi:', ord?.id, orderErr);
+            handled = false;
           }
-        });
+
+          if (handled && ord.id) handledIds.push(String(ord.id));
+        }
+
+        if (handledIds.length > 0) {
+          try {
+            await fetch(`${getApiSyncUrl()}?action=ack_orders`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids: handledIds })
+            });
+          } catch (ackErr) {
+            // Onay iletilemedi: sunucu 90 saniye sonra tekrar gonderir,
+            // yerel tekil kimlik listesi sayesinde fis ikinci kez basilmaz.
+            console.warn('[Senkron] Sipariş teslim onayı iletilemedi:', ackErr);
+          }
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[Senkron] Bekleyen siparişler çekilemedi:', e);
+    }
   }
 
-  public processIncomingOrder(incoming: any) {
-    if (!incoming || !incoming.tableId) return;
+  public processIncomingOrder(incoming: any): boolean {
+    if (!incoming || !incoming.tableId) return false;
 
     const orderDedupId = incoming.id || incoming.orderId || `${incoming.tableId}-${incoming.totalAmount || ''}-${incoming.items?.length || 0}-${incoming.timestamp || ''}`;
     if (orderDedupId && this.processedIncomingOrderIds.has(orderDedupId)) {
-      return;
+      // Zaten islenmis: sunucuya "teslim alindi" demek icin basarili sayilir.
+      return true;
     }
     if (orderDedupId) {
       this.processedIncomingOrderIds.add(orderDedupId);
-      if (this.processedIncomingOrderIds.size > 200) {
+      if (this.processedIncomingOrderIds.size > 500) {
         const first = Array.from(this.processedIncomingOrderIds)[0];
         this.processedIncomingOrderIds.delete(first);
       }
+      this.persistProcessedOrderIds();
     }
 
     const tables = this.getTables();
     const table = tables.find(t => t.id === incoming.tableId);
-    if (!table) return;
+    if (!table) {
+      // Masa henuz bu cihaza senkronize olmamis olabilir. Siparis "islendi"
+      // sayilmaz ki sunucu bir sonraki cekiste tekrar gondersin.
+      if (orderDedupId) {
+        this.processedIncomingOrderIds.delete(orderDedupId);
+        this.persistProcessedOrderIds();
+      }
+      return false;
+    }
 
     const existingItems = table.order?.items || [];
     const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -1204,6 +1269,8 @@ class RestaurantDataService {
       const isAdditionalOrder = existingItems.length > 0;
       this.kitchenPrintCallback(currentTable, newItems, incoming.waiterName || 'Garson', incoming.orderNote, isAdditionalOrder);
     }
+
+    return true;
   }
 
   public getSections(): SectionConfig[] {
@@ -1314,19 +1381,48 @@ class RestaurantDataService {
     return sorted;
   }
 
+  /**
+   * Masa tasima / birlestirme.
+   *
+   * Onceden hedef masanin adisyonu kosulsuz olarak UZERINE YAZILIYORDU:
+   * dolu bir masaya tasima yapildiginda o masanin tum siparisi ve tahsil
+   * edilmemis tutari kayboluyordu. Artik hedef masa doluysa siparisler
+   * birlestirilir (masa birlestirme), bos ise oldugu gibi tasinir.
+   */
   public transferTable(sourceTableId: string, targetTableId: string): boolean {
+    if (!sourceTableId || !targetTableId || sourceTableId === targetTableId) return false;
+
     const tables = this.getTables();
     const srcIndex = tables.findIndex(t => t.id === sourceTableId);
     const tgtIndex = tables.findIndex(t => t.id === targetTableId);
 
-    if (srcIndex === -1 || tgtIndex === -1 || !tables[srcIndex].order) return false;
+    if (srcIndex === -1 || tgtIndex === -1) return false;
+
+    const sourceOrder = tables[srcIndex].order;
+    if (!sourceOrder || (sourceOrder.items || []).length === 0) return false;
+
+    const targetOrder = tables[tgtIndex].order;
+    const hasTargetOrder = Boolean(targetOrder && (targetOrder.items || []).length > 0);
+
+    const mergedItems = hasTargetOrder
+      ? [...(targetOrder!.items || []), ...(sourceOrder.items || [])]
+      : [...(sourceOrder.items || [])];
+
+    const mergedTotal = mergedItems.reduce(
+      (sum, item) => sum + (item.isGift ? 0 : (Number(item.price) || 0) * (Number(item.quantity) || 1)),
+      0
+    );
 
     tables[tgtIndex].status = 'OCCUPIED';
     tables[tgtIndex].order = {
-      ...tables[srcIndex].order!,
-      items: [...(tables[srcIndex].order!.items || [])],
+      ...(hasTargetOrder ? targetOrder! : sourceOrder),
+      totalAmount: mergedTotal,
+      items: mergedItems,
     };
-    tables[tgtIndex].customerInfo = tables[srcIndex].customerInfo;
+    // Musteri bilgisi yalnizca hedefte yoksa tasinir, varsa uzerine yazilmaz.
+    if (!tables[tgtIndex].customerInfo && tables[srcIndex].customerInfo) {
+      tables[tgtIndex].customerInfo = tables[srcIndex].customerInfo;
+    }
 
     tables[srcIndex].status = 'EMPTY';
     tables[srcIndex].order = undefined;
@@ -1347,6 +1443,33 @@ class RestaurantDataService {
     }
   }
 
+  /**
+   * Sirali adisyon numarasi uretir.
+   *
+   * Onceden numara `Math.floor(100 + Math.random() * 900)` ile rastgele
+   * uretiliyordu: yalnizca 900 olasilik oldugu icin ayni gun icinde iki
+   * masaya ayni adisyon numarasi cikabiliyor, mutfak fisleri ve raporlar
+   * birbirine karisiyordu. Sayac 101'den baslar ve 999'u gectiginde basa
+   * doner; acik masalarda kullanilan numaralar atlanir.
+   */
+  private nextOrderNumber(): number {
+    const used = new Set<number>();
+    for (const t of this.getTables()) {
+      if (t.order?.orderNumber) used.add(Number(t.order.orderNumber));
+    }
+
+    let counter = parseInt(localStorage.getItem(STORAGE_KEYS.ORDER_COUNTER) || '100', 10);
+    if (!Number.isFinite(counter) || counter < 100) counter = 100;
+
+    for (let i = 0; i < 900; i++) {
+      counter = counter >= 999 ? 101 : counter + 1;
+      if (!used.has(counter)) break;
+    }
+
+    localStorage.setItem(STORAGE_KEYS.ORDER_COUNTER, String(counter));
+    return counter;
+  }
+
   public updateTableOrder(
     tableId: string, 
     items: OrderItemState[], 
@@ -1364,7 +1487,7 @@ class RestaurantDataService {
         tables[tableIndex].status = 'OCCUPIED';
         tables[tableIndex].order = {
           id: `ord-${Date.now()}`,
-          orderNumber: Math.floor(100 + Math.random() * 900),
+          orderNumber: this.nextOrderNumber(),
           totalAmount: 0,
           orderTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
           waiterName: waiterName,
@@ -1387,7 +1510,7 @@ class RestaurantDataService {
 
       tables[tableIndex].order = {
         id: existingOrder?.id || `ord-${Date.now()}`,
-        orderNumber: existingOrder?.orderNumber || Math.floor(100 + Math.random() * 900),
+        orderNumber: existingOrder?.orderNumber || this.nextOrderNumber(),
         totalAmount,
         orderTime: existingOrder?.orderTime || currentTime,
         waiterName: existingOrder?.waiterName || waiterName,
@@ -1417,6 +1540,12 @@ class RestaurantDataService {
     const items = [...table.order.items];
     const targetItem = items[itemIndex];
     if (!targetItem) return;
+
+    // Iptal adedi dogrulanir: negatif/sifir deger urun adedini ARTIRIYORDU.
+    const qty = Math.floor(Number(cancelQty) || 0);
+    if (qty <= 0) return;
+    cancelQty = Math.min(qty, Number(targetItem.quantity) || 0);
+    if (cancelQty <= 0) return;
 
     const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
     cancelLogs.push({
@@ -1454,7 +1583,7 @@ class RestaurantDataService {
       const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
       completedOrders.push({
         id: `arch-cancel-${Date.now()}`,
-        orderNumber: table.order.orderNumber || Math.floor(100 + Math.random() * 900),
+        orderNumber: table.order.orderNumber || this.nextOrderNumber(),
         tableName: table.name,
         sectionName: section?.name || table.sectionId,
         waiterName: table.order.waiterName || cancelledBy,
@@ -1516,12 +1645,16 @@ class RestaurantDataService {
     const todayDate = now.toISOString().split('T')[0];
     const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
+    // Raporlarda bolum ADI gosterilir; burada bolum ID'si ('sec-salon') yaziliyordu,
+    // bu yuzden rapor ekraninda bolum filtresi ve sutunu anlamsiz gorunuyordu.
+    const section = this.getSections().find(s => s.id === table.sectionId);
+
     const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
     completedOrders.push({
-      id: `arch-${Date.now()}`,
+      id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       orderNumber: table.order.orderNumber,
       tableName: table.name,
-      sectionName: table.sectionId,
+      sectionName: table.sectionName || section?.name || table.sectionId,
       waiterName: table.order.waiterName,
       orderTime: table.order.orderTime || timeStr,
       closedTime: `${todayDate} ${timeStr}`,

@@ -467,13 +467,23 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
   const handleTransferTable = () => {
     if (!selectedTable || !targetTransferTableId) return;
+
+    const targetTable = tables.find(t => t.id === targetTransferTableId);
+    const willMerge = Boolean(targetTable?.order && (targetTable.order.items?.length || 0) > 0);
+
     const success = restaurantDataService.transferTable(selectedTable.id, targetTransferTableId);
     if (success) {
-      notify.success('Masa Taşındı', `${selectedTable.name} siparişi başarıyla taşındı.`);
+      notify.success(
+        willMerge ? 'Masalar Birleştirildi' : 'Masa Taşındı',
+        willMerge
+          ? `${selectedTable.name} siparişi ${targetTable?.name} adisyonuna eklendi.`
+          : `${selectedTable.name} siparişi ${targetTable?.name} masasına taşındı.`
+      );
       setTransferModalOpen(false);
+      setTargetTransferTableId('');
       setSelectedTable(null);
     } else {
-      notify.error('Hata', 'Masa taşıma işlemi başarısız oldu.');
+      notify.error('Hata', 'Masa taşıma işlemi başarısız oldu. Taşınacak açık bir adisyon bulunamadı.');
     }
   };
 

@@ -1363,43 +1363,97 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // 6. KASA BEKLEYEN SİPARİŞLERİ ÇEKER (pull_pending_orders)
 // ========================================================
 if ($action === 'pull_pending_orders') {
+    // ====================================================================
+    // Siparisler, kasaya TESLIM EDILDIGI ONAYLANANA kadar bekleyen olarak
+    // kalir. Onceden bu istekte siparisler dogrudan `yazdirildi = 1`
+    // yapiliyordu: kasanin cevabi yolda kaybolursa (internet kesintisi,
+    // zaman asimi, uygulama kapanmasi) garsonun siparisi bir daha hic
+    // gorunmuyordu. Artik kayitlara 90 saniyelik bir "cekildi" damgasi
+    // vurulur; kasa ack_orders ile onaylarsa kapanir, onaylamazsa sure
+    // sonunda tekrar teslim edilir.
+    // ====================================================================
     if ($useMysql) {
-        $stmt = $pdo->query("SELECT `id`, `masa_id` as tableId, `masa_adi` as tableName, `garson_adi` as waiterName, `kalemler` as items, `toplam_tutar` as totalAmount, `siparis_turu` as type, `olusturma_tarihi` as createdAt 
-                             FROM `siparisler` 
-                             WHERE `yazdirildi` = 0 
+        try {
+            $pdo->exec("ALTER TABLE `siparisler` ADD COLUMN `cekilme_tarihi` DATETIME NULL DEFAULT NULL");
+        } catch (Exception $e) {}
+
+        $stmt = $pdo->query("SELECT `id`, `masa_id` as tableId, `masa_adi` as tableName, `garson_adi` as waiterName, `kalemler`, `toplam_tutar` as totalAmount, `siparis_turu` as type, `olusturma_tarihi` as createdAt
+                             FROM `siparisler`
+                             WHERE `yazdirildi` = 0
+                               AND (`cekilme_tarihi` IS NULL OR `cekilme_tarihi` < DATE_SUB(NOW(), INTERVAL 90 SECOND))
                              ORDER BY `olusturma_tarihi` ASC");
         $rows = $stmt->fetchAll();
         $pending = [];
-        $idsToMark = [];
+        $idsToLease = [];
 
         foreach ($rows as $r) {
             $r['items'] = json_decode($r['kalemler'], true) ?: [];
             unset($r['kalemler']);
             $r['totalAmount'] = (float)$r['totalAmount'];
             $pending[] = $r;
-            $idsToMark[] = $r['id'];
+            $idsToLease[] = $r['id'];
         }
 
-        if (!empty($idsToMark)) {
-            $inClause = implode(',', array_fill(0, count($idsToMark), '?'));
-            $updateStmt = $pdo->prepare("UPDATE `siparisler` SET `yazdirildi` = 1 WHERE `id` IN ($inClause)");
-            $updateStmt->execute($idsToMark);
+        if (!empty($idsToLease)) {
+            $inClause = implode(',', array_fill(0, count($idsToLease), '?'));
+            $pdo->prepare("UPDATE `siparisler` SET `cekilme_tarihi` = NOW() WHERE `id` IN ($inClause)")
+                ->execute($idsToLease);
         }
 
-        echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'MYSQL']);
+        echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'MYSQL'], JSON_UNESCAPED_UNICODE);
         exit;
     } else {
         $pending = [];
+        $now = time();
         if (!empty($db['orders'])) {
             foreach ($db['orders'] as &$ord) {
-                if (empty($ord['printed'])) {
-                    $pending[] = $ord;
-                    $ord['printed'] = true;
-                }
+                if (!empty($ord['printed'])) continue;
+                $leasedAt = isset($ord['leasedAt']) ? (int)$ord['leasedAt'] : 0;
+                if ($leasedAt && ($now - $leasedAt) < 90) continue;
+                $ord['leasedAt'] = $now;
+                $pending[] = $ord;
             }
+            unset($ord);
             file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         }
-        echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'JSON']);
+        echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'JSON'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+// ========================================================
+// 6b. KASA, ISLEDIGI SIPARISLERI ONAYLAR (ack_orders)
+// ========================================================
+if ($action === 'ack_orders' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $ids = $input['ids'] ?? [];
+    if (!is_array($ids)) $ids = [];
+    $ids = array_values(array_filter(array_map('strval', $ids), function ($v) { return $v !== ''; }));
+
+    if (empty($ids)) {
+        echo json_encode(['success' => true, 'acked' => 0], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if ($useMysql) {
+        $inClause = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("UPDATE `siparisler` SET `yazdirildi` = 1 WHERE `id` IN ($inClause)");
+        $stmt->execute($ids);
+        echo json_encode(['success' => true, 'acked' => $stmt->rowCount()], JSON_UNESCAPED_UNICODE);
+        exit;
+    } else {
+        $acked = 0;
+        if (!empty($db['orders'])) {
+            foreach ($db['orders'] as &$ord) {
+                if (in_array((string)($ord['id'] ?? ''), $ids, true)) {
+                    $ord['printed'] = true;
+                    $acked++;
+                }
+            }
+            unset($ord);
+            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        }
+        echo json_encode(['success' => true, 'acked' => $acked], JSON_UNESCAPED_UNICODE);
         exit;
     }
 }
