@@ -65,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, mobil
   const erpMenuItems = [
     { id: 'dashboard', label: 'Özet & Kasa Durumu', icon: LayoutDashboard },
     { id: 'customers', label: 'Müşteriler & Cari', icon: Users },
-    { id: 'expenses', label: 'Giderler & Harcamalar', icon: Receipt },
+    { id: 'expenses', label: 'Giderler & Tedarikçiler', icon: Receipt },
     { id: 'employees', label: 'Personeller & Garsonlar', icon: UserCheck },
     { id: 'reports', label: 'Z Raporu & Mali Analiz', icon: BarChart2 },
   ];

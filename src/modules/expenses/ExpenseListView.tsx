@@ -21,7 +21,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Sparkles,
-  Lock
+  Lock,
+  ArrowLeft,
+  Printer,
+  Download
 } from 'lucide-react';
 import { 
   Expense, 
@@ -30,6 +33,8 @@ import {
   dataService 
 } from '../../services/dataService';
 import { notify } from '../../services/notificationService';
+import { exportService } from '../../services/exportService';
+import { CariEkstre, EkstreHareketi } from '../../components/cari/CariEkstre';
 
 export const EXPENSE_CATEGORIES = [
   'Kira Gideri',
@@ -67,7 +72,7 @@ type SortField = 'date' | 'title' | 'category' | 'amount';
 type SortOrder = 'asc' | 'desc';
 
 export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
-  const [activeTab, setActiveTab] = useState<'expenses' | 'suppliers' | 'statement'>('expenses');
+  const [activeTab, setActiveTab] = useState<'expenses' | 'suppliers'>('expenses');
 
   // Canlı Veriler
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -119,6 +124,9 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payDesc, setPayDesc] = useState('');
 
+  // Ekstrede o an ekranda görünen (filtrelenmiş) hareketler — dışa aktarma bunu kullanır
+  const [gorunenEkstreTx, setGorunenEkstreTx] = useState<SupplierTransaction[]>([]);
+
   // EKSTRE DÜZENLEME MODALI
   const [editTxModalOpen, setEditTxModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<SupplierTransaction | null>(null);
@@ -156,6 +164,77 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
       .filter(t => t && t.supplierId === selectedSupplierId)
       .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
   }, [supplierTransactions, selectedSupplierId]);
+
+  const tedarikciBakiye = useMemo(() => Number(activeSupplier?.balance) || 0, [activeSupplier]);
+
+  /** Toptancı hareketlerini ortak ekstre bileşeninin anladığı biçime çevir.
+   *  PAYMENT dışındaki her tür (INVOICE, PURCHASE) borç yazan harekettir. */
+  const tedarikciEkstreHareketleri = useMemo<EkstreHareketi[]>(() =>
+    statementTransactions.map(tx => {
+      const odemeMi = tx.type === 'PAYMENT';
+      return {
+        id: tx.id,
+        tarih: tx.date || tx.createdAt,
+        yon: odemeMi ? 'ALACAK' : 'BORC',
+        tutar: Number(tx.amount) || 0,
+        tur: odemeMi ? 'Ödeme Yapıldı' : 'Alış Faturası',
+        belgeNo: tx.invoiceNo || tx.documentNumber,
+        aciklama: tx.description,
+        odemeKanali: odemeMi ? tx.paymentMethod : undefined,
+        kaynak: tx,
+      };
+    }),
+    [statementTransactions]
+  );
+
+  const tedarikciOzet = useMemo(() => {
+    let toplamFatura = 0;
+    let toplamOdeme = 0;
+    statementTransactions.forEach(tx => {
+      if (tx.type === 'PAYMENT') toplamOdeme += Number(tx.amount) || 0;
+      else toplamFatura += Number(tx.amount) || 0;
+    });
+
+    const son = statementTransactions[statementTransactions.length - 1];
+    let sonHareket = '—';
+    if (son) {
+      const d = new Date(son.date || son.createdAt);
+      if (!isNaN(d.getTime())) sonHareket = d.toLocaleDateString('tr-TR');
+    }
+
+    return { toplamFatura, toplamOdeme, sonHareket };
+  }, [statementTransactions]);
+
+  // Dışa aktarmada ekranda görünen hareketleri kullan (hiç filtre yoksa tamamı)
+  const aktarilacakTedarikciHareketleri = useMemo(
+    () => (gorunenEkstreTx.length > 0 ? gorunenEkstreTx : statementTransactions),
+    [gorunenEkstreTx, statementTransactions]
+  );
+
+  const handleExportSupplierPdf = () => {
+    if (!activeSupplier) return;
+    try {
+      exportService.exportSingleSupplierStatementPdf({
+        ...activeSupplier,
+        transactions: aktarilacakTedarikciHareketleri,
+      });
+    } catch (e: any) {
+      notify.error('Yazdırma Hatası', e?.message || 'PDF oluşturulamadı.');
+    }
+  };
+
+  const handleExportSupplierExcel = () => {
+    if (!activeSupplier) return;
+    try {
+      exportService.exportSingleSupplierStatementExcel({
+        ...activeSupplier,
+        transactions: aktarilacakTedarikciHareketleri,
+      });
+      notify.success('Excel İndirildi', `${activeSupplier.name} cari ekstresi dışa aktarıldı.`);
+    } catch (e: any) {
+      notify.error('Excel Hatası', e?.message || 'Excel dosyası oluşturulamadı.');
+    }
+  };
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -353,7 +432,6 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
           notify.success('Toptancı Silindi', `${s.name} kaydı silindi.`);
           if (selectedSupplierId === s.id) {
             setSelectedSupplierId(null);
-            setActiveTab('suppliers');
           }
           refreshAll();
         } else {
@@ -514,19 +592,6 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
           </span>
         </button>
 
-        {activeSupplier && (
-          <button
-            onClick={() => setActiveTab('statement')}
-            className={`flex-1 min-w-[220px] py-3.5 px-6 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-3 cursor-pointer ${
-              activeTab === 'statement'
-                ? 'bg-sky-500 text-white shadow-xl shadow-sky-500/25 ring-2 ring-sky-400/40 scale-[1.01]'
-                : 'text-[#8E8E98] hover:text-[#FAF7F2] hover:bg-[#282830]'
-            }`}
-          >
-            <FileText className="w-5 h-5" />
-            <span className="truncate">Ekstre: {activeSupplier.name}</span>
-          </button>
-        )}
       </div>
 
       {/* ========================================================================= */}
@@ -690,7 +755,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
       {/* ========================================================================= */}
       {/* 2. TOPTANCILAR & CARİLER SEKMESİ */}
       {/* ========================================================================= */}
-      {activeTab === 'suppliers' && (
+      {activeTab === 'suppliers' && !activeSupplier && (
         <div className="space-y-6">
           <div className="bg-[#1C1C20] p-4 rounded-3xl border border-[#2C2C34] shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="relative flex-1 max-w-md">
@@ -791,12 +856,12 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
 
                         <button
                           onClick={() => {
+                            setGorunenEkstreTx([]);
                             setSelectedSupplierId(s.id);
-                            setActiveTab('statement');
                           }}
                           className="px-3.5 py-2 bg-[#282830] hover:bg-[#343440] text-sky-400 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-colors"
                         >
-                          <span>Ekstre</span>
+                          <span>Detay &amp; Ekstre</span>
                           <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -810,38 +875,34 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 3. TOPTANCI CARİ EKSTRESİ */}
+      {/* 3. TOPTANCI DETAY KARTI + FİLTRELENEBİLİR EKSTRE                          */}
       {/* ========================================================================= */}
-      {activeTab === 'statement' && activeSupplier && (
-        <div className="space-y-6">
-          <div className="bg-[#1C1C20] p-6 rounded-3xl border border-[#2C2C34] shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-white">{activeSupplier.name}</h2>
-                <span className="px-2.5 py-0.5 bg-[#F5C877]/10 border border-[#F5C877]/30 text-[#F5C877] rounded-full text-[10px] font-black uppercase">CARİ EKSTRE</span>
-              </div>
-              <p className="text-xs text-[#8E8E98] mt-0.5">Yetkili: {activeSupplier.contactPerson || '—'} • {activeSupplier.phone || 'Telefon yok'}</p>
-            </div>
+      {activeTab === 'suppliers' && activeSupplier && (
+        <div className="space-y-5 animate-fadeIn">
+          {/* --- ÜST BAR: GERİ DÖN + İŞLEMLER --- */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#1C1C20] p-4 rounded-3xl border border-[#2C2C34] shadow-xl">
+            <button
+              onClick={() => setSelectedSupplierId(null)}
+              className="px-4 py-2.5 bg-[#282830] hover:bg-[#32323D] text-white text-xs font-black rounded-2xl flex items-center gap-2 transition-all cursor-pointer w-fit"
+            >
+              <ArrowLeft className="w-4 h-4 text-[#F5C877]" />
+              <span>Toptancı Listesine Dön</span>
+            </button>
 
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <span className="text-[10px] uppercase font-bold text-[#8E8E98]">Kalan Net Borcumuz</span>
-                <div className={`text-2xl font-black font-mono ${(Number(activeSupplier.balance) || 0) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {formatMoney(activeSupplier.balance)}
-                </div>
-              </div>
-
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => {
                   setInvSupplierId(activeSupplier.id);
                   setInvAmount('');
                   setInvNo('');
                   setInvDesc('');
+                  setInvDate(new Date().toISOString().split('T')[0]);
                   setInvoiceModalOpen(true);
                 }}
-                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black rounded-xl cursor-pointer shadow-md"
+                className="px-3.5 py-2.5 bg-rose-600/90 hover:bg-rose-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-rose-600/20 cursor-pointer"
               >
-                + Fatura Ekle
+                <FileText className="w-4 h-4" />
+                <span>Fatura Ekle</span>
               </button>
 
               <button
@@ -849,95 +910,167 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
                   setPaySupplierId(activeSupplier.id);
                   setPayAmount('');
                   setPayDesc('');
+                  setPayDate(new Date().toISOString().split('T')[0]);
                   setPaymentModalOpen(true);
                 }}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl cursor-pointer shadow-md"
+                className="px-3.5 py-2.5 bg-emerald-600/90 hover:bg-emerald-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
               >
-                + Ödeme Yap
+                <Banknote className="w-4 h-4" />
+                <span>Ödeme Yap</span>
+              </button>
+
+              <button
+                onClick={() => openEditSupplierModal(activeSupplier)}
+                className="px-3.5 py-2.5 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-xs rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
+                title="Toptancı bilgilerini düzenle"
+              >
+                <Edit2 className="w-4 h-4 text-[#F5C877]" />
+                <span>Kartı Düzenle</span>
               </button>
             </div>
           </div>
 
-          <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] shadow-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#18181C] border-b border-[#2C2C34] text-[#8E8E98] font-black uppercase text-[10px] tracking-wider">
-                    <th className="py-4 px-6">TARİH</th>
-                    <th className="py-4 px-6">İŞLEM TÜRÜ</th>
-                    <th className="py-4 px-6">FATURA NO</th>
-                    <th className="py-4 px-6">AÇIKLAMA</th>
-                    <th className="py-4 px-6">ÖDEME KANALI</th>
-                    <th className="py-4 px-6 text-right">FATURA BORCU (+)</th>
-                    <th className="py-4 px-6 text-right">ÖDEME (-)</th>
-                    <th className="py-4 px-6 text-center">İŞLEMLER</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#2C2C34]/60">
-                  {statementTransactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-xs text-[#8E8E98]">
-                        Bu toptancıya ait henüz fatura veya ödeme hareketi bulunmuyor.
-                      </td>
-                    </tr>
-                  ) : (
-                    statementTransactions.map((tx) => {
-                      const isInvoice = tx.type === 'INVOICE';
-                      return (
-                        <tr key={tx.id} className="hover:bg-[#222228]/60 transition-colors">
-                          <td className="py-4 px-6 text-[#8E8E98] font-mono">{tx.date}</td>
-                          <td className="py-4 px-6">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${
-                              isInvoice ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
-                            }`}>
-                              {isInvoice ? '📄 Alış Faturası' : '💳 Ödeme Yapıldı'}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 font-mono text-[#FAF7F2]">{tx.invoiceNo || '—'}</td>
-                          <td className="py-4 px-6 text-[#FAF7F2]">{tx.description || '—'}</td>
-                          
-                          <td className="py-4 px-6">
-                            {isInvoice ? (
-                              <span className="text-[#8E8E98] font-bold">—</span>
-                            ) : (
-                              <span className="text-slate-300 font-bold">
-                                {tx.paymentMethod === 'CASH' ? '💵 Nakit' : tx.paymentMethod === 'BANK' ? '🏦 Banka / Havale' : '💳 Kredi Kartı'}
-                              </span>
-                            )}
-                          </td>
+          {/* --- KİMLİK KARTI + GÜNCEL BORÇ --- */}
+          <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 flex items-start gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#F5C877]/10">
+                <Building2 className="w-7 h-7" />
+              </div>
 
-                          <td className="py-4 px-6 text-right font-black font-mono text-rose-400">
-                            {isInvoice ? `+${formatMoney(tx.amount)}` : '—'}
-                          </td>
-                          <td className="py-4 px-6 text-right font-black font-mono text-emerald-400">
-                            {!isInvoice ? `-${formatMoney(tx.amount)}` : '—'}
-                          </td>
-                          <td className="py-4 px-6 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => openEditStatementTxModal(tx)}
-                                className="p-1.5 text-[#8E8E98] hover:text-[#F5C877] hover:bg-[#282830] rounded-lg transition-colors cursor-pointer"
-                                title="Bu Hareketi Düzenle"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteStatementTx(tx)}
-                                className="p-1.5 text-rose-400/80 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                                title="Bu Hareketi Sil (Bakiyeyi Düzelt)"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-black text-white">{activeSupplier.name}</h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-[#282830] text-[#F5C877] border border-[#383844]">
+                    {activeSupplier.category || 'Genel'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#8E8E98]">Yetkili:</span>
+                    <span className="font-bold text-[#FAF7F2]">{activeSupplier.contactPerson || 'Girilmedi'}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#8E8E98]">Telefon:</span>
+                    <span className="font-mono font-bold text-[#F5C877]">{activeSupplier.phone || 'Girilmedi'}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-[#8E8E98] flex-shrink-0" />
+                    <span className="text-[#8E8E98]">Kayıt:</span>
+                    <span className="font-bold text-[#FAF7F2]">
+                      {activeSupplier.createdAt ? new Date(activeSupplier.createdAt).toLocaleDateString('tr-TR') : '—'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-start gap-2 sm:col-span-2">
+                    <span className="text-[#8E8E98]">Adres:</span>
+                    <span className="font-bold text-[#FAF7F2]">{activeSupplier.address || 'Girilmedi'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Güncel Borç */}
+            <div className="bg-[#141416] px-5 py-4 rounded-2xl border border-[#2C2C34] flex flex-col justify-center">
+              <div className="text-[10px] font-black uppercase tracking-wider text-[#8E8E98]">KALAN NET BORCUMUZ</div>
+              <div
+                className={`text-3xl font-black font-mono mt-1 ${
+                  tedarikciBakiye > 0.01 ? 'text-rose-400' : tedarikciBakiye < -0.01 ? 'text-sky-400' : 'text-emerald-400'
+                }`}
+              >
+                {formatMoney(tedarikciBakiye)}
+              </div>
+              <div className="text-[11px] font-bold mt-1">
+                {tedarikciBakiye > 0.01 && <span className="text-rose-400">Bu toptancıya borcumuz var</span>}
+                {tedarikciBakiye < -0.01 && <span className="text-sky-400">Fazla ödeme / avans verilmiş</span>}
+                {Math.abs(tedarikciBakiye) <= 0.01 && <span className="text-emerald-400">Hesap kapalı (bakiye sıfır)</span>}
+              </div>
             </div>
           </div>
+
+          {/* --- TÜM ZAMAN ÖZETİ --- */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Toplam Fatura</div>
+                <div className="text-lg font-black text-rose-400 font-mono mt-0.5">{formatMoney(tedarikciOzet.toplamFatura)}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">Tüm zamanlar</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                <FileText className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Toplam Ödeme</div>
+                <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">{formatMoney(tedarikciOzet.toplamOdeme)}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">Tüm zamanlar</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                <Banknote className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Hareket Sayısı</div>
+                <div className="text-lg font-black text-[#FAF7F2] font-mono mt-0.5">{statementTransactions.length}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">Fatura + ödeme kaydı</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center">
+                <Tag className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Son Hareket</div>
+                <div className="text-lg font-black text-[#FAF7F2] font-mono mt-0.5">{tedarikciOzet.sonHareket}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">En güncel işlem tarihi</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-[#282830] text-[#F5C877] flex items-center justify-center">
+                <Calendar className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          {/* --- FİLTRELENEBİLİR EKSTRE --- */}
+          <CariEkstre
+            hareketler={tedarikciEkstreHareketleri}
+            borcBasligi="FATURA (+)"
+            alacakBasligi="ÖDEME (−)"
+            guncelBakiye={tedarikciBakiye}
+            belgeBasligi="FATURA NO"
+            baslik="Toptancı Cari Hesap Ekstresi"
+            bosMesaj="Bu toptancıya ait henüz fatura veya ödeme hareketi bulunmuyor."
+            onDuzenle={(h) => openEditStatementTxModal(h.kaynak as SupplierTransaction)}
+            onSil={(h) => handleDeleteStatementTx(h.kaynak as SupplierTransaction)}
+            onGorunenDegisti={(gorunen) => setGorunenEkstreTx(gorunen.map(h => h.kaynak as SupplierTransaction))}
+            ustEylemler={
+              <>
+                <span className="text-[10px] font-bold text-[#7A7A88] mr-1">Ekranda görünen hareketleri aktar:</span>
+                <button
+                  onClick={handleExportSupplierPdf}
+                  className="px-3 py-2 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-[11px] rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
+                  title="Filtrelenmiş ekstreyi yazdır / PDF kaydet"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#F5C877]" />
+                  <span>Yazdır (PDF)</span>
+                </button>
+                <button
+                  onClick={handleExportSupplierExcel}
+                  className="px-3 py-2 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-[11px] rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
+                  title="Filtrelenmiş ekstreyi Excel olarak indir"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Excel</span>
+                </button>
+              </>
+            }
+          />
         </div>
       )}
 

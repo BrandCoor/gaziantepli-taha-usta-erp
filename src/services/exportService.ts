@@ -150,7 +150,7 @@ export const exportService = {
     if (!printWindow) return alert('Yazdırma penceresi açılamadı');
     const logoHtml = company.logoBase64 ? `<img src="${company.logoBase64}" style="max-height: 60px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : '';
     let totalPurchase = 0; let totalPaid = 0;
-    (supplier.transactions || []).forEach(t => { if (t.type === 'PURCHASE') totalPurchase += t.amount; else totalPaid += t.amount; });
+    (supplier.transactions || []).forEach(t => { if (t.type === 'PAYMENT') totalPaid += t.amount; else totalPurchase += t.amount; });
 
     const txRows = (!supplier.transactions || supplier.transactions.length === 0)
       ? `<tr><td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;">Hareket kaydı bulunmamaktadır.</td></tr>`
@@ -158,11 +158,11 @@ export const exportService = {
           <tr>
             <td>${i + 1}</td>
             <td>${formatDate(t.date)}</td>
-            <td class="font-bold ${t.type==='PURCHASE'?'text-rose':'text-emerald'}">${t.type==='PURCHASE'?'+ Mal Alışı':'- Ödeme Yapıldı'}</td>
-            <td style="font-family: monospace;">${t.documentNumber || '-'}</td>
+            <td class="font-bold ${t.type!=='PAYMENT'?'text-rose':'text-emerald'}">${t.type!=='PAYMENT'?'+ Alış Faturası':'- Ödeme Yapıldı'}</td>
+            <td style="font-family: monospace;">${t.invoiceNo || t.documentNumber || '-'}</td>
             <td>${t.description || '-'} ${t.dueDate ? `<br><small style="color:#d97706;font-weight:bold;">Vade: ${formatDate(t.dueDate)}</small>` : ''}</td>
             <td>${t.paymentMethod === 'CHECK' ? 'Çek' : t.paymentMethod === 'CREDIT_CARD' ? 'Kredi Kartı' : t.paymentMethod === 'BANK' ? 'Banka' : t.paymentMethod === 'CASH' ? 'Nakit' : '-'}</td>
-            <td class="text-right font-bold ${t.type==='PURCHASE'?'text-rose':'text-emerald'}">${t.type==='PURCHASE'?'+':'-'}${formatCurrency(t.amount)}</td>
+            <td class="text-right font-bold ${t.type!=='PAYMENT'?'text-rose':'text-emerald'}">${t.type!=='PAYMENT'?'+':'-'}${formatCurrency(t.amount)}</td>
           </tr>
         `).join('');
 
@@ -199,11 +199,11 @@ export const exportService = {
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
 
     (supplier.transactions || []).forEach(t => {
-      const isPurchase = t.type === 'PURCHASE';
+      const isPurchase = t.type !== 'PAYMENT';
       const row = worksheet.addRow({
         date: formatDate(t.date),
-        type: isPurchase ? 'Mal Alışı (Borç)' : 'Ödeme Yapıldı',
-        doc: t.documentNumber || '-',
+        type: isPurchase ? 'Alış Faturası (Borç)' : 'Ödeme Yapıldı',
+        doc: t.invoiceNo || t.documentNumber || '-',
         desc: `${t.description || '-'} ${t.dueDate ? `(Vade: ${formatDate(t.dueDate)})` : ''}`,
         method: t.paymentMethod === 'CHECK' ? 'Çek' : t.paymentMethod === 'CREDIT_CARD' ? 'Kredi Kartı' : t.paymentMethod === 'BANK' ? 'Banka' : t.paymentMethod === 'CASH' ? 'Nakit' : '-',
         purchase: isPurchase ? t.amount : 0,

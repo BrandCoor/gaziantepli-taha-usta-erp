@@ -31,6 +31,7 @@ import {
 import { Customer, CustomerTransaction, dataService } from '../../services/dataService';
 import { notify } from '../../services/notificationService';
 import { exportService } from '../../services/exportService';
+import { CariEkstre, EkstreHareketi } from '../../components/cari/CariEkstre';
 
 interface CustomerListViewProps {
   customers?: Customer[];
@@ -77,6 +78,9 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
   const [txPaymentMethod, setTxPaymentMethod] = useState<'CASH' | 'BANK' | 'CREDIT_CARD'>('CASH');
   const [txDate, setTxDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [txDescription, setTxDescription] = useState<string>('');
+
+  // Ekstrede o an ekranda görünen (filtrelenmiş) hareketler — dışa aktarma bunu kullanır
+  const [gorunenEkstreTx, setGorunenEkstreTx] = useState<CustomerTransaction[]>([]);
 
   // Ekstre Hareketi Düzenleme Modalı
   const [editingTx, setEditingTx] = useState<CustomerTransaction | null>(null);
@@ -331,6 +335,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
 
   // CARİ EKSTREYE GİT
   const handleOpenStatement = (c: Customer) => {
+    setGorunenEkstreTx([]);
     setActiveCustomerForStatement(c);
     setViewMode('STATEMENT');
   };
@@ -357,6 +362,34 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
       balance: Number(activeCustomerForStatement?.balance) || (totalDebt - totalCollection)
     };
   }, [currentStatementTransactions, activeCustomerForStatement]);
+
+  // Ortak ekstre bileşeninin anladığı biçime çevir
+  const ekstreHareketleri = useMemo<EkstreHareketi[]>(() =>
+    currentStatementTransactions.map(tx => ({
+      id: tx.id,
+      tarih: tx.date || tx.createdAt,
+      yon: tx.type === 'DEBT' ? 'BORC' : 'ALACAK',
+      tutar: Number(tx.amount) || 0,
+      tur: tx.type === 'DEBT' ? 'Borç Kaydı' : 'Tahsilat',
+      aciklama: tx.description,
+      odemeKanali: tx.paymentMethod,
+      kaynak: tx,
+    })),
+    [currentStatementTransactions]
+  );
+
+  const sonHareketTarihi = useMemo(() => {
+    if (currentStatementTransactions.length === 0) return '—';
+    const enYeni = currentStatementTransactions[0];
+    const d = new Date(enYeni.date || enYeni.createdAt);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('tr-TR');
+  }, [currentStatementTransactions]);
+
+  // Dışa aktarmada ekranda görünen hareketleri kullan (hiç filtre yoksa tamamı)
+  const aktarilacakHareketler = useMemo(
+    () => (gorunenEkstreTx.length > 0 ? gorunenEkstreTx : [...currentStatementTransactions].reverse()),
+    [gorunenEkstreTx, currentStatementTransactions]
+  );
 
   // Ekstre Hareketi Düzenle
   const handleOpenEditTx = (tx: CustomerTransaction) => {
@@ -410,7 +443,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
     try {
       exportService.exportSingleCustomerStatementPdf({
         ...activeCustomerForStatement,
-        transactions: currentStatementTransactions,
+        transactions: aktarilacakHareketler,
       });
     } catch (e: any) {
       notify.error('Yazdırma Hatası', e.message || 'PDF oluşturulamadı.');
@@ -422,7 +455,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
     try {
       exportService.exportSingleCustomerStatementExcel({
         ...activeCustomerForStatement,
-        transactions: currentStatementTransactions,
+        transactions: aktarilacakHareketler,
       });
       notify.success('Excel İndirildi', `${activeCustomerForStatement.name} hesap ekstresi dışa aktarıldı.`);
     } catch (e: any) {
@@ -446,273 +479,210 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
       {/* 1. CARİ HESAP EKSTRESİ GÖRÜNÜMÜ                                           */}
       {/* ========================================================================= */}
       {viewMode === 'STATEMENT' && activeCustomerForStatement ? (
-        <div className="space-y-6 animate-fadeIn">
-          {/* Üst Bar: Geri Dönüş ve İşlem Butonları */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-4 rounded-3xl border border-[#2C2C34] shadow-xl">
+        <div className="space-y-5 animate-fadeIn">
+          {/* --- 1. ÜST BAR: GERİ DÖN + İŞLEMLER --- */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#1C1C20] p-4 rounded-3xl border border-[#2C2C34] shadow-xl">
             <button
               onClick={() => {
                 setViewMode('LIST');
                 setActiveCustomerForStatement(null);
               }}
-              className="px-4 py-2 bg-[#282830] hover:bg-[#32323D] text-white text-xs font-black rounded-2xl flex items-center gap-2 transition-all cursor-pointer w-fit"
+              className="px-4 py-2.5 bg-[#282830] hover:bg-[#32323D] text-white text-xs font-black rounded-2xl flex items-center gap-2 transition-all cursor-pointer w-fit"
             >
               <ArrowLeft className="w-4 h-4 text-[#F5C877]" />
-              <span>← Cari Müşteri Listesine Dön</span>
+              <span>Müşteri Listesine Dön</span>
             </button>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => openTransactionModal(activeCustomerForStatement.id, 'DEBT')}
-                className="px-3.5 py-2 bg-rose-600/90 hover:bg-rose-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-rose-600/20 cursor-pointer"
+                className="px-3.5 py-2.5 bg-rose-600/90 hover:bg-rose-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-rose-600/20 cursor-pointer"
               >
                 <ArrowUpRight className="w-4 h-4" />
-                <span>+ Borç Ekle</span>
+                <span>Borç Ekle</span>
               </button>
 
               <button
                 onClick={() => openTransactionModal(activeCustomerForStatement.id, 'COLLECTION')}
-                className="px-3.5 py-2 bg-emerald-600/90 hover:bg-emerald-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
+                className="px-3.5 py-2.5 bg-emerald-600/90 hover:bg-emerald-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
               >
                 <ArrowDownRight className="w-4 h-4" />
-                <span>+ Tahsilat Al</span>
+                <span>Tahsilat Al</span>
               </button>
 
               <button
-                onClick={handleExportStatementPdf}
-                className="px-3.5 py-2 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-xs rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
-                title="Yazdır / PDF Olarak Kaydet"
+                onClick={() => handleOpenEditModal(activeCustomerForStatement)}
+                className="px-3.5 py-2.5 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-xs rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
+                title="Müşteri bilgilerini düzenle"
               >
-                <Printer className="w-4 h-4 text-[#F5C877]" />
-                <span>Yazdır (PDF)</span>
-              </button>
-
-              <button
-                onClick={handleExportStatementExcel}
-                className="px-3.5 py-2 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-xs rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
-                title="Excel Belgesi Olarak İndir"
-              >
-                <Download className="w-4 h-4 text-emerald-400" />
-                <span>Excel</span>
+                <Edit2 className="w-4 h-4 text-[#F5C877]" />
+                <span>Kartı Düzenle</span>
               </button>
             </div>
           </div>
 
-          {/* Müşteri Kimlik ve Cari Bakiye Kartı */}
-          <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-2xl shadow-lg shadow-[#F5C877]/10 flex-shrink-0">
-                <FileText className="w-8 h-8 text-[#141416]" />
+          {/* --- 2. KİMLİK KARTI + GÜNCEL BAKİYE --- */}
+          <div className="bg-[#1C1C20] rounded-3xl p-6 border border-[#2C2C34] shadow-xl grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 flex items-start gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-xl shadow-lg shadow-[#F5C877]/10 flex-shrink-0">
+                {(activeCustomerForStatement.name || '?').charAt(0).toUpperCase()}
               </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2.5">
+
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-black text-white">{activeCustomerForStatement.name}</h2>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-[#282830] text-[#F5C877] border border-[#383844]">
-                    CARİ HESAP EKSTRESİ
+                    Müşteri Cari Kartı
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-4 text-xs text-[#8E8E98]">
-                  {activeCustomerForStatement.phone && (
-                    <span className="flex items-center gap-1 font-mono text-[#F5C877]">
-                      <Phone className="w-3.5 h-3.5" />
-                      {activeCustomerForStatement.phone}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-[#8E8E98] flex-shrink-0" />
+                    <span className="text-[#8E8E98]">Telefon:</span>
+                    <span className="font-mono font-bold text-[#F5C877]">
+                      {activeCustomerForStatement.phone || 'Girilmedi'}
                     </span>
-                  )}
-                  {activeCustomerForStatement.address && (
-                    <span className="flex items-center gap-1 text-[#AAAAB6]">
-                      <MapPin className="w-3.5 h-3.5" />
-                      {activeCustomerForStatement.address}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-[#8E8E98] flex-shrink-0" />
+                    <span className="text-[#8E8E98]">Kayıt:</span>
+                    <span className="font-bold text-[#FAF7F2]">
+                      {activeCustomerForStatement.createdAt
+                        ? new Date(activeCustomerForStatement.createdAt).toLocaleDateString('tr-TR')
+                        : '—'}
                     </span>
-                  )}
+                  </div>
+
+                  <div className="flex items-start gap-2 sm:col-span-2">
+                    <MapPin className="w-3.5 h-3.5 text-[#8E8E98] flex-shrink-0 mt-0.5" />
+                    <span className="text-[#8E8E98]">Adres:</span>
+                    <span className="font-bold text-[#FAF7F2]">
+                      {activeCustomerForStatement.address || 'Girilmedi'}
+                    </span>
+                  </div>
+
                   {activeCustomerForStatement.notes && (
-                    <span className="text-xs text-[#8E8E98] italic">
-                      ({activeCustomerForStatement.notes})
-                    </span>
+                    <div className="flex items-start gap-2 sm:col-span-2">
+                      <FileText className="w-3.5 h-3.5 text-[#8E8E98] flex-shrink-0 mt-0.5" />
+                      <span className="text-[#8E8E98]">Not:</span>
+                      <span className="font-bold text-[#FAF7F2] italic">{activeCustomerForStatement.notes}</span>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Bakiye Göstergesi */}
-            <div className="flex items-center gap-4 bg-[#141416] px-6 py-4 rounded-2xl border border-[#2C2C34]">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-wider text-[#8E8E98]">GÜNCEL CARİ BAKİYE</div>
-                <div className={`text-2xl font-black font-mono mt-0.5 ${
-                  statementStats.balance > 0.01 
-                    ? 'text-rose-400' 
-                    : statementStats.balance < -0.01 
-                      ? 'text-blue-400' 
+            {/* Güncel Bakiye */}
+            <div className="bg-[#141416] px-5 py-4 rounded-2xl border border-[#2C2C34] flex flex-col justify-center">
+              <div className="text-[10px] font-black uppercase tracking-wider text-[#8E8E98]">GÜNCEL CARİ BAKİYE</div>
+              <div
+                className={`text-3xl font-black font-mono mt-1 ${
+                  statementStats.balance > 0.01
+                    ? 'text-rose-400'
+                    : statementStats.balance < -0.01
+                      ? 'text-sky-400'
                       : 'text-emerald-400'
-                }`}>
-                  {formatMoney(statementStats.balance)}
-                </div>
-                <div className="text-[10px] font-bold mt-0.5">
-                  {statementStats.balance > 0.01 && (
-                    <span className="text-rose-400">⚠️ Müşterinin Borcu Var (Alacaklıyız)</span>
-                  )}
-                  {statementStats.balance < -0.01 && (
-                    <span className="text-blue-400">ℹ️ Fazla Tahsilat / Avans Bakiye</span>
-                  )}
-                  {Math.abs(statementStats.balance) <= 0.01 && (
-                    <span className="text-emerald-400">✓ Hesap Tamamen Kapalı (Bakiye 0)</span>
-                  )}
-                </div>
+                }`}
+              >
+                {formatMoney(statementStats.balance)}
+              </div>
+              <div className="text-[11px] font-bold mt-1">
+                {statementStats.balance > 0.01 && (
+                  <span className="text-rose-400">Müşterinin borcu var (tahsil edeceğiz)</span>
+                )}
+                {statementStats.balance < -0.01 && (
+                  <span className="text-sky-400">Fazla tahsilat / avans bakiyesi</span>
+                )}
+                {Math.abs(statementStats.balance) <= 0.01 && (
+                  <span className="text-emerald-400">Hesap kapalı (bakiye sıfır)</span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Ekstre İstatistik Mini Barları */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* --- 3. TÜM ZAMAN ÖZETİ --- */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
               <div>
-                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Toplam Borç Kaydı</div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Toplam Borç</div>
                 <div className="text-lg font-black text-rose-400 font-mono mt-0.5">{formatMoney(statementStats.totalDebt)}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">Tüm zamanlar</div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center font-black">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
                 <ArrowUpRight className="w-5 h-5" />
               </div>
             </div>
 
             <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
               <div>
-                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Toplam Yapılan Tahsilat</div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Toplam Tahsilat</div>
                 <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">{formatMoney(statementStats.totalCollection)}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">Tüm zamanlar</div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-black">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
                 <ArrowDownRight className="w-5 h-5" />
               </div>
             </div>
 
             <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
               <div>
-                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Kayıtlı Hareket Sayısı</div>
-                <div className="text-lg font-black text-[#FAF7F2] font-mono mt-0.5">{currentStatementTransactions.length} İşlem</div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Hareket Sayısı</div>
+                <div className="text-lg font-black text-[#FAF7F2] font-mono mt-0.5">{currentStatementTransactions.length}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">Kayıtlı işlem</div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center font-black">
+              <div className="w-10 h-10 rounded-xl bg-[#F5C877]/10 text-[#F5C877] flex items-center justify-center">
                 <History className="w-5 h-5" />
               </div>
             </div>
-          </div>
 
-          {/* Ekstre Hareketleri Tablosu */}
-          <div className="bg-[#1C1C20] rounded-3xl border border-[#2C2C34] shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-[#2C2C34] flex items-center justify-between">
-              <h3 className="text-sm font-black text-white flex items-center gap-2">
-                <History className="w-4 h-4 text-[#F5C877]" />
-                <span>Hesap Hareketleri Dökümü (Tarih Sıralı)</span>
-              </h3>
-              <span className="text-xs text-[#8E8E98]">Tüm veresiye, masa aktarımları ve elden tahsilatlar</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#18181C] border-b border-[#2C2C34] text-[#8E8E98] font-black uppercase text-[10px] tracking-wider">
-                    <th className="py-3.5 px-4 w-12 text-center">#</th>
-                    <th className="py-3.5 px-4">TARİH</th>
-                    <th className="py-3.5 px-4">İŞLEM TÜRÜ</th>
-                    <th className="py-3.5 px-6">AÇIKLAMA / BELGE NO</th>
-                    <th className="py-3.5 px-4">ÖDEME KANALI</th>
-                    <th className="py-3.5 px-4 text-right">BORÇ TUTARI (+)</th>
-                    <th className="py-3.5 px-4 text-right">TAHSİLAT (-)</th>
-                    <th className="py-3.5 px-4 text-center w-24">İŞLEMLER</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#2C2C34]/60 font-medium">
-                  {currentStatementTransactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-xs text-[#8E8E98]">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <History className="w-8 h-8 text-[#5A5A66]" />
-                          <span>Bu müşteriye ait henüz cari hareket bulunmamaktadır.</span>
-                          <div className="flex items-center gap-2 mt-2">
-                            <button
-                              onClick={() => openTransactionModal(activeCustomerForStatement.id, 'DEBT')}
-                              className="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-500 text-white rounded-xl text-xs font-bold cursor-pointer"
-                            >
-                              + Borç Ekle
-                            </button>
-                            <button
-                              onClick={() => openTransactionModal(activeCustomerForStatement.id, 'COLLECTION')}
-                              className="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold cursor-pointer"
-                            >
-                              + Tahsilat Yap
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    currentStatementTransactions.map((tx, idx) => {
-                      const isDebt = tx.type === 'DEBT';
-
-                      return (
-                        <tr key={tx.id} className="hover:bg-[#222228]/60 transition-colors">
-                          <td className="py-3.5 px-4 text-center font-mono text-[#7A7A88]">
-                            {idx + 1}
-                          </td>
-
-                          <td className="py-3.5 px-4 font-mono text-[#FAF7F2]">
-                            {tx.date ? new Date(tx.date).toLocaleDateString('tr-TR') : '—'}
-                          </td>
-
-                          <td className="py-3.5 px-4">
-                            {isDebt ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                                <ArrowUpRight className="w-3 h-3" />
-                                + Borç Eklendi
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                <ArrowDownRight className="w-3 h-3" />
-                                - Tahsilat Alındı
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="py-3.5 px-6 text-[#FAF7F2] max-w-xs">
-                            <span className="font-bold">{tx.description || 'Cari İşlem'}</span>
-                          </td>
-
-                          <td className="py-3.5 px-4">
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#141416] text-[#C4C4CC] border border-[#2C2C34]">
-                              {tx.paymentMethod === 'BANK' ? '🏦 Havale / Banka' : tx.paymentMethod === 'CREDIT_CARD' ? '💳 Kredi Kartı' : '💵 Nakit'}
-                            </span>
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right font-mono font-black text-rose-400">
-                            {isDebt ? formatMoney(tx.amount) : '—'}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right font-mono font-black text-emerald-400">
-                            {!isDebt ? formatMoney(tx.amount) : '—'}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => handleOpenEditTx(tx)}
-                                className="p-1.5 text-[#8E8E98] hover:text-[#F5C877] hover:bg-[#282830] rounded-lg transition-colors cursor-pointer"
-                                title="Hareketi Düzenle"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteTx(tx)}
-                                className="p-1.5 text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                                title="Hareketi Sil"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+            <div className="bg-[#1C1C20] rounded-2xl p-4 border border-[#2C2C34] flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase text-[#8E8E98]">Son Hareket</div>
+                <div className="text-lg font-black text-[#FAF7F2] font-mono mt-0.5">{sonHareketTarihi}</div>
+                <div className="text-[10px] text-[#7A7A88] mt-0.5">En güncel işlem tarihi</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-[#282830] text-[#F5C877] flex items-center justify-center">
+                <Calendar className="w-5 h-5" />
+              </div>
             </div>
           </div>
+
+          {/* --- 4. FİLTRELENEBİLİR EKSTRE --- */}
+          <CariEkstre
+            hareketler={ekstreHareketleri}
+            borcBasligi="BORÇ (+)"
+            alacakBasligi="TAHSİLAT (−)"
+            guncelBakiye={statementStats.balance}
+            belgeBasligi="BELGE NO"
+            baslik="Cari Hesap Ekstresi"
+            bosMesaj="Bu müşteriye ait henüz cari hareket bulunmuyor."
+            onDuzenle={(h) => handleOpenEditTx(h.kaynak as CustomerTransaction)}
+            onSil={(h) => handleDeleteTx(h.kaynak as CustomerTransaction)}
+            onGorunenDegisti={(gorunen) => setGorunenEkstreTx(gorunen.map(h => h.kaynak as CustomerTransaction))}
+            ustEylemler={
+              <>
+                <span className="text-[10px] font-bold text-[#7A7A88] mr-1">Ekranda görünen hareketleri aktar:</span>
+                <button
+                  onClick={handleExportStatementPdf}
+                  className="px-3 py-2 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-[11px] rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
+                  title="Filtrelenmiş ekstreyi yazdır / PDF kaydet"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#F5C877]" />
+                  <span>Yazdır (PDF)</span>
+                </button>
+                <button
+                  onClick={handleExportStatementExcel}
+                  className="px-3 py-2 bg-[#282830] hover:bg-[#343440] text-[#FAF7F2] font-black text-[11px] rounded-xl flex items-center gap-1.5 border border-[#3C3C48] cursor-pointer"
+                  title="Filtrelenmiş ekstreyi Excel olarak indir"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Excel</span>
+                </button>
+              </>
+            }
+          />
         </div>
       ) : (
         /* ========================================================================= */
@@ -907,10 +877,18 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
                       return (
                         <tr key={c.id} className="hover:bg-[#222228]/60 transition-colors">
                           <td className="py-4 px-6">
-                            <div className="font-black text-white text-sm">{c.name}</div>
-                            <div className="text-[10px] text-[#7A7A88] font-mono mt-0.5">
-                              ID: {c.id.substring(0, 12)}...
-                            </div>
+                            <button
+                              onClick={() => handleOpenStatement(c)}
+                              className="text-left cursor-pointer group"
+                              title="Müşteri kartını ve ekstresini aç"
+                            >
+                              <div className="font-black text-white text-sm group-hover:text-[#F5C877] transition-colors">
+                                {c.name}
+                              </div>
+                              <div className="text-[10px] text-[#7A7A88] font-mono mt-0.5">
+                                Kartı açmak için tıklayın
+                              </div>
+                            </button>
                           </td>
 
                           <td className="py-4 px-6">
@@ -965,7 +943,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
                               title="Hesap Ekstresi ve Hareket Detayları"
                             >
                               <FileText className="w-3.5 h-3.5 text-[#F5C877]" />
-                              <span>Ekstre</span>
+                              <span>Detay &amp; Ekstre</span>
                             </button>
                           </td>
 
