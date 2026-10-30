@@ -6,7 +6,8 @@
  *   node tools/make-deploy-package.cjs --out "C:\Users\...\YUKLEME_PAKETI" ^
  *     --api https://api.ornek.com --garson https://garson.ornek.com --menu https://qr.ornek.com --patron https://patron.ornek.com
  *
- * Gizli anahtarlar (APP_SECRET, KASA_API_KEY) her çalıştırmada YENİ üretilir ve yalnızca çıktı klasörüne yazılır (Git'e girmez).
+ * Gizli anahtarlar (APP_SECRET, KASA_API_KEY) ilk çalıştırmada üretilir, çıktı klasöründeki .anahtarlar.json'a yazılır (Git'e girmez)
+ * ve sonraki çalıştırmalarda AYNEN yeniden kullanılır (kasaya girilen anahtar geçersiz kalmasın). Yenilemek için --yeni-anahtar verin.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -21,12 +22,16 @@ const apiIndex = API_BASE + '/index.php';
 
 const web = path.resolve(__dirname, '..', 'cpanel-yuklenecekler');
 const out = path.resolve(args.out);
+const keyFile = path.join(out, '.anahtarlar.json');
+let saved = null;
+if (!process.argv.includes('--yeni-anahtar')) { try { saved = JSON.parse(fs.readFileSync(keyFile, 'utf8')); } catch (e) { saved = null; } }
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 const tmp = path.join(out, '_hazirlik');
 
-const appSecret = crypto.randomBytes(32).toString('hex');
-const kasaKey = crypto.randomBytes(24).toString('hex');
+const appSecret = (saved && saved.appSecret) || crypto.randomBytes(32).toString('hex');
+const kasaKey = (saved && saved.kasaKey) || crypto.randomBytes(24).toString('hex');
+fs.writeFileSync(keyFile, JSON.stringify({ appSecret, kasaKey }));
 
 function stage(name, from, tweak) {
   const dir = path.join(tmp, name);
