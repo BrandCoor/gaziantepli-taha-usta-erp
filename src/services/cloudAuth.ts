@@ -49,3 +49,15 @@ export function installCloudAuth(): void {
     return original(input, init);
   };
 }
+
+const QR_URL_STORAGE = 'CUSTOM_QR_MENU_URL';
+/** QR menü sayfasının adresi (ör. https://qr.ornek.com). Alt alan adı kullanılıyorsa API'den ayrı olduğu için elle girilir. */
+export const getQrMenuUrl = (): string => {
+  try { return (localStorage.getItem(QR_URL_STORAGE) || '').trim().replace(/\/+$/, ''); } catch { return ''; }
+};
+export const setQrMenuUrl = (url: string): void => {
+  try {
+    const u = (url || '').trim();
+    if (u) localStorage.setItem(QR_URL_STORAGE, u); else localStorage.removeItem(QR_URL_STORAGE);
+  } catch {}
+};

@@ -6,9 +6,9 @@
   <title>Gaziantepli Taha Usta — Dijital QR Menü & Sipariş</title>
   
   <!-- Tailwind CSS & FontAwesome -->
-  <link rel="stylesheet" href="../assets/app.css">
-  <link rel="stylesheet" href="../assets/fa/css/all.min.css">
-  <link rel="stylesheet" href="../assets/fonts/fonts.css">
+  <link rel="stylesheet" href="./assets/app.css">
+  <link rel="stylesheet" href="./assets/fa/css/all.min.css">
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
 
 
   <style>
@@ -357,6 +357,7 @@
   <script>
     const API_ENDPOINTS = (function() {
       const endpoints = [];
+      if (window.GTU_API_URL) return [window.GTU_API_URL];
       const custom = localStorage.getItem('CUSTOM_API_URL');
       if (custom && custom.trim() !== '') endpoints.push(custom.trim());
       

@@ -51,7 +51,7 @@ const check = (name, ok, extra = '') => { results.push(ok); console.log((ok ? 'G
   const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.result.exceptionDetails) return 'İSTİSNA: ' + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text); return r.result.result.value; };
   await send('Page.enable'); await send('Network.enable'); await send('Runtime.enable');
 
-  await send('Page.navigate', { url: BASE + '/garson/' });
+  await send('Page.navigate', { url: process.env.GARSON_PAGE || (BASE + '/garson/') });
   await sleep(2500);
 
   // --- 1) eşleştirme (sayfanın kendi fonksiyonu)

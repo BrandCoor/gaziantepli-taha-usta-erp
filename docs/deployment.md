@@ -2,25 +2,35 @@
 
 ## A. Sunucu (cPanel hosting)
 
-Gerekenler: PHP ≥ 8.1 (`pdo_mysql`, `mbstring`, `openssl`), MySQL/MariaDB, **SSL sertifikası (AutoSSL)**.
+Gerekenler: PHP ≥ 8.1 (`pdo_mysql`, `mbstring`, `openssl`), MySQL/MariaDB, **her alt alan adı için SSL (AutoSSL)**.
 
-1. **Veritabanı:** cPanel › MySQL Veritabanları › yeni veritabanı + kullanıcı + *tüm ayrıcalıklar*. (Tabloları elle içe aktarmanız gerekmez; API ilk çağrıda kurar.)
-2. **Dosyalar:** `cpanel-yuklenecekler/` klasörünün **içeriğini** hosting'e yükleyin (ör. `public_html/` altında: `api/`, `garson/`, `menu/`, `patron/`, `assets/`, `.htaccess`).
-3. **Gizli ayarlar:** `api/config.local.example.php` dosyasını `api/config.local.php` olarak kopyalayın ve doldurun:
-   ```php
-   return [
-     'DB_HOST' => 'localhost', 'DB_PORT' => '3306',
-     'DB_NAME' => '…', 'DB_USER' => '…', 'DB_PASS' => '…',   // YENİ parola
-     'APP_SECRET'   => '<rastgele ≥32 karakter>',
-     'KASA_API_KEY' => '<rastgele ≥24 karakter>',
-     'BOSS_PASSWORD'=> '',   // boş bırakın; patron parolasını panelden belirleyin (bkz. aşağı)
-   ];
-   ```
-   Rastgele değer üretmek için (bilgisayarınızda): `php -r "echo bin2hex(random_bytes(32));"` veya PowerShell: `-join ((1..64) | % { '{0:x}' -f (Get-Random -Max 16) })`.
-   Bu dosya **Git'e girmez** ve `.htaccess` ile web'den okunamaz.
-4. **Doğrulama:** tarayıcıda `https://alanadiniz.com/api/index.php?action=health` → `{"success":true,"status":"ONLINE",…}`. `https://…/api/index.php?action=get_live_state` → **401 Yetkisiz** vermelidir (kimliksiz erişim kapalı).
-5. **Patron parolası:** `BOSS_PASSWORD` boşsa ilk girişte hiçbir parola kabul edilmez. Patron parolasını belirlemek için sunucuda `config.local.php` içine **geçici** bir `BOSS_PASSWORD` yazın, `https://…/patron/` ile giriş yapın (parola ilk girişte `ayarlar` tablosuna **hash** olarak yazılır), sonra `config.local.php` içinden silin ve panelden *Parolayı değiştir* ile kalıcı parolanızı verin.
-6. **PHP hataları:** üretimde ekrana basılmaz (`display_errors=0`); sorun için cPanel › Hatalar (error_log).
+Bu kurulum **4 ayrı alt alan adı** kullanır (her biri ayrı "belge kökü"):
+
+| Alt alan adı | Ne | Yüklenecek paket |
+|---|---|---|
+| `api.alanadi.com` | PHP API + veritabanı bağlantısı | `1-api.zip` |
+| `garson.alanadi.com` | Garson PWA | `2-garson.zip` |
+| `qr.alanadi.com` | Müşteri QR menü | `3-qr-menu.zip` |
+| `patron.alanadi.com` | Patron paneli | `4-patron.zip` |
+
+Paketleri üretmek için (adresleri kendinize göre değiştirin; gizli anahtarlar her çalıştırmada yeniden üretilir):
+```powershell
+node tools/make-deploy-package.cjs --out "$HOME\Desktop\YUKLEME_PAKETI" `
+  --api https://api.alanadi.com --garson https://garson.alanadi.com --menu https://qr.alanadi.com --patron https://patron.alanadi.com
+```
+
+1. **Alt alan adları:** cPanel › *Alan Adları* (veya *Alt Alan Adları*) ile dört alt alan adı oluşturun; her birinin belge kökü ayrı bir klasör olur. Her biri için **SSL** etkin olmalı (cPanel › *SSL/TLS Durumu* › *AutoSSL'yi Çalıştır*).
+2. **Veritabanı:** cPanel › MySQL Veritabanları › veritabanı + kullanıcı + *tüm ayrıcalıklar*. Tabloları elle içe aktarmanız gerekmez; API ilk çağrıda kurar.
+3. **Yükleme:** cPanel › *Dosya Yöneticisi* › ilgili alt alan adının belge kökünü açın › *Karşıya Yükle* ile ilgili `.zip` › sağ tık *Extract (Çıkart)*. Zip'in içeriği doğrudan belge köküne çıkmalıdır (içinde fazladan klasör oluşmamalı); sonra `.zip` dosyasını silin.
+4. **API gizli ayarları:** `api` belge kökündeki `config.local.php` dosyasını açıp şu üç satırı doldurun: `DB_NAME`, `DB_USER`, `DB_PASS` (**yeni** parola). `APP_SECRET` ve `KASA_API_KEY` pakette hazır üretilmiştir; `GARSON_URL` garson adresiniz olmalıdır (eşleştirme QR'ı buna gider). Bu dosya Git'e girmez ve web'den okunamaz.
+5. **Doğrulama:**
+   - `https://api.alanadi.com/index.php?action=health` → `{"success":true,"status":"ONLINE",…}`
+   - `https://api.alanadi.com/index.php?action=get_live_state` → **401 Yetkisiz** (kimliksiz erişim kapalı olmalı)
+   - `https://garson.alanadi.com/` garson giriş ekranı, `https://qr.alanadi.com/` QR menü, `https://patron.alanadi.com/` patron girişi açılmalı.
+6. **Patron parolası:** `BOSS_PASSWORD` boşsa ilk girişte hiçbir parola kabul edilmez. `api/config.local.php` içine **geçici** `BOSS_PASSWORD` yazın, `https://patron.alanadi.com/` ile giriş yapın (parola ilk girişte `ayarlar` tablosuna **hash** olarak yazılır), sonra `config.local.php` içinden silin ve panelden *Parolayı değiştir* ile kalıcı parolanızı verin.
+7. **PHP hataları:** üretimde ekrana basılmaz; sorun için cPanel › *Hatalar* (error_log).
+
+Sayfalar API adresini kendi klasöründeki `config.js` dosyasından alır (pakette hazır). Adres değişirse yalnızca bu dosya düzenlenir.
 
 ### Eski sunucudan geçiş uyarısı
 Yeni `index.php` ile eski kasa sürümü **birlikte çalışmaz** (`ack_orders` ve kasa anahtarı gerekir). Sunucuyu ve kasayı birlikte güncelleyin.
@@ -30,7 +40,8 @@ Yeni `index.php` ile eski kasa sürümü **birlikte çalışmaz** (`ack_orders` 
 1. `GaziantepliTahaUsta-Kurulum-<sürüm>.exe` çalıştırılır (kurulum klasörü seçilebilir; masaüstü kısayolu oluşur). Paket kod imzalı olmadığı için SmartScreen uyarısında *Yine de çalıştır* denir.
 2. İlk açılış: **yönetici hesabı oluşturma** ekranı (hazır parola yoktur).
 3. **Restoran & Donanım Ayarları › Bulut & Yedekleme:**
-   - *Merkezi API Endpoint Adresi:* `https://alanadiniz.com/api/index.php`
+   - *Merkezi API Endpoint Adresi:* `https://api.alanadi.com/index.php`
+   - *QR Menü Sayfası Adresi:* `https://qr.alanadi.com`
    - *Kasa API Anahtarı:* sunucudaki `KASA_API_KEY` ile **aynı** değer → Kaydet → *Bağlantıyı test et* (MySQL bağlı görünmeli).
 4. **Restoran & Donanım Ayarları › Termal Yazıcılar:** Afanda 892E'yi ekleyin (USB/Windows sürücüsü veya ağ IP'si + 9100). *Donanım testi* ile fiziksel çıktıyı doğrulayın ([testing.md](testing.md) › fiziksel testler).
 5. **Restoran & Donanım Ayarları › Garson Terminalleri & QR:** garson ekleyin (4 haneli PIN) → *Eşleştir* ile telefona kod/QR verin.

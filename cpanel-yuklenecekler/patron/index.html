@@ -2,11 +2,12 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
+  <script src="./config.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>👑 Gaziantepli Taha Usta - Patron Canlı Takip & Yönetim Paneli</title>
-  <link rel="stylesheet" href="../assets/app.css">
-  <link rel="stylesheet" href="../assets/fa/css/all.min.css">
-  <link rel="stylesheet" href="../assets/fonts/fonts.css">
+  <link rel="stylesheet" href="./assets/app.css">
+  <link rel="stylesheet" href="./assets/fa/css/all.min.css">
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
   <style>
     body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -542,6 +543,7 @@
     }
 
     const API_URL = (function() {
+      if (window.GTU_API_URL) return window.GTU_API_URL;
       const custom = localStorage.getItem('CUSTOM_API_URL');
       if (custom && custom.trim() !== '') return custom.trim();
       if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {

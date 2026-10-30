@@ -16,9 +16,10 @@ const SHELL = [
   './icon-512.png',
   './icon-180.png',
   './zxing-browser.min.js',
-  '../assets/app.css',
-  '../assets/fa/css/all.min.css',
-  '../assets/fonts/fonts.css',
+  './config.js',
+  './assets/app.css',
+  './assets/fa/css/all.min.css',
+  './assets/fonts/fonts.css',
 ];
 
 self.addEventListener('install', (event) => {

@@ -1,11 +1,11 @@
 # Garson uygulaması (PWA)
 
-Adres: `https://alanadiniz.com/garson/` — mağaza hesabı gerekmez; tarayıcıdan ana ekrana eklenir. Kasa ile **aynı Wi-Fi'de olmak gerekmez**; telefon kendi mobil interneti veya herhangi bir Wi-Fi ile sunucuya bağlanır.
+Adres: `https://garson.alanadi.com/` — mağaza hesabı gerekmez; tarayıcıdan ana ekrana eklenir. Kasa ile **aynı Wi-Fi'de olmak gerekmez**; telefon kendi mobil interneti veya herhangi bir Wi-Fi ile sunucuya bağlanır.
 
 ## İlk kurulum (her telefon için bir kez)
 
 1. Kasada: *Restoran & Donanım Ayarları › Garson Terminalleri & QR › (garson) › 📱 QR / Kod ile Eşle* → ekranda **6 haneli kod** ve **QR** görünür (5 dakika geçerli, tek kullanımlık).
-2. Telefonda `https://alanadiniz.com/garson/` açılır → kod girilir (veya QR okutulur; kamera için HTTPS gerekir ve zaten zorunludur).
+2. Telefonda `https://garson.alanadi.com/` açılır → kod girilir (veya QR okutulur; kamera için HTTPS gerekir ve zaten zorunludur).
 3. Telefon eşleşir; **PIN** ekranı gelir.
 4. **Ana ekrana ekle:**
    - **Android (Chrome):** menü › *Ana ekrana ekle / Uygulamayı yükle*.

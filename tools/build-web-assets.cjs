@@ -11,7 +11,8 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const web = path.join(root, 'cpanel-yuklenecekler');
-const out = path.join(web, 'assets');
+const sites = ['garson', 'menu', 'patron'];
+const out = path.join(web, '.assets-build');
 const nm = (p) => path.join(root, 'node_modules', p);
 
 fs.rmSync(out, { recursive: true, force: true });
@@ -56,4 +57,12 @@ for (const style of ['normal', 'italic']) {
 }
 fs.writeFileSync(path.join(out, 'fonts', 'fonts.css'), fontsCss);
 
-console.log('Web varlıkları üretildi:', out);
+// Her site (alt alan adı = ayrı belge kökü) kendi assets/ klasörünü alır
+for (const site of sites) {
+  const dest = path.join(web, site, 'assets');
+  fs.rmSync(dest, { recursive: true, force: true });
+  fs.cpSync(out, dest, { recursive: true });
+}
+fs.rmSync(out, { recursive: true, force: true });
+fs.rmSync(path.join(web, 'assets'), { recursive: true, force: true });
+console.log('Web varlıkları üretildi:', sites.map((x) => path.join(web, x, 'assets')).join(', '));

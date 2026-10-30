@@ -134,7 +134,9 @@ switch ($action) {
         $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
         $rootDir = preg_replace('/\/api$/i', '', $scriptDir);
         $baseUrl = rtrim($scheme . '://' . $host . $rootDir, '/');
-        $pairingUrl = "{$baseUrl}/garson/?token={$token}&userId=" . urlencode($userId);
+        $pairingUrl = (defined('GARSON_URL') && GARSON_URL !== '')
+            ? rtrim(GARSON_URL, '/') . "/?token={$token}&userId=" . urlencode($userId)
+            : "{$baseUrl}/garson/?token={$token}&userId=" . urlencode($userId);
 
         echo json_encode([
             'success' => true,

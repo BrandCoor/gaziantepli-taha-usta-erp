@@ -22,7 +22,7 @@ import {
   Activity
 } from 'lucide-react';
 import { restaurantDataService, getApiSyncUrl, setApiSyncUrl } from '../../../services/restaurantDataService';
-import { getKasaApiKey, setKasaApiKey } from '../../../services/cloudAuth';
+import { getKasaApiKey, setKasaApiKey, getQrMenuUrl, setQrMenuUrl } from '../../../services/cloudAuth';
 import { notify } from '../../../services/notificationService';
 
 interface SystemBackupTabProps {
@@ -39,6 +39,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
   // MySQL & phpMyAdmin API Ayarları
   const [apiUrl, setApiUrlState] = useState(getApiSyncUrl());
   const [kasaKey, setKasaKeyState] = useState(getKasaApiKey());
+  const [qrMenuUrl, setQrMenuUrlState] = useState(getQrMenuUrl());
   const [isTestingDb, setIsTestingDb] = useState(false);
   const [dbTestResult, setDbTestResult] = useState<{
     success: boolean;
@@ -56,6 +57,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
   const handleSaveApiUrl = () => {
     setApiSyncUrl(apiUrl);
     setKasaApiKey(kasaKey);
+    setQrMenuUrl(qrMenuUrl);
     notify.success('API Adresi Kaydedildi', 'Tüm sipariş ve bulut senkronizasyonları bu adres üzerinden yürütülecektir.');
   };
 
@@ -306,6 +308,14 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
               value={kasaKey}
               onChange={(e) => setKasaKeyState(e.target.value)}
               placeholder="En az 24 karakterlik gizli anahtar"
+              className="px-4 py-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+            />
+            <label className="text-xs font-bold text-white pt-2">QR Menü Sayfası Adresi <span className="text-[10px] text-[#A0A0AA] font-normal">(masa QR kodları bu adrese gider, ör. https://qr.siteniz.com)</span></label>
+            <input
+              type="text"
+              value={qrMenuUrl}
+              onChange={(e) => setQrMenuUrlState(e.target.value)}
+              placeholder="https://qr.siteniz.com"
               className="px-4 py-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
             />
             <p className="text-[10px] text-[#A0A0AA]">Bu anahtar olmadan sunucu kasadan gelen hiçbir isteği kabul etmez. Anahtar yalnızca yukarıdaki sunucu adresine gönderilir.</p>

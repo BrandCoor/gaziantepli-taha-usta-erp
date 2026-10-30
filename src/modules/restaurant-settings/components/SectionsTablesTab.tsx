@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { getQrMenuUrl } from '../../../services/cloudAuth';
 import { 
   Grid, 
   Plus, 
@@ -318,12 +319,13 @@ export const SectionsTablesTab: React.FC<SectionsTablesTabProps> = ({ sections, 
                   name: `${sections[0]?.name || 'Salon'} Masa 1`,
                   sectionName: sections[0]?.name || 'Salon'
                 };
-                const publicBase = getPublicBaseUrl();
-                const hostOrigin = typeof window !== 'undefined' ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? publicBase : window.location.origin) : publicBase;
+                // QR menü adresi ayarlardan gelir (alt alan adı ayrı olabilir). Boşsa eski varsayılan: <site>/menu/
+                const qrBase = getQrMenuUrl();
+                const hostOrigin = qrBase || `${(typeof window !== 'undefined' ? getPublicBaseUrl() || window.location.origin : '').replace(/\/+$/, '')}/menu`;
                 const realTableId = `tbl-${activeTable.id}`;
                 const qrToken = qrTokens[realTableId] || '';
                 const qrUrl = qrToken
-                  ? `${hostOrigin.replace(/\/+$/, '')}/menu/?table=${encodeURIComponent(realTableId)}&qrt=${qrToken}`
+                  ? `${hostOrigin.replace(/\/+$/, '')}/?table=${encodeURIComponent(realTableId)}&qrt=${qrToken}`
                   : '';
 
                 return (

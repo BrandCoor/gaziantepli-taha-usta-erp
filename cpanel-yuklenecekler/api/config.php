@@ -31,6 +31,8 @@ define('DB_PASS', $__cfg('DB_PASS', 'TAHA_DB_PASS'));
 // Oturum imzalama sırrı ve kasa API anahtarı (en az 32 / 24 karakter; rastgele üretin).
 define('APP_SECRET', $__cfg('APP_SECRET', 'TAHA_APP_SECRET'));
 define('KASA_API_KEY', $__cfg('KASA_API_KEY', 'TAHA_KASA_KEY'));
+// Garson sayfasının tam adresi (ör. https://garson.ornek.com). Eşleştirme QR'ı bu adrese gider. Boşsa API ile aynı alan adı varsayılır.
+define('GARSON_URL', $__cfg('GARSON_URL', 'TAHA_GARSON_URL'));
 define('DB_CHARSET', 'utf8mb4');
 
 // PATRON PANELİ ŞİFRESİ

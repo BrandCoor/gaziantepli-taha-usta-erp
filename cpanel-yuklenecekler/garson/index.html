@@ -2,11 +2,12 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
+  <script src="./config.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Gaziantepli Taha Usta - Garson Mobil Terminali</title>
-  <link rel="stylesheet" href="../assets/app.css">
-  <link rel="stylesheet" href="../assets/fa/css/all.min.css">
-  <link rel="stylesheet" href="../assets/fonts/fonts.css">
+  <link rel="stylesheet" href="./assets/app.css">
+  <link rel="stylesheet" href="./assets/fa/css/all.min.css">
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#141416">
   <meta name="mobile-web-app-capable" content="yes">
@@ -392,6 +393,7 @@
     // Dinamik API Endpoint Yönetimi (Fallback ve Cross-Domain Desteği)
     const API_ENDPOINTS = (function() {
       const list = [];
+      if (window.GTU_API_URL) return [window.GTU_API_URL];
       const custom = localStorage.getItem('CUSTOM_API_URL');
       if (custom && custom.trim() !== '') list.push(custom.trim());
       if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
