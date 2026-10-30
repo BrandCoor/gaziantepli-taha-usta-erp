@@ -17,6 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../security.php';
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Platform, X-Kasa-Key');
+// Bu uç yalnızca kasa içindir; merkezi kapıyı atlamasın diye burada da zorunlu kılınır.
+if (!sec_is_kasa()) { sec_json_exit(401, ['success' => false, 'error' => 'Yetkisiz istek.', 'code' => 'UNAUTHORIZED']); }
 
 $pdo = getDbConnection();
 if ($pdo) {

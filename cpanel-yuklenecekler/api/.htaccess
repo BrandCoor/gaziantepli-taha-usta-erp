@@ -1,0 +1,8 @@
+# Gizli/yapılandırma ve veri dosyaları web'den okunamaz
+<FilesMatch "^(config\.php|config\.local\.php|config\.local\.example\.php|security\.php|restaurant_sync\.json)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "\.(json|log|sql|bak)$">
+  Require all denied
+</FilesMatch>
+Options -Indexes

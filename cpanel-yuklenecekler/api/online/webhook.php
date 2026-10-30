@@ -70,14 +70,20 @@ if ($pdo) {
 
 $webhookSecret = !empty($platformConfig['webhook_secret']) ? $platformConfig['webhook_secret'] : '';
 $incomingSignature = $_SERVER['HTTP_X_SIGNATURE'] ?? $_SERVER['HTTP_X_HMAC_SIGNATURE'] ?? '';
+$incomingApiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
 
-if (!empty($webhookSecret) && !empty($incomingSignature)) {
-    $calculatedSignature = hash_hmac('sha256', $rawPayload, $webhookSecret);
-    if (!hash_equals($calculatedSignature, $incomingSignature)) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'Geçersiz webhook imzası (Signature mismatch)']);
-        exit;
-    }
+// Gizli anahtar tanımlı değilse webhook KABUL EDİLMEZ (kimliksiz sipariş oluşturulamaz).
+if ($webhookSecret === '' || strlen($webhookSecret) < 16) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Bu platform için webhook gizli anahtarı yapılandırılmamış.']);
+    exit;
+}
+$sigOk = $incomingSignature !== '' && hash_equals(hash_hmac('sha256', $rawPayload, $webhookSecret), $incomingSignature);
+$keyOk = $incomingApiKey !== '' && hash_equals($webhookSecret, $incomingApiKey);
+if (!$sigOk && !$keyOk) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'Geçersiz webhook kimlik doğrulaması.']);
+    exit;
 }
 
 // 3. Platforma Özgü Alanları Standart Formata Ayrıştır

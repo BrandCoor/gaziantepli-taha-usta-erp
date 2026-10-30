@@ -1,0 +1,25 @@
+[
+    {
+        "id": "1",
+        "platform": "TRENDYOL",
+        "platform_order_id": "T-1793369058429",
+        "customer_name": "A B",
+        "customer_phone": "",
+        "delivery_address": "Trendyol Teslimat Adresi",
+        "order_note": "",
+        "items": [
+            {
+                "name": "x",
+                "quantity": 1,
+                "price": 10,
+                "note": "",
+                "options": []
+            }
+        ],
+        "total_amount": 10,
+        "payment_method": "Online Kredi Kartı",
+        "platform_status": "Created",
+        "local_status": "BEKLIYOR",
+        "created_at": "2026-10-30 17:04:18"
+    }
+]

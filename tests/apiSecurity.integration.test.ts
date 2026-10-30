@@ -213,4 +213,26 @@ d('API güvenliği (gerçek PHP+MySQL)', () => {
       testSql('DELETE FROM rate_limits');
     });
   });
+
+  describe('Online platform uçları', () => {
+    const base = API!.replace('/index.php', '/online');
+    it('action.php ve orders.php kimliksiz çağrılamaz', async () => {
+      expect((await fetch(`${base}/orders.php?action=list`)).status).toBe(401);
+      expect((await fetch(`${base}/action.php?action=accept`, { method: 'POST', body: '{}' })).status).toBe(401);
+    });
+    it('webhook: gizli anahtar yoksa reddedilir; yanlış imza reddedilir; doğru imza kabul', async () => {
+      testSql("UPDATE online_platforms SET webhook_secret='' WHERE platform_code='TRENDYOL'");
+      const payload = JSON.stringify({ orderNumber: 'T-' + Date.now(), customer: { firstName: 'A', lastName: 'B' }, totalPrice: 10, lines: [{ productName: 'x', quantity: 1, price: 10 }] });
+      const url = `${API}?action=platform_webhook&platform=TRENDYOL`;
+      expect((await fetch(url, { method: 'POST', body: payload })).status).toBe(403);
+      testSql("UPDATE online_platforms SET webhook_secret='test-webhook-secret-123456' WHERE platform_code='TRENDYOL'");
+      expect((await fetch(url, { method: 'POST', body: payload })).status).toBe(401);
+      expect((await fetch(url, { method: 'POST', body: payload, headers: { 'X-Signature': 'yanlis' } })).status).toBe(401);
+      const { createHmac } = await import('node:crypto');
+      const sig = createHmac('sha256', 'test-webhook-secret-123456').update(payload).digest('hex');
+      const ok = await fetch(url, { method: 'POST', body: payload, headers: { 'X-Signature': sig } });
+      expect(ok.status).toBe(200);
+      testSql("UPDATE online_platforms SET webhook_secret='' WHERE platform_code='TRENDYOL'");
+    });
+  });
 });
