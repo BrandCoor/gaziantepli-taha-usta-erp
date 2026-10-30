@@ -156,4 +156,61 @@ d('API güvenliği (gerçek PHP+MySQL)', () => {
     expect(last).toBe(429);
     testSql('DELETE FROM rate_limits');
   });
+
+  describe('QR menü (müşteri, herkese açık yollar)', () => {
+    const TBL = 'tbl-sec-salon-5';
+    let qrt = '';
+    beforeAll(async () => {
+      qrt = (await call('get_table_qr_tokens', { kasa: true })).data.tokens[TBL];
+      testSql('DELETE FROM rate_limits');
+    });
+
+    it('belirteç yalnızca kasaya verilir, 20 karakter', async () => {
+      expect((await call('get_table_qr_tokens')).status).toBe(401);
+      expect(qrt).toMatch(/^[0-9a-f]{20}$/);
+    });
+
+    it('qr_menu kimliksiz açık ama masa adisyonu/durumu sızdırmaz', async () => {
+      const r = await call('qr_menu');
+      expect(r.status).toBe(200);
+      expect(Array.isArray(r.data.products)).toBe(true);
+      for (const t of r.data.tables) { expect(Object.keys(t).sort()).toEqual(['id', 'name', 'sectionId', 'sectionName']); }
+    });
+
+    it('qr_table_state: belirteçsiz/yanlış belirteçle 403', async () => {
+      const bad = await fetch(`${API}?action=qr_table_state&table=${TBL}&qrt=yanlis`);
+      expect(bad.status).toBe(403);
+      const none = await fetch(`${API}?action=qr_table_state&table=${TBL}`);
+      expect(none.status).toBe(403);
+      const ok = await fetch(`${API}?action=qr_table_state&table=${TBL}&qrt=${qrt}`);
+      expect(ok.status).toBe(200);
+      expect(((await ok.json()) as any).table.id).toBe(TBL);
+    });
+
+    it('başka masanın belirteci bu masa için geçmez', async () => {
+      const other = (await call('get_table_qr_tokens', { kasa: true })).data.tokens['tbl-sec-salon-6'];
+      const r = await call('qr_send', { body: { type: 'WAITER_CALL', tableId: TBL, tableName: 'x', qrt: other } });
+      expect(r.status).toBe(403);
+    });
+
+    it('qr_send: sipariş sunucu fiyatıyla kaydedilir, tekrar gönderim çift kayıt oluşturmaz', async () => {
+      const cid = 'qr' + Date.now().toString(36) + 'abcdefgh';
+      const body = { type: 'ORDER', tableId: TBL, tableName: 'Ana Salon 5', qrt, clientOrderId: cid, items: [{ productId: PID, productName: 'x', price: 1, quantity: 3 }] };
+      const a = await call('qr_send', { body });
+      const b = await call('qr_send', { body });
+      expect(a.status).toBe(200);
+      expect(b.data.duplicate).toBe(true);
+      const row = testSql(`SELECT toplam_tutar, garson_adi FROM siparisler WHERE id='ord-${cid}'`).trim().split('	');
+      expect(Number(row[0])).toBe(150);
+      expect(row[1]).toContain('QR Men');
+    });
+
+    it('qr_send: izin verilmeyen tür (TRANSFER_TABLE) ve hız sınırı', async () => {
+      expect((await call('qr_send', { body: { type: 'TRANSFER_TABLE', tableId: TBL, qrt, sourceTableId: TBL, targetTableId: 'tbl-sec-salon-9' } })).status).toBe(400);
+      let last = 0;
+      for (let i = 0; i < 20; i++) { last = (await call('qr_send', { body: { type: 'WAITER_CALL', tableId: TBL, tableName: 'x', qrt } })).status; if (last === 429) break; }
+      expect(last).toBe(429);
+      testSql('DELETE FROM rate_limits');
+    });
+  });
 });

@@ -388,11 +388,7 @@
       if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
         list.push(new URL('../api/index.php', window.location.href).href);
         list.push(new URL('/api/index.php', window.location.href).href);
-        list.push(new URL('../api/auth.php', window.location.href).href);
       }
-      list.push('https://api.rymedya.com.tr/index.php');
-      list.push('https://garson.rymedya.com.tr/api/index.php');
-      list.push('https://rymedya.com.tr/api/index.php');
       return Array.from(new Set(list));
     })();
 
@@ -403,6 +399,10 @@
       // Kalıcı cihaz anahtarı: eşleşme sonrası sunucunun verdiği, iptal edilebilir kimlik.
       if (typeof deviceToken === 'string' && deviceToken) {
         headers['X-Device-Token'] = deviceToken;
+      }
+      // PIN ile açılan, sunucunun imzaladığı oturum (12 saat). PIN telefonda saklanmaz.
+      if (sessionToken) {
+        headers['X-Session'] = sessionToken;
       }
       const tryEndpoints = [workingApiUrl, ...API_ENDPOINTS.filter(u => u !== workingApiUrl)];
       let lastError = null;
@@ -431,6 +431,9 @@
             continue;
           }
           workingApiUrl = base;
+          if (res.status === 401 && action !== 'verify_waiter_pin' && action !== 'pair_with_code') {
+            handleSessionExpired();
+          }
           return res;
         } catch (err) {
           lastError = err;
@@ -542,6 +545,24 @@
 
     // Eşleşme sonrası sunucudan gelen kalıcı cihaz anahtarı.
     let deviceToken = persistentGet('gtu_device_token') || '';
+    let sessionToken = '';
+    try { sessionToken = sessionStorage.getItem('gtu_session') || ''; } catch (e) {}
+
+    function setSessionToken(t) {
+      sessionToken = t || '';
+      try { if (t) sessionStorage.setItem('gtu_session', t); else sessionStorage.removeItem('gtu_session'); } catch (e) {}
+    }
+
+    let sessionExpiredShown = false;
+    function handleSessionExpired() {
+      // Sunucu 401 döndü: oturum bitti ya da cihaz yetkisi kasadan kaldırıldı.
+      if (sessionExpiredShown) return;
+      sessionExpiredShown = true;
+      setSessionToken('');
+      showToast('Oturum sona erdi veya cihaz yetkisi kaldırıldı. PIN ile tekrar giriş yapın.', 'error');
+      setTimeout(() => { sessionExpiredShown = false; }, 4000);
+      if (typeof logout === 'function' && currentWaiter) logout();
+    }
 
     function storeDeviceToken(token) {
       if (!token) return;
@@ -635,18 +656,8 @@
         console.warn('Eşleşme API hatası, yerel eşleşme devrede:', e);
       }
 
-      // Ağ/Sunucu offline olsa bile kesintisiz yerel eşleşme
-      const fallbackWaiter = {
-        id: 'waiter-' + code,
-        name: 'Garson (' + code + ')',
-        pin: code,
-        deviceUuid: deviceUuid
-      };
-      persistentSet('gtu_paired_waiter', JSON.stringify(fallbackWaiter));
-      selectedWaiter = fallbackWaiter;
-      showToast(`Cihaz [${fallbackWaiter.name}] hesabına başarıyla eşleştirildi.`, 'success');
-      showPinScreen();
-      loadActiveWaiters();
+      // Eşleştirme yalnızca sunucu tarafından doğrulanır; sunucuya ulaşılamazsa yerel/uydurma eşleştirme YAPILMAZ.
+      showToast('Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.', 'error');
     }
 
     function getPairingParams(scannedText) {
@@ -973,6 +984,7 @@
         if (data.success && data.waiter) {
           loginSuccessful = true;
           authenticatedWaiter = data.waiter;
+          setSessionToken(data.session || data.token || '');
         } else if (data && data.message) {
           showToast(data.message, 'error');
           enteredPin = '';
@@ -1016,6 +1028,7 @@
     }
 
     function logout() {
+      setSessionToken('');
       currentWaiter = null;
       selectedWaiter = null;
       enteredPin = '';

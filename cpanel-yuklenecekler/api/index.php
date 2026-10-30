@@ -45,6 +45,50 @@ if (!$useMysql && $action !== 'health' && $action !== 'test_db') {
 }
 $authCtx = sec_enforce($action, $pdo);
 
+// ---- Herkese açık QR menü yolları (müşteri) ----
+$qrForce = null;
+if ($action === 'qr_menu') {
+    // Yalnızca menü: masalarda adisyon/durum bilgisi AÇIĞA ÇIKMAZ.
+    if (!sec_rate_limit($pdo, 'qrmenu:' . sec_client_ip(), 120, 60)) { sec_json_exit(429, ['success' => false, 'error' => 'Çok fazla istek.']); }
+    ob_start(function ($buf) {
+        $d = json_decode($buf, true);
+        if (!is_array($d)) return $buf;
+        $t = [];
+        foreach (($d['tables'] ?? []) as $x) {
+            $t[] = ['id' => $x['id'] ?? null, 'sectionId' => $x['sectionId'] ?? null, 'sectionName' => $x['sectionName'] ?? null, 'name' => $x['name'] ?? null];
+        }
+        $d['tables'] = $t;
+        unset($d['last_updated']);
+        return json_encode($d, JSON_UNESCAPED_UNICODE);
+    });
+    $action = 'get_live_state';
+} elseif ($action === 'qr_table_state') {
+    $qTable = (string)($_GET['table'] ?? '');
+    if (!sec_table_qr_valid($qTable, (string)($_GET['qrt'] ?? ''))) { sec_json_exit(403, ['success' => false, 'error' => 'Geçersiz masa QR kodu.']); }
+    if (!sec_rate_limit($pdo, 'qrtbl:' . sec_client_ip(), 120, 60)) { sec_json_exit(429, ['success' => false, 'error' => 'Çok fazla istek.']); }
+    $GLOBALS['__qrTable'] = $qTable;
+    ob_start(function ($buf) {
+        $d = json_decode($buf, true);
+        if (!is_array($d)) return $buf;
+        $only = null;
+        foreach (($d['tables'] ?? []) as $x) { if (($x['id'] ?? '') === $GLOBALS['__qrTable']) { $only = $x; break; } }
+        return json_encode(['success' => true, 'table' => $only], JSON_UNESCAPED_UNICODE);
+    });
+    $action = 'get_live_state';
+} elseif ($action === 'qr_send' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $qIn = json_decode(file_get_contents('php://input'), true) ?: [];
+    $qTable = (string)($qIn['tableId'] ?? '');
+    if (!sec_table_qr_valid($qTable, (string)($qIn['qrt'] ?? ''))) { sec_json_exit(403, ['success' => false, 'error' => 'Geçersiz masa QR kodu.']); }
+    $qType = $qIn['type'] ?? 'ORDER';
+    if (!in_array($qType, ['ORDER', 'WAITER_CALL', 'BILL_REQUEST'], true)) { sec_json_exit(400, ['success' => false, 'error' => 'Desteklenmeyen istek.']); }
+    if (!sec_rate_limit($pdo, 'qrsend:ip:' . sec_client_ip(), 12, 600) || !sec_rate_limit($pdo, 'qrsend:tbl:' . $qTable, 30, 600)) {
+        sec_json_exit(429, ['success' => false, 'error' => 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.']);
+    }
+    $qrForce = ['waiterName' => 'QR Menü (Müşteri)'];
+    $authCtx = ['who' => 'device', 'identity' => null]; // sunucuda fiyat doğrulaması uygulanır
+    $action = 'send_order';
+}
+
 // Cihaz eşleme ve kimlik doğrulama işlemleri doğrudan auth.php tarafından ele alınır
 if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status'])) {
     require __DIR__ . '/auth.php';
@@ -1025,6 +1069,14 @@ if ($action === 'get_live_state') {
     }
 }
 
+if ($action === 'get_table_qr_tokens') {
+    $ids = $pdo->query("SELECT `id` FROM `masalar`")->fetchAll(PDO::FETCH_COLUMN);
+    $map = [];
+    foreach ($ids as $id) { $map[$id] = sec_table_qr_token($id); }
+    echo json_encode(['success' => true, 'tokens' => $map]);
+    exit;
+}
+
 // ========================================================
 // 5. SİPARİŞ / HESAP İSTEĞİ / MASA TAŞIMA (send_order)
 // ========================================================
@@ -1035,6 +1087,7 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $orderId = 'ord-' . time() . '-' . rand(100, 999);
         // Tekrar-gönderim koruması: istemci kimliği (clientOrderId) varsa sipariş kimliği ondan türetilir.
         // Aynı kimlikle gelen ikinci istek PRIMARY KEY nedeniyle yeni kayıt oluşturamaz.
+        if (is_array($qrForce)) { $input['waiterName'] = $qrForce['waiterName']; }
         if (($authCtx['who'] ?? '') === 'device' && !empty($authCtx['identity'])) {
             // İstemcinin yazdığı garson adı yok sayılır; kimlik eşleşmiş cihazdan gelir.
             $input['waiterName'] = $authCtx['identity']['waiterName'];

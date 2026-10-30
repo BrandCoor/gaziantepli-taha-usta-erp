@@ -15,6 +15,10 @@
 
 const SEC_POLICIES = [
     'health' => 'public',
+    'qr_menu' => 'public',
+    'qr_table_state' => 'public',
+    'qr_send' => 'public',
+    'get_table_qr_tokens' => 'kasa',
     'get_active_waiters' => 'device_or_kasa',
     'pair_with_code' => 'public',
     'pair_device' => 'public',
@@ -153,4 +157,16 @@ function sec_enforce($action, $pdo) {
         if ($id) return ['who' => 'device', 'identity' => $id];
     }
     sec_json_exit(401, ['success' => false, 'error' => 'Yetkisiz istek.', 'code' => 'UNAUTHORIZED']);
+}
+
+/** Masa QR belirteci: masa kimliğine bağlı HMAC. Kasa üretir/basar; müşteri QR ile taşır. */
+function sec_table_qr_token($tableId) {
+    $secret = sec_secret();
+    if (strlen($secret) < 32) return '';
+    return substr(hash_hmac('sha256', 'qr|' . $tableId, $secret), 0, 20);
+}
+
+function sec_table_qr_valid($tableId, $token) {
+    $expected = sec_table_qr_token((string)$tableId);
+    return $expected !== '' && is_string($token) && $token !== '' && hash_equals($expected, $token);
 }

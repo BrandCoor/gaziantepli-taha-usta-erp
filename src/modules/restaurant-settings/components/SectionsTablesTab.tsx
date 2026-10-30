@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { 
   Grid, 
   Plus, 
@@ -14,7 +15,7 @@ import {
   Printer,
   Copy
 } from 'lucide-react';
-import { SectionConfig, restaurantDataService, getPublicBaseUrl } from '../../../services/restaurantDataService';
+import { SectionConfig, restaurantDataService, getPublicBaseUrl, getApiSyncUrl } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
 
 interface SectionsTablesTabProps {
@@ -27,6 +28,21 @@ export const SectionsTablesTab: React.FC<SectionsTablesTabProps> = ({ sections, 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [selectedQrTable, setSelectedQrTable] = useState<{ id: string; name: string; sectionName: string } | null>(null);
+  // Masa QR belirteçleri sunucudan (kasa anahtarıyla) alınır; sunucu HMAC ile doğrular.
+  const [qrTokens, setQrTokens] = useState<Record<string, string>>({});
+  const [qrTokenError, setQrTokenError] = useState('');
+  useEffect(() => {
+    if (!qrModalOpen) return;
+    const api = getApiSyncUrl();
+    if (!api) { setQrTokenError('Sunucu adresi ayarlanmamış (Ayarlar > Sistem).'); return; }
+    fetch(`${api}${api.includes('?') ? '&' : '?'}action=get_table_qr_tokens`)
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (ok && d && d.success) { setQrTokens(d.tokens || {}); setQrTokenError(''); }
+        else setQrTokenError('Sunucu QR belirteçlerini vermedi. Kasa API anahtarını kontrol edin.');
+      })
+      .catch(() => setQrTokenError('Sunucuya ulaşılamadı.'));
+  }, [qrModalOpen]);
   const [form, setForm] = useState({
     name: '',
     tableCount: 10,
@@ -304,19 +320,22 @@ export const SectionsTablesTab: React.FC<SectionsTablesTabProps> = ({ sections, 
                 };
                 const publicBase = getPublicBaseUrl();
                 const hostOrigin = typeof window !== 'undefined' ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? publicBase : window.location.origin) : publicBase;
-                const tableParam = activeTable.name.replace(/\D/g, '') || activeTable.id;
-                const qrUrl = `${hostOrigin.replace(/\/+$/, '')}/menu/?masa=${tableParam}`;
-                const qrImageSrc = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrUrl)}&margin=8`;
+                const realTableId = `tbl-${activeTable.id}`;
+                const qrToken = qrTokens[realTableId] || '';
+                const qrUrl = qrToken
+                  ? `${hostOrigin.replace(/\/+$/, '')}/menu/?table=${encodeURIComponent(realTableId)}&qrt=${qrToken}`
+                  : '';
 
                 return (
                   <div className="bg-gradient-to-b from-[#1C1C20] to-[#161619] p-6 rounded-3xl border border-[#F5C877]/30 text-center space-y-4">
                     <div className="inline-block p-3 bg-white rounded-2xl shadow-xl border-4 border-[#F5C877]">
-                      <img 
-                        src={qrImageSrc} 
-                        alt="Masa QR Kod" 
-                        className="w-44 h-44 object-contain mx-auto"
-                        referrerPolicy="no-referrer"
-                      />
+                      {qrUrl ? (
+                        <QRCodeSVG value={qrUrl} size={176} level="M" includeMargin />
+                      ) : (
+                        <div className="w-44 h-44 flex items-center justify-center text-[11px] text-rose-600 font-bold p-3">
+                          {qrTokenError || 'QR hazırlanıyor...'}
+                        </div>
+                      )}
                     </div>
 
                     <div>

@@ -19,6 +19,7 @@ import {
   Activity
 } from 'lucide-react';
 import { restaurantDataService, getApiSyncUrl, setApiSyncUrl } from '../../../services/restaurantDataService';
+import { getKasaApiKey, setKasaApiKey } from '../../../services/cloudAuth';
 import { notify } from '../../../services/notificationService';
 
 interface SystemBackupTabProps {
@@ -34,6 +35,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
 
   // MySQL & phpMyAdmin API Ayarları
   const [apiUrl, setApiUrlState] = useState(getApiSyncUrl());
+  const [kasaKey, setKasaKeyState] = useState(getKasaApiKey());
   const [isTestingDb, setIsTestingDb] = useState(false);
   const [dbTestResult, setDbTestResult] = useState<{
     success: boolean;
@@ -50,6 +52,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
 
   const handleSaveApiUrl = () => {
     setApiSyncUrl(apiUrl);
+    setKasaApiKey(kasaKey);
     notify.success('API Adresi Kaydedildi', 'Tüm sipariş ve bulut senkronizasyonları bu adres üzerinden yürütülecektir.');
   };
 
@@ -280,6 +283,21 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
               <Save className="w-3.5 h-3.5" />
               <span>Adresi Kaydet</span>
             </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 pt-2">
+            <label className="text-xs font-bold text-white">
+              Kasa API Anahtarı <span className="text-[10px] text-[#A0A0AA] font-normal">(sunucudaki config.local.php içindeki KASA_API_KEY ile aynı olmalı)</span>
+            </label>
+            <input
+              type="password"
+              autoComplete="off"
+              value={kasaKey}
+              onChange={(e) => setKasaKeyState(e.target.value)}
+              placeholder="En az 24 karakterlik gizli anahtar"
+              className="px-4 py-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+            />
+            <p className="text-[10px] text-[#A0A0AA]">Bu anahtar olmadan sunucu kasadan gelen hiçbir isteği kabul etmez. Anahtar yalnızca yukarıdaki sunucu adresine gönderilir.</p>
           </div>
         </div>
 

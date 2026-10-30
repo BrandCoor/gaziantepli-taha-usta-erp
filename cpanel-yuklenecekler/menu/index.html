@@ -390,13 +390,19 @@
           endpoints.push(new URL('api/index.php', window.location.href).href);
         } catch (e) {}
       }
-      endpoints.push('https://api.rymedya.com.tr/index.php');
-      endpoints.push('https://garson.rymedya.com.tr/api/index.php');
-      endpoints.push('https://rymedya.com.tr/api/index.php');
       endpoints.push('../api/index.php');
       endpoints.push('/api/index.php');
       return Array.from(new Set(endpoints));
     })();
+
+    // Masa QR belirteci: masayı kasanın bastığı QR kodu doğrular (sunucu HMAC ile kontrol eder).
+    function getQrToken() { return localStorage.getItem('QR_TOKEN') || ''; }
+    function newClientId() {
+      return (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).slice(2, 14));
+    }
+    function qrBody(obj, clientId) {
+      return JSON.stringify(Object.assign({}, obj, { qrt: getQrToken(), clientOrderId: clientId || newClientId() }));
+    }
 
     async function apiFetch(action, options = {}) {
       let lastErr = null;
@@ -414,9 +420,9 @@
             }
           });
           clearTimeout(timeoutId);
-          if (res.ok) {
-            const data = await res.json();
-            return data;
+          if (res.ok || (res.status >= 400 && res.status < 500)) {
+            const data = await res.json().catch(() => null);
+            if (data) return data;
           }
         } catch (err) {
           lastErr = err;
@@ -459,6 +465,10 @@
       if (masaParam) {
         localStorage.setItem('QR_TABLE_PARAM', masaParam);
       }
+      const qrtParam = params.get('qrt');
+      if (qrtParam) {
+        localStorage.setItem('QR_TOKEN', qrtParam);
+      }
       const savedParam = localStorage.getItem('QR_TABLE_PARAM');
       const savedName = localStorage.getItem('QR_TABLE_NAME');
       if (savedName) {
@@ -500,7 +510,7 @@
     // API'den Canlı Menü ve Masa Durumunu Çek
     async function fetchMenuData() {
       try {
-        const data = await apiFetch('get_live_state');
+        const data = await apiFetch('qr_menu');
 
         if (data && (data.success || data.tables || data.sections)) {
           liveSections = (data.sections && data.sections.length > 0) ? data.sections : FALLBACK_SECTIONS;
@@ -515,6 +525,16 @@
           liveProducts = (data.products && data.products.length > 0) ? data.products : FALLBACK_PRODUCTS;
 
           resolveCurrentTable();
+          try {
+            if (currentTable && getQrToken()) {
+              const st = await apiFetch('qr_table_state&table=' + encodeURIComponent(currentTable.id) + '&qrt=' + encodeURIComponent(getQrToken()));
+              if (st && st.table) {
+                const idx = liveTables.findIndex(t => t.id === st.table.id);
+                if (idx > -1) liveTables[idx] = st.table;
+                resolveCurrentTable();
+              }
+            }
+          } catch (e) {}
           renderCategoryTabs();
           renderProducts();
           renderTableBill();
@@ -960,13 +980,15 @@
         }))
       };
 
+      if (!window.__qrOrderId) window.__qrOrderId = newClientId();
       try {
-        const data = await apiFetch('send_order', {
+        const data = await apiFetch('qr_send', {
           method: 'POST',
-          body: JSON.stringify(payload)
+          body: qrBody(payload, window.__qrOrderId)
         });
 
         if (data && data.success) {
+          window.__qrOrderId = null;
           cart = [];
           updateCartBar();
           closeCartModal();
@@ -1037,14 +1059,11 @@
         return;
       }
       try {
-        await apiFetch('send_order', {
+        const r = await apiFetch('qr_send', {
           method: 'POST',
-          body: JSON.stringify({
-            type: 'BILL_REQUEST',
-            tableId: currentTable.id,
-            tableName: currentTable.name
-          })
+          body: qrBody({ type: 'BILL_REQUEST', tableId: currentTable.id, tableName: currentTable.name })
         });
+        if (!r || !r.success) { showToast('İstek iletilemedi. Lütfen masanızdaki QR kodu tekrar okutun.'); return; }
         showToast('🖨️ Kasaya hesap fişi isteğiniz iletildi. Garson masanıza yönlendirildi.');
         closeTableBillModal();
       } catch (err) {
@@ -1060,18 +1079,14 @@
         return;
       }
       try {
-        await apiFetch('send_order', {
+        const r = await apiFetch('qr_send', {
           method: 'POST',
-          body: JSON.stringify({
-            type: 'WAITER_CALL',
-            tableId: currentTable.id,
-            tableName: currentTable.name,
-            message: 'Müşteri Garson Çağırdı'
-          })
+          body: qrBody({ type: 'WAITER_CALL', tableId: currentTable.id, tableName: currentTable.name, message: 'Müşteri Garson Çağırdı' })
         });
+        if (!r || !r.success) { showToast('Garson çağrısı iletilemedi. Lütfen tekrar deneyin.'); return; }
         showToast('🔔 Garson masanıza yönlendirildi!');
       } catch (err) {
-        showToast('Garson çağrısı gönderildi.');
+        showToast('Garson çağrısı iletilemedi. Bağlantınızı kontrol edin.');
       }
     }
 

@@ -149,20 +149,22 @@ class DeviceService {
         try { result = JSON.parse(raw); } catch { result = {}; }
         if (response.ok && result.success && result.token) {
           if (waiter) restaurantDataService.updateWaiter(userId, { qrToken: result.token, pairingCode });
-          return { ...result, pairingCode };
+          return { ...result, pairingCode: result.pairingCode || pairingCode };
+        }
+        if (result && result.error) {
+          return { success: false, error: result.error } as any;
         }
       } catch (error: any) {
         // Devam et, diğer URL veya fallback'e geç
       }
     }
 
-    // Çevrimdışı / Yerel Fallback: Her zaman anında geçerli eşleşme tokenı ve 6 haneli kod sağla
+    // Sunucuya ulaşılamadıysa eşleştirme KODU ÜRETİLMEZ: yerelde uydurulan kod telefonda çalışmaz
+    // ve kullanıcıyı yanıltır. Eşleştirme yalnızca sunucunun ürettiği tek kullanımlık kodla yapılır.
     return {
-      success: true,
-      token: fallbackToken,
-      pairingCode,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
-    };
+      success: false,
+      error: 'Sunucuya ulaşılamadı veya kasa API anahtarı hatalı. Ayarlar > Sistem bölümünden sunucu adresini ve kasa anahtarını kontrol edin.'
+    } as any;
   }
 
   /**
