@@ -1,13 +1,14 @@
 // Yalnızca izole TEST sunucusuna karşı çalışır. Örn: TEST_API_URL=http://127.0.0.1:8080/api/index.php
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 
-import { API, call as rawCall } from './helpers/apiTestKit';
+import { API, call as rawCall, seedLayout } from './helpers/apiTestKit';
 const d = API ? describe : describe.skip;
 
 // Kasa anahtarıyla çağrı (kasa tarafı akışları)
 const call = async (action: string, body?: any) => rawCall(action, { body, kasa: true });
 
 d('send_order / pull / ack (gerçek PHP+MySQL)', () => {
+  beforeAll(() => seedLayout());
   const tableId = 'tbl-sec-salon-1';
   const cid = 'test' + Date.now().toString(36) + 'abcdef';
   const payload = { clientOrderId: cid, tableId, tableName: 'Ana Salon 1', waiterName: 'T', items: [{ productName: 'X', price: 10, quantity: 2 }], totalAmount: 20 };

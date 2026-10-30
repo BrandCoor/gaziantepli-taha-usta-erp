@@ -935,19 +935,7 @@ if ($action === 'get_live_state') {
     if ($useMysql) {
         $sections = $pdo->query("SELECT `id`, `ad` as name, `masa_sayisi` as tableCount, `kapasite_kisi` as capacityPerTable FROM `bolumler` ORDER BY `sira` ASC")->fetchAll();
         
-        // Eğer bölümler boşsa varsayılan salonları yükle
-        if (empty($sections)) {
-            $defaultSecs = [
-                ['id' => 'sec-salon', 'ad' => 'Ana Salon', 'masa_sayisi' => 12, 'kapasite_kisi' => 4, 'sira' => 1],
-                ['id' => 'sec-bahce', 'ad' => 'Bahçe', 'masa_sayisi' => 10, 'kapasite_kisi' => 6, 'sira' => 2],
-                ['id' => 'sec-paket', 'ad' => 'Paket Servis', 'masa_sayisi' => 8, 'kapasite_kisi' => 1, 'sira' => 3]
-            ];
-            $stmt = $pdo->prepare("INSERT IGNORE INTO `bolumler` (`id`, `ad`, `masa_sayisi`, `kapasite_kisi`, `sira`) VALUES (?, ?, ?, ?, ?)");
-            foreach ($defaultSecs as $ds) {
-                $stmt->execute([$ds['id'], $ds['ad'], $ds['masa_sayisi'], $ds['kapasite_kisi'], $ds['sira']]);
-            }
-            $sections = $pdo->query("SELECT `id`, `ad` as name, `masa_sayisi` as tableCount, `kapasite_kisi` as capacityPerTable FROM `bolumler` ORDER BY `sira` ASC")->fetchAll();
-        }
+        // Varsayılan/demo salon OLUŞTURULMAZ: bölüm ve masa düzeni kasadan (push_kasa_state) gelir.
 
         $tableRows = $pdo->query("SELECT `id`, `bolum_id` as sectionId, `ad` as name, `durum` as status, `aktif_siparis` as activeOrder, `toplam_tutar` as totalAmount FROM `masalar` ORDER BY `id` ASC")->fetchAll();
         
@@ -2069,11 +2057,13 @@ if ($action === 'cancel_item' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($useMysql) {
         // PIN Doğrulama: Patron şifresi veya yönetici personeli
         $pinOk = false;
-        $bossStmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'");
-        $bossPass = $bossStmt ? $bossStmt->fetchColumn() : '1453';
-        if ($pin === $bossPass || $pin === '1453') {
+        // Sabit/arka kapı PIN'i YOK. Patron parolası (hash'li) veya yönetici personel PIN'i; hız sınırlı.
+        if (!sec_rate_limit($pdo, 'cancel_pin:' . sec_client_ip(), 8, 600)) {
+            sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla hatalı deneme. Lütfen bekleyin.']);
+        }
+        if ($pin !== '' && boss_check_password(boss_stored_secret($pdo), $pin)) {
             $pinOk = true;
-        } else {
+        } elseif ($pin !== '') {
             $empChk = $pdo->prepare("SELECT COUNT(*) FROM `personeller` WHERE `pin` = ? AND `rol` IN ('ADMIN', 'CASHIER') AND `aktif` = 1");
             $empChk->execute([$pin]);
             if ($empChk->fetchColumn() > 0) {

@@ -969,7 +969,7 @@ class RestaurantDataService {
     const calls = this.getRecentCalls();
     const isReg = Boolean(customerInfo?.id);
     const newCall: CallLogItem = {
-      id: `call-${Date.now()}`,
+      id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       phone: phone,
       customerId: customerInfo?.id,
       customerName: customerInfo?.name || 'Kayıtsız Numara',
@@ -1414,7 +1414,7 @@ class RestaurantDataService {
         tables[tableIndex].customerInfo = customerInfo;
         tables[tableIndex].status = 'OCCUPIED';
         tables[tableIndex].order = {
-          id: `ord-${Date.now()}`,
+          id: `ord-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           orderNumber: Math.floor(100 + Math.random() * 900),
           totalAmount: 0,
           orderTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
@@ -1471,7 +1471,7 @@ class RestaurantDataService {
 
     const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
     cancelLogs.push({
-      id: `cancel-${Date.now()}`,
+      id: `cancel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       tableName: table.name,
       productName: targetItem.productName,
       quantity: cancelQty,
@@ -1504,7 +1504,7 @@ class RestaurantDataService {
 
       const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
       completedOrders.push({
-        id: `arch-cancel-${Date.now()}`,
+        id: `arch-cancel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         orderNumber: table.order.orderNumber || Math.floor(100 + Math.random() * 900),
         tableName: table.name,
         sectionName: section?.name || table.sectionId,
@@ -1574,7 +1574,7 @@ class RestaurantDataService {
 
     const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
     completedOrders.push({
-      id: `arch-${Date.now()}`,
+      id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       orderNumber: table.order.orderNumber,
       tableName: table.name,
       sectionName: table.sectionId,
@@ -2556,7 +2556,7 @@ class RestaurantDataService {
     let newLog: CallLogItem;
     if (typeof callOrPhone === 'string') {
       newLog = {
-        id: `call-${Date.now()}`,
+        id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         phone: callOrPhone,
         customerId: customerData?.id,
         customerName: customerData?.name || 'Kayıtlı Olmayan Numara',
@@ -2566,7 +2566,7 @@ class RestaurantDataService {
         isRegistered: !!customerData?.name,
       };
     } else {
-      newLog = { ...callOrPhone, id: `call-${Date.now()}` };
+      newLog = { ...callOrPhone, id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` };
     }
     const updated = [newLog, ...logs].slice(0, 50);
     localStorage.setItem(STORAGE_KEYS.CALL_LOGS, JSON.stringify(updated));

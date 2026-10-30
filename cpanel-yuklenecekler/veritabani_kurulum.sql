@@ -298,8 +298,6 @@ CREATE TABLE IF NOT EXISTS `cihazlar` (
 
 -- Ayarlar
 INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES
-('boss_password', '1453', 'Patron Paneli Giriş Parolası'),
-('boss_settings', '{\"password\":\"1453\",\"approved_devices\":[]}', 'Patron Paneli Güvenlik Ayarı'),
 ('platform_store_status', '{\"TRENDYOL\":{\"isOpen\":true},\"GETIR\":{\"isOpen\":true},\"YEMEKSEPETI\":{\"isOpen\":true}}', 'Entegrasyon Mağazaları Açık/Kapalı Durumu'),
 ('company_settings', '{\"companyName\":\"Gaziantepli Taha Usta\",\"phone\":\"0530 000 0000\"}', 'Firma Bilgileri')
 ON DUPLICATE KEY UPDATE `anahtar` = VALUES(`anahtar`);
@@ -368,11 +366,6 @@ INSERT INTO `masalar` (`id`, `bolum_id`, `ad`, `durum`) VALUES
 ('tbl-sec-paket-8', 'sec-paket', 'Paket Servis 8', 'EMPTY')
 ON DUPLICATE KEY UPDATE `ad` = VALUES(`ad`);
 
--- Varsayılan Tanımlı Garson (Örnek Personel)
-INSERT INTO `personeller` (`id`, `ad`, `rol`, `pozisyon`, `telefon`, `maas`, `pin`, `aktif`) VALUES
-('emp-1', 'Ahmet Yılmaz', 'WAITER', 'Şef Garson', '0555 111 2233', 32000.00, '2580', 1),
-('emp-2', 'Mehmet Kaya', 'WAITER', 'Garson', '0555 222 3344', 28000.00, '1905', 1),
-('emp-3', 'Ali Demir', 'WAITER', 'Garson', '0555 333 4455', 28000.00, '1453', 1)
-ON DUPLICATE KEY UPDATE `ad` = VALUES(`ad`), `pin` = VALUES(`pin`);
+-- (Örnek/demo personel kayıtları KALDIRILDI: gerçek personel kasa uygulamasından eklenir.)
 
 SET FOREIGN_KEY_CHECKS = 1;

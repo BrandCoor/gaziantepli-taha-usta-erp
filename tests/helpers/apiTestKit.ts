@@ -19,7 +19,15 @@ export async function call(action: string, opts: { body?: any; headers?: Record<
   return { status: r.status, data };
 }
 
+/** Test düzeni: 'Ana Salon' bölümü + 30 masa (sunucu artık varsayılan düzen üretmez). */
+export function seedLayout() {
+  const rows = Array.from({ length: 30 }, (_, i) => `('tbl-sec-salon-${i + 1}','sec-salon','Ana Salon ${i + 1}','EMPTY')`).join(',');
+  testSql(`INSERT IGNORE INTO bolumler (id, ad, masa_sayisi, kapasite_kisi, sira) VALUES ('sec-salon','Ana Salon',30,4,1);
+           INSERT IGNORE INTO masalar (id, bolum_id, ad, durum) VALUES ${rows};`);
+}
+
 export function seedWaiterAndProduct(waiterId: string, pin: string, productId: string, price: number) {
+  seedLayout();
   testSql(`INSERT INTO personeller (id, ad, pin, rol, aktif) VALUES ('${waiterId}', 'Test Garson', '${pin}', 'WAITER', 1)
            ON DUPLICATE KEY UPDATE pin='${pin}', aktif=1, rol='WAITER', device_token_hash=NULL, pairing_secret=NULL, pairing_code_hash=NULL;
            DELETE FROM cihazlar WHERE waiter_id='${waiterId}';

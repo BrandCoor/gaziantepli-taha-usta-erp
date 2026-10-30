@@ -267,7 +267,7 @@ class DataService {
     const customers = this.getCustomers();
     const newCust: Customer = {
       ...c,
-      id: `cust-${Date.now()}`,
+      id: `cust-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       balance: Number(c.balance) || 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -432,7 +432,7 @@ class DataService {
     const suppliers = this.getSuppliers();
     const newSup: Supplier = {
       ...s,
-      id: `sup-${Date.now()}`,
+      id: `sup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       balance: Number(s.balance) || 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -590,7 +590,7 @@ class DataService {
     const expenses = this.getExpenses();
     const newExp: Expense = {
       ...exp,
-      id: `exp-${Date.now()}`,
+      id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       createdAt: new Date().toISOString(),
     };
     expenses.push(newExp);
@@ -646,7 +646,7 @@ class DataService {
     const employees = this.getEmployees();
     const newEmp: Employee = {
       ...emp,
-      id: `emp-${Date.now()}`,
+      id: `emp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       balance: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1076,7 +1076,7 @@ class DataService {
         users.push(savedUser);
       }
     } else {
-      savedUser = { ...user, id: `u-${Date.now()}` } as User;
+      savedUser = { ...user, id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` } as User;
       users.push(savedUser);
     }
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));

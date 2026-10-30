@@ -32,7 +32,9 @@ const check = (name, ok, extra = '') => { results.push(ok); console.log((ok ? 'G
        INSERT INTO urunler (id, kategori_id, ad, fiyat, aktif) VALUES ('p-e2e','k-e2e','E2E Çorba',75,1) ON DUPLICATE KEY UPDATE fiyat=75, aktif=1, ad='E2E Çorba';
        UPDATE masalar SET durum='EMPTY', aktif_siparis=NULL, toplam_tutar=0 WHERE id='tbl-sec-salon-7';
        DELETE FROM siparisler WHERE masa_id='tbl-sec-salon-7';`);
-  await kasa('get_live_state'); // şema/tablo hazır
+  await kasa('get_live_state'); // şema hazır
+  const rows = Array.from({ length: 30 }, (_, i) => `('tbl-sec-salon-${i + 1}','sec-salon','Ana Salon ${i + 1}','EMPTY')`).join(',');
+  sql(`INSERT IGNORE INTO bolumler (id, ad, masa_sayisi, kapasite_kisi, sira) VALUES ('sec-salon','Ana Salon',30,4,1); INSERT IGNORE INTO masalar (id, bolum_id, ad, durum) VALUES ${rows};`);
 
   const pair = await kasa('create_pairing_token', { userId: 'w-e2e' });
   check('kasa 6 haneli eşleştirme kodu üretti', /^\d{6}$/.test(pair.pairingCode), pair.pairingCode);
