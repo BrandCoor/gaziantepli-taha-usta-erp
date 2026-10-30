@@ -7,8 +7,30 @@ import electron from 'vite-plugin-electron';
 // ancak kullanıcının yerel Windows/Mac/Linux masaüstünde 'npm run dev' çalıştırıldığında masaüstü penceresini aç
 const isCloudHeadless = Boolean(process.env.APPLET_ID || process.env.K_SERVICE || process.env.CLOUD_CONTAINER);
 
+// Üretim derlemesine İçerik Güvenliği Politikası (CSP) ekler. Geliştirme sunucusu (HMR) etkilenmez.
+const cspPlugin = () => ({
+  name: 'gtu-csp',
+  apply: 'build' as const,
+  transformIndexHtml(html: string) {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "connect-src 'self' http: https: ws://127.0.0.1:4545 ws://localhost:4545",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-src 'none'",
+    ].join('; ');
+    return html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${csp}" />`);
+  },
+});
+
 export default defineConfig({
   plugins: [
+    cspPlugin(),
     react(),
     ...(!isCloudHeadless
       ? [

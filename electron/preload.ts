@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 // Sayfaya yalnızca bu izin listesindeki kanallar açılır; Node.js/Electron'un geri kalanı gizli kalır.
 const INVOKE_CHANNELS = new Set([
   'get-system-usb-printers', 'print-network-ticket', 'print-usb-receipt', 'print-hardware-test',
-  'app-info', 'backup-save', 'backup-list', 'backup-read', 'backup-open-folder', 'backup-choose-secondary', 'backup-clear-secondary',
+  'app-info', 'backup-save', 'backup-list', 'backup-read', 'backup-open-folder', 'backup-choose-secondary', 'backup-clear-secondary', 'log-tail', 'log-renderer-error',
 ]);
 const SEND_CHANNELS = new Set(['window-minimize', 'window-toggle-fullscreen', 'window-close']);
 

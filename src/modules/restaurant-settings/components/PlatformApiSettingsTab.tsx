@@ -33,6 +33,7 @@ import {
   StoreAvailabilityStatus,
   DeliveryModel
 } from '../../../services/onlinePlatformService';
+import { getApiSyncUrl } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
 
 export interface PlatformApiSettingsTabProps {
@@ -54,7 +55,10 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
   }, []);
 
   const getWebhookUrl = (code: OnlinePlatformCode) => {
-    return `https://api.rymedya.com.tr/api/online/webhook.php?platform=${code}`;
+    // Webhook adresi, işletmenin KENDİ sunucu adresinden türetilir (Ayarlar > Sistem). Başka bir alan adı kullanılmaz.
+    const api = getApiSyncUrl();
+    if (!api) return 'Önce Ayarlar > Sistem bölümünden sunucu adresini girin';
+    return `${api}${api.includes('?') ? '&' : '?'}action=platform_webhook&platform=${code}`;
   };
 
   const handleSaveAll = async () => {

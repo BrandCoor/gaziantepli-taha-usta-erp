@@ -100,7 +100,7 @@ const DEFAULT_PLATFORMS: Record<OnlinePlatformCode, OnlinePlatformInfo> = {
       storeUuid: '',
     },
     webhookSecret: '',
-    webhookUrl: 'https://api.rymedya.com.tr/api/online/webhook.php?platform=YEMEKSEPETI',
+    webhookUrl: '',
     badgeColor: {
       bg: 'bg-rose-500/15',
       border: 'border-rose-500/40',
@@ -120,7 +120,7 @@ const DEFAULT_PLATFORMS: Record<OnlinePlatformCode, OnlinePlatformInfo> = {
       secretKey: '',
     },
     webhookSecret: '',
-    webhookUrl: 'https://api.rymedya.com.tr/api/online/webhook.php?platform=TRENDYOL',
+    webhookUrl: '',
     badgeColor: {
       bg: 'bg-orange-500/15',
       border: 'border-orange-500/40',
@@ -140,7 +140,7 @@ const DEFAULT_PLATFORMS: Record<OnlinePlatformCode, OnlinePlatformInfo> = {
       restaurantId: '',
     },
     webhookSecret: '',
-    webhookUrl: 'https://api.rymedya.com.tr/api/online/webhook.php?platform=GETIR',
+    webhookUrl: '',
     badgeColor: {
       bg: 'bg-purple-500/15',
       border: 'border-purple-500/40',

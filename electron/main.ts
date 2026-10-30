@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, IpcMain
 import * as fs from 'fs';
 import { isPrivateOrLoopbackIp } from './netGuard';
 import { BackupStore } from './backupStore';
+import { FileLogger } from './logger';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -262,7 +263,31 @@ secureOn('window-close', () => {
   if (mainWindow) mainWindow.close();
 });
 
+// ---- Günlük kaydı ve çökme izleme ----
+let logger: FileLogger | null = null;
+const log = () => (logger ??= new FileLogger(path.join(app.getPath('userData'), 'logs')));
+process.on('uncaughtException', (err) => { log().error('Yakalanmamış istisna', err); });
+process.on('unhandledRejection', (reason) => { log().error('İşlenmeyen söz reddi', reason); });
+app.on('render-process-gone', (_e, _wc, details) => { log().error(`Arayüz süreci kapandı: ${details.reason} (kod ${details.exitCode})`); });
+secureHandle('log-tail', async () => ({ success: true, lines: log().tail(80), dir: path.join(app.getPath('userData'), 'logs') }));
+secureHandle('log-renderer-error', async (_e, { message }) => { log().error('Arayüz hatası: ' + String(message).slice(0, 2000)); return { success: true }; });
+
+// ---- Tek örnek: iki kasa penceresi aynı yerel veriyi/portu bozmasın ----
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 app.whenReady().then(() => {
+  if (!gotLock) return;
+  log().info(`Kasa başlatıldı (sürüm ${app.getVersion()})`);
   applyBackupDirs();
   startLocalServer(4545);
   createWindow();
