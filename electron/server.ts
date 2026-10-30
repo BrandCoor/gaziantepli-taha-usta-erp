@@ -102,6 +102,11 @@ export function getLocalIPAddress(): string {
   return '127.0.0.1';
 }
 
+// SAĞLIK: arayüzün "Yazıcı Servisi Aktif" kontrolü bu ucu çağırır (eskiden yoktu → servis çalışsa da OFFLINE görünürdü)
+app.get('/api/health', (_req, res) => {
+  res.json({ success: true, service: 'print-agent', time: new Date().toISOString() });
+});
+
 // 1. AĞ VE ETHERNET YAZICILARI TARAMA
 app.get('/api/printers/auto-scan', async (req, res) => {
   try {

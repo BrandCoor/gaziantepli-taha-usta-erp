@@ -1415,7 +1415,7 @@ class RestaurantDataService {
         tables[tableIndex].status = 'OCCUPIED';
         tables[tableIndex].order = {
           id: `ord-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          orderNumber: Math.floor(100 + Math.random() * 900),
+          orderNumber: this.nextOrderNumber(),
           totalAmount: 0,
           orderTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
           waiterName: waiterName,
@@ -1438,7 +1438,7 @@ class RestaurantDataService {
 
       tables[tableIndex].order = {
         id: existingOrder?.id || `ord-${Date.now()}`,
-        orderNumber: existingOrder?.orderNumber || Math.floor(100 + Math.random() * 900),
+        orderNumber: existingOrder?.orderNumber || this.nextOrderNumber(),
         totalAmount,
         orderTime: existingOrder?.orderTime || currentTime,
         waiterName: existingOrder?.waiterName || waiterName,
@@ -1505,7 +1505,7 @@ class RestaurantDataService {
       const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
       completedOrders.push({
         id: `arch-cancel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        orderNumber: table.order.orderNumber || Math.floor(100 + Math.random() * 900),
+        orderNumber: table.order.orderNumber || this.nextOrderNumber(),
         tableName: table.name,
         sectionName: section?.name || table.sectionId,
         waiterName: table.order.waiterName || cancelledBy,
@@ -1546,6 +1546,22 @@ class RestaurantDataService {
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
+  }
+
+  /**
+   * Günlük artan adisyon numarası (iş günü başına 1'den başlar, çakışmaz).
+   * Eskiden 100–999 arası rastgele sayıydı; aynı gün içinde tekrar edebiliyordu.
+   */
+  public nextOrderNumber(): number {
+    const today = getBusinessDate();
+    let state: { date: string; n: number } = { date: today, n: 0 };
+    try {
+      const raw = JSON.parse(localStorage.getItem('gtu_order_counter') || 'null');
+      if (raw && raw.date === today && Number.isFinite(raw.n)) state = raw;
+    } catch {}
+    state.n += 1;
+    localStorage.setItem('gtu_order_counter', JSON.stringify(state));
+    return state.n;
   }
 
   /**

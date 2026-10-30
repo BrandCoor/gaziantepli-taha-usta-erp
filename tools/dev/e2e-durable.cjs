@@ -74,20 +74,30 @@ const readDb = () => { const db = new DatabaseSync(dbFile, { readOnly: true }); 
   check('SQLite\'a doğrudan yazılan kayıt arayüzde görünüyor (asıl kaynak SQLite)', (await ev(`localStorage.getItem('gtu_test_dogrudan')`)) === 'sqlite-den');
   await killHard();
 
-  // ---- 6) ESKİ SÜRÜMDEN GEÇİŞ: yalnızca localStorage var, SQLite yok
-  // Gerçekçi "eski sürüm" durumu: Chromium'un localStorage'ı diske yazması için süre tanınır (gecikmeli yazar).
+  // ---- 6) ESKİ SÜRÜMDEN GEÇİŞ: yalnızca Chromium localStorage'ında veri var, SQLite yok
+  // Eski sürüm simülasyonu: Chromium'un GERÇEK localStorage'ına yazılır (uygulama artık oraya yazmaz) ve diske inmesi beklenir.
   await launch();
+  await ev(`window.__chromiumLocalStorage.setItem('gtu_pos_completed_orders', JSON.stringify([{id:'ESKI-1',totalAmount:1},{id:'ESKI-2',totalAmount:2},{id:'ESKI-3',totalAmount:3}])); window.__chromiumLocalStorage.setItem('gtu_erp_customers', JSON.stringify([{id:'ESKI-C',balance:42}])); 1`);
   await sleep(9000);
   await killHard();
   for (const f of ['kasa.db', 'kasa.db-wal', 'kasa.db-shm']) fs.rmSync(path.join(profile, 'data', f), { force: true });
-  await launch();   // 1. açılış: Chromium depo (eski veri) duruyor, SQLite boş → içe aktarılmalı
+  await launch();   // SQLite boş + Chromium'da eski veri → içe aktarılmalı
   const dbAfter = readDb();
-  check('eski localStorage verisi SQLite\'a içe aktarıldı (geçiş)', dbAfter['gtu_pos_completed_orders'] && JSON.parse(dbAfter['gtu_pos_completed_orders']).length === 2, Object.keys(dbAfter).length + ' kayıt');
-  check('geçiş sonrası arayüz verisi aynı', (await ev(`JSON.parse(localStorage.getItem('gtu_pos_completed_orders')||'[]').length`)) === 2);
+  check('eski sürüm verisi (Chromium localStorage) SQLite deposuna içe aktarıldı', dbAfter['gtu_pos_completed_orders'] && JSON.parse(dbAfter['gtu_pos_completed_orders']).length === 3 && dbAfter['gtu_erp_customers'], Object.keys(dbAfter).length + ' kayıt');
+  check('geçiş sonrası arayüz verisi aynı (3 adisyon, cari 42)', (await ev(`JSON.parse(localStorage.getItem('gtu_pos_completed_orders')||'[]').length`)) === 3 && (await ev(`JSON.parse(localStorage.getItem('gtu_erp_customers')||'[]')[0].balance`)) === 42);
+  check('eski Chromium verisi geri dönüş için yerinde duruyor', (await ev(`window.__chromiumLocalStorage.getItem('gtu_erp_customers') !== null`)) === true);
   await killHard();
+
+  // ---- 6b) KOTA YOK: Chromium'un ~5-10 MB sınırından büyük veri sorunsuz saklanır
+  await launch();
+  const big = await ev(`(function(){ try { localStorage.setItem('gtu_test_buyuk', 'x'.repeat(12*1024*1024)); return 'ok' } catch(e) { return 'HATA: '+e.name } })()`);
+  check('12 MB değer kota hatası vermeden yazıldı', big === 'ok', String(big));
+  await sleep(4000); await killHard();
+  check('12 MB değer zorla kapatmadan sonra SQLite deposunda duruyor', (readDb()['gtu_test_buyuk'] || '').length === 12 * 1024 * 1024);
 
   // ---- 7) Yedek/geri yükleme SQLite'a da yansır
   await launch();
+  await ev(`localStorage.removeItem('gtu_test_buyuk'); 1`);
   const restored = await ev(`(async()=>{
     const cur = {format:'gtu-full-backup',version:1,createdAt:new Date().toISOString(),appVersion:'t',counts:{},data:{gtu_pos_completed_orders: JSON.stringify([{id:'YEDEK-1',totalAmount:5}])}};
     // geri yükleme mantığını localStorage üzerinden uygular (yalnızca yedeklenebilir anahtarlar)
