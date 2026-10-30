@@ -39,7 +39,7 @@ Not: VS Code gibi Electron tabanlı ortamlar `ELECTRON_RUN_AS_NODE=1` ayarlar; E
 | `e2e-durable` | **14/14** | Zorla kapatma, silme, Chromium deposunu silme, SQLite asıl kaynak, eski sürümden geçiş, **12 MB (kotasız) değer**, geri yükleme |
 | `pwa-check` | **12/12** | Manifest, servis çalışanı, yerel varlıklar (CDN yok), çevrimdışı kabuk, API önbelleğe alınmıyor, bağlantı uyarısı |
 | `e2e-installer` | **10/10** | Sessiz kurulum, çökme, üzerine kurulum, kaldırma (veri duruyor), yeniden kurulum |
-| Derleme (`vite build`) | başarılı | Kurulum paketi: `GaziantepliTahaUsta-Kurulum-1.0.0.exe` (≈124 MB, SHA-256 `E81DE0D07236BCC1CE01A2727B6919BB03A5E34A71530047F39E50C0150E11AE` — bu çalıştırmanın özeti; her derlemede değişir) |
+| Derleme (`vite build`) | başarılı | Kurulum paketi: `GaziantepliTahaUsta-Kurulum-1.0.0.exe` (≈124 MB, SHA-256 `CBA1F5E92ADB35B4EA36CA912746DB0051DEDA0C05F846E9E67B4CEF480375C9` — bu çalıştırmanın özeti; her derlemede değişir) |
 
 ### Birim/entegrasyon kapsamı
 
