@@ -12,3 +12,8 @@ bun.lock
 yedek_*/
 *.bak
 app/
+
+# Gizli sunucu yapılandırması
+cpanel-yuklenecekler/api/config.local.php
+prisma/*.db-journal
+.claude/settings.local.json

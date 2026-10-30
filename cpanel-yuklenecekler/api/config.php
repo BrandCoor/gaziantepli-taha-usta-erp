@@ -5,16 +5,30 @@
  * Bu dosyayı cPanel / Hosting veritabanı bilgilerinizle düzenleyiniz.
  */
 
-// 1. VERİTABANI BAĞLANTI BİLGİLERİ (cPanel -> MySQL Veritabanları)
-define('DB_HOST', 'localhost');                  // Hosting sunucusu
-define('DB_PORT', '3306');                       // MySQL varsayılan port
-define('DB_NAME', 'ngsiteyo_tahausta_pos');      // cPanel Veritabanı Adı
-define('DB_USER', 'ngsiteyo_tahausta_user');     // cPanel Veritabanı Kullanıcısı
-define('DB_PASS', 'Tahausta2727');               // Veritabanı Şifresi
+// 1. VERİTABANI BAĞLANTI BİLGİLERİ
+// Gerçek değerler bu dosyada TUTULMAZ. Öncelik sırası:
+//   1) api/config.local.php (Git'e eklenmez; şablon: config.local.example.php)
+//   2) Ortam değişkenleri: TAHA_DB_HOST, TAHA_DB_PORT, TAHA_DB_NAME, TAHA_DB_USER, TAHA_DB_PASS
+$__local = [];
+$__localFile = __DIR__ . '/config.local.php';
+if (is_file($__localFile)) {
+    $__tmp = require $__localFile;
+    if (is_array($__tmp)) { $__local = $__tmp; }
+}
+$__cfg = function ($key, $envName, $default = '') use ($__local) {
+    if (isset($__local[$key]) && $__local[$key] !== '') return $__local[$key];
+    $env = getenv($envName);
+    return ($env !== false && $env !== '') ? $env : $default;
+};
+define('DB_HOST', $__cfg('DB_HOST', 'TAHA_DB_HOST', 'localhost'));
+define('DB_PORT', $__cfg('DB_PORT', 'TAHA_DB_PORT', '3306'));
+define('DB_NAME', $__cfg('DB_NAME', 'TAHA_DB_NAME'));
+define('DB_USER', $__cfg('DB_USER', 'TAHA_DB_USER'));
+define('DB_PASS', $__cfg('DB_PASS', 'TAHA_DB_PASS'));
 define('DB_CHARSET', 'utf8mb4');
 
 // PATRON PANELİ ŞİFRESİ
-define('DEFAULT_BOSS_PASSWORD', getenv('TAHA_BOSS_PASSWORD') ?: '');
+define('DEFAULT_BOSS_PASSWORD', $__cfg('BOSS_PASSWORD', 'TAHA_BOSS_PASSWORD'));
 
 // 3. PDO VERİTABANI BAĞLANTI FONKSİYONU
 function getDbConnection() {
