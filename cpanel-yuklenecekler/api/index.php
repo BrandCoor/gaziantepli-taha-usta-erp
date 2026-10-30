@@ -5,10 +5,15 @@
  * MySQL / phpMyAdmin veya JSON Senkronizasyon Modu
  */
 
+// Üretimde hata ayrıntıları istemciye gösterilmez; yalnızca sunucu loguna yazılır.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID, X-Device-Token, X-Requested-With');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
 
@@ -1343,8 +1348,7 @@ if ($action === 'pull_pending_orders') {
         $idsToMark = [];
 
         foreach ($rows as $r) {
-            $r['items'] = json_decode($r['kalemler'], true) ?: [];
-            unset($r['kalemler']);
+            $r['items'] = json_decode((string)($r['items'] ?? ''), true) ?: [];
             $r['totalAmount'] = (float)$r['totalAmount'];
             $pending[] = $r;
             $idsToMark[] = $r['id'];
