@@ -35,8 +35,18 @@ function stage(name, from, tweak) {
   return dir;
 }
 function zip(dir, zipPath) {
-  // Windows'ta yerleşik tar (bsdtar) zip üretir; içerik doğrudan kökte olur.
-  execFileSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), ['-a', '-c', '-f', zipPath, '-C', dir, '.'], { stdio: 'inherit' });
+  // Standart zip (öneksiz, "/" ayraçlı yollar): Windows Gezgini ve cPanel Dosya Yöneticisi ile uyumlu.
+  // (bsdtar'ın "./" önekli zip'leri Gezgin'de BOŞ görünür.)
+  const py = [
+    'import sys, os, zipfile',
+    'src, dst = sys.argv[1], sys.argv[2]',
+    'with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as z:',
+    '    for r, _, fs in os.walk(src):',
+    '        for f in fs:',
+    '            p = os.path.join(r, f)',
+    '            z.write(p, os.path.relpath(p, src).replace(os.sep, "/"))',
+  ].join(String.fromCharCode(10));
+  execFileSync('python', ['-c', py, dir, zipPath], { stdio: 'inherit' });
 }
 const setConfigJs = (dir) => fs.writeFileSync(path.join(dir, 'config.js'), `window.GTU_API_URL = '${apiIndex}';\n`);
 
