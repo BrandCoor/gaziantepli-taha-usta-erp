@@ -1,4 +1,5 @@
 // Gaziantepli Taha Usta - Restoran Veri Servisi (Gider, Toptancı & Net Kasa Destekli Z Raporu)
+import { ProcessedIdStore, normalizeIncomingId } from './incomingOrderDedup';
 import { dataService } from './dataService';
 import { realtimeSyncService } from './realtimeSyncService';
 import { sortTablesNaturally } from '../utils/tableSorting';
@@ -757,7 +758,7 @@ class RestaurantDataService {
   private kitchenPrintCallback?: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void;
   private billPrintCallback?: (table: TableState, items: OrderItemState[]) => void;
   private isProcessingRemoteSync = false;
-  private processedIncomingOrderIds: Set<string> = new Set();
+  private processedIncomingOrderIds = new ProcessedIdStore(localStorage);
 
   public onKitchenOrderPrint(cb: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void) {
     this.kitchenPrintCallback = cb;
@@ -1142,41 +1143,61 @@ class RestaurantDataService {
       const res = await fetch(`${getApiSyncUrl()}?action=pull_pending_orders`);
       const data = await res.json();
       if (data.success && data.orders && data.orders.length > 0) {
+        const handledIds: string[] = [];
         data.orders.forEach((ord: any) => {
-          if (ord.type === 'BILL_REQUEST') {
-            this.setBillRequested(ord.tableId);
-            const tbl = this.getTables().find(t => t.id === ord.tableId);
-            if (tbl && tbl.order?.items && tbl.order.items.length > 0 && this.billPrintCallback) {
-              this.billPrintCallback(tbl, tbl.order.items);
+          let handled = false;
+          try {
+            const dedupId = normalizeIncomingId(ord);
+            if (ord.type !== 'ORDER' && ord.type !== undefined && this.processedIncomingOrderIds.has(dedupId)) {
+              handled = true; // daha önce işlendi, yalnızca onayı tekrarla
+            } else if (ord.type === 'BILL_REQUEST') {
+              this.setBillRequested(ord.tableId);
+              const tbl = this.getTables().find(t => t.id === ord.tableId);
+              if (tbl && tbl.order?.items && tbl.order.items.length > 0 && this.billPrintCallback) {
+                this.billPrintCallback(tbl, tbl.order.items);
+              }
+              this.processedIncomingOrderIds.add(dedupId);
+              handled = true;
+            } else if (ord.type === 'TRANSFER_TABLE') {
+              this.transferTable(ord.sourceTableId, ord.targetTableId);
+              this.processedIncomingOrderIds.add(dedupId);
+              handled = true;
+            } else {
+              handled = this.processIncomingOrder(ord);
             }
-          } else if (ord.type === 'TRANSFER_TABLE') {
-            this.transferTable(ord.sourceTableId, ord.targetTableId);
-          } else {
-            this.processIncomingOrder(ord);
+          } catch (err) {
+            console.error('Gelen sipariş işlenemedi, onaylanmayacak (tekrar denenecek):', err);
           }
+          if (handled && ord.id) handledIds.push(String(ord.id));
         });
+        // Yalnızca kalıcı olarak işlenen siparişler bulutta onaylanır; aksi halde sonraki turda tekrar gelir.
+        if (handledIds.length > 0) {
+          try {
+            await fetch(`${getApiSyncUrl()}?action=ack_orders`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids: handledIds }),
+            });
+          } catch (ackErr) {
+            // Onay gitmezse sipariş tekrar gelir; kalıcı tekrar engelleme çift işlemeyi önler.
+          }
+        }
       }
     } catch (e) {}
   }
 
-  public processIncomingOrder(incoming: any) {
-    if (!incoming || !incoming.tableId) return;
+  /** @returns true: sipariş kalıcı işlendi (ya da daha önce işlenmişti) ve onaylanabilir; false: işlenemedi. */
+  public processIncomingOrder(incoming: any): boolean {
+    if (!incoming || !incoming.tableId) return false;
 
-    const orderDedupId = incoming.id || incoming.orderId || `${incoming.tableId}-${incoming.totalAmount || ''}-${incoming.items?.length || 0}-${incoming.timestamp || ''}`;
-    if (orderDedupId && this.processedIncomingOrderIds.has(orderDedupId)) {
-      return;
-    }
-    if (orderDedupId) {
-      this.processedIncomingOrderIds.add(orderDedupId);
-      if (this.processedIncomingOrderIds.size > 200) {
-        const first = Array.from(this.processedIncomingOrderIds)[0];
-        this.processedIncomingOrderIds.delete(first);
-      }
+    const orderDedupId = normalizeIncomingId(incoming);
+    if (this.processedIncomingOrderIds.has(orderDedupId)) {
+      return true;
     }
 
     const tables = this.getTables();
     const table = tables.find(t => t.id === incoming.tableId);
-    if (!table) return;
+    if (!table) return false;
 
     const existingItems = table.order?.items || [];
     const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -1191,6 +1212,8 @@ class RestaurantDataService {
 
     const mergedItems = [...existingItems, ...newItems];
     this.updateTableOrder(table.id, mergedItems, incoming.waiterName, table.customerInfo, incoming.orderNote);
+    // Adisyon yazıldıktan HEMEN sonra kalıcı olarak işaretle (yeniden başlatmada çift ekleme olmaz).
+    this.processedIncomingOrderIds.add(orderDedupId);
 
     // Garsonun mobilden girdiği yeni sipariş kalemlerini anında mutfak yazıcılarına bas
     if (newItems.length > 0 && this.kitchenPrintCallback) {
@@ -1198,6 +1221,7 @@ class RestaurantDataService {
       const isAdditionalOrder = existingItems.length > 0;
       this.kitchenPrintCallback(currentTable, newItems, incoming.waiterName || 'Garson', incoming.orderNote, isAdditionalOrder);
     }
+    return true;
   }
 
   public getSections(): SectionConfig[] {

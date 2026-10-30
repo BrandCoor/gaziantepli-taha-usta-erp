@@ -1891,7 +1891,14 @@
       btn.innerText = 'Mutfağa İletiliyor...';
 
       const orderNote = document.getElementById('generalOrderNoteInput').value.trim();
+      // Aynı sepet için tekrar denemelerde AYNI clientOrderId kullanılır; sunucu mükerrer kaydı engeller.
+      const fingerprint = JSON.stringify([selectedTable.id, orderNote, cart.map(i => [i.productId || i.id, i.quantity, i.note || ''])]);
+      if (!window.__pendingOrder || window.__pendingOrder.fingerprint !== fingerprint) {
+        const rnd = (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+        window.__pendingOrder = { fingerprint, clientOrderId: rnd };
+      }
       const orderPayload = {
+        clientOrderId: window.__pendingOrder.clientOrderId,
         tableId: selectedTable.id,
         tableName: selectedTable.name,
         waiterName: currentWaiter.name,
@@ -1900,19 +1907,36 @@
         totalAmount: cart.reduce((s, i) => s + (i.price * i.quantity), 0)
       };
 
-      broadcastRealtime('ORDER_SUBMITTED', orderPayload);
-
+      let accepted = false;
+      let errorText = 'Sunucuya ulaşılamadı';
       try {
-        await apiFetch('send_order', {
+        const res = await apiFetch('send_order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderPayload)
         });
-      } catch (e) {}
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && data.success === true) {
+          accepted = true;
+        } else {
+          errorText = (data && data.error) ? data.error : `Sunucu siparişi kabul etmedi (${res.status})`;
+        }
+      } catch (e) {
+        errorText = 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.';
+      }
 
-      showToast(`✅ ${selectedTable.name} siparişi mutfağa iletildi ve fiş basıldı!`, 'success');
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-fire text-base"></i> <span>Siparişi Onayla & Mutfağa Gönder</span>';
+
+      if (!accepted) {
+        // Sepet KORUNUR; sipariş gönderilmiş gibi gösterilmez. "Tekrar dene" aynı kimlikle gönderir.
+        showToast(`❌ Sipariş GÖNDERİLEMEDİ: ${errorText} Sepetiniz korundu, tekrar deneyin.`, 'error');
+        return;
+      }
+
+      window.__pendingOrder = null;
+      broadcastRealtime('ORDER_SUBMITTED', orderPayload);
+      showToast(`✅ ${selectedTable.name} siparişi kasaya iletildi.`, 'success');
 
       closeCartDrawer();
       closeOrderModal();

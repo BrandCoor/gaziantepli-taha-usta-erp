@@ -1145,6 +1145,12 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($input) {
         $type = $input['type'] ?? 'ORDER';
         $orderId = 'ord-' . time() . '-' . rand(100, 999);
+        // Tekrar-gönderim koruması: istemci kimliği (clientOrderId) varsa sipariş kimliği ondan türetilir.
+        // Aynı kimlikle gelen ikinci istek PRIMARY KEY nedeniyle yeni kayıt oluşturamaz.
+        $clientOrderId = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($input['clientOrderId'] ?? ''));
+        if ($clientOrderId !== '' && strlen($clientOrderId) >= 8 && strlen($clientOrderId) <= 48) {
+            $orderId = 'ord-' . $clientOrderId;
+        }
 
         if ($useMysql) {
             if ($type === 'BILL_REQUEST') {
@@ -1177,7 +1183,16 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                                        VALUES (?, ?, ?, 'MÜŞTERİ', 'WAITER_CALL', '[]', 0, 0, 'NEW', NOW())");
                 $stmt->execute(['call-' . time(), $input['tableId'], $input['tableName'] ?? 'Masa']);
             } else {
-                // Standart Yemek Siparişi
+                // Standart Yemek Siparişi (tek işlem: kayıt + masa güncelleme birlikte olur ya da hiç olmaz)
+                $pdo->beginTransaction();
+                try {
+                $dupStmt = $pdo->prepare("SELECT `id` FROM `siparisler` WHERE `id` = ? FOR UPDATE");
+                $dupStmt->execute([$orderId]);
+                if ($dupStmt->fetch()) {
+                    $pdo->commit();
+                    echo json_encode(['success' => true, 'orderId' => $orderId, 'duplicate' => true, 'mode' => 'MYSQL']);
+                    exit;
+                }
                 $newItems = $input['items'] ?? [];
                 $orderTotal = 0;
                 foreach ($newItems as $it) {
@@ -1190,7 +1205,7 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Masadaki mevcut açık adisyonu al ve birleştir
                 $existingItems = [];
                 $existingTotal = 0.0;
-                $stmtExist = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ?");
+                $stmtExist = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ? FOR UPDATE");
                 $stmtExist->execute([$input['tableId']]);
                 $curRow = $stmtExist->fetch();
                 if ($curRow && !empty($curRow['aktif_siparis'])) {
@@ -1234,6 +1249,14 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $combinedTotal,
                     $input['tableId']
                 ]);
+                $pdo->commit();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                    error_log('send_order hata: ' . $e->getMessage());
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Sipariş kaydedilemedi']);
+                    exit;
+                }
             }
 
             $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`) VALUES ('last_updated', ?) ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([time()]);
@@ -1327,28 +1350,56 @@ if ($action === 'pull_pending_orders') {
             $idsToMark[] = $r['id'];
         }
 
-        if (!empty($idsToMark)) {
-            $inClause = implode(',', array_fill(0, count($idsToMark), '?'));
-            $updateStmt = $pdo->prepare("UPDATE `siparisler` SET `yazdirildi` = 1 WHERE `id` IN ($inClause)");
-            $updateStmt->execute($idsToMark);
-        }
-
+        // NOT: Siparişler burada "tüketilmez". Kasa kalıcı olarak kaydettikten sonra ack_orders ile onaylar.
         echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'MYSQL']);
         exit;
     } else {
         $pending = [];
         if (!empty($db['orders'])) {
-            foreach ($db['orders'] as &$ord) {
+            foreach ($db['orders'] as $ord) {
                 if (empty($ord['printed'])) {
                     $pending[] = $ord;
-                    $ord['printed'] = true;
                 }
             }
-            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         }
         echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'JSON']);
         exit;
     }
+}
+
+// ========================================================
+// 6b. KASA SİPARİŞİ KALICI KAYDETTİKTEN SONRA ONAYLAR (ack_orders)
+// ========================================================
+if ($action === 'ack_orders' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $in = json_decode(file_get_contents('php://input'), true);
+    $ids = [];
+    if (is_array($in) && isset($in['ids']) && is_array($in['ids'])) {
+        foreach ($in['ids'] as $i) {
+            if (is_string($i) && $i !== '' && strlen($i) <= 60) { $ids[] = $i; }
+        }
+    }
+    $ids = array_slice(array_values(array_unique($ids)), 0, 200);
+    if (empty($ids)) {
+        echo json_encode(['success' => true, 'acked' => 0]);
+        exit;
+    }
+    if ($useMysql) {
+        $inClause = implode(',', array_fill(0, count($ids), '?'));
+        $upd = $pdo->prepare("UPDATE `siparisler` SET `yazdirildi` = 1, `durum` = 'RECEIVED' WHERE `id` IN ($inClause)");
+        $upd->execute($ids);
+        echo json_encode(['success' => true, 'acked' => $upd->rowCount()]);
+    } else {
+        $n = 0;
+        if (!empty($db['orders'])) {
+            foreach ($db['orders'] as &$ord) {
+                if (in_array($ord['id'] ?? '', $ids, true) && empty($ord['printed'])) { $ord['printed'] = true; $n++; }
+            }
+            unset($ord);
+            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        }
+        echo json_encode(['success' => true, 'acked' => $n]);
+    }
+    exit;
 }
 
 // ========================================================
