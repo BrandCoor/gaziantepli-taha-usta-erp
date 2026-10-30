@@ -35,12 +35,14 @@ import {
 } from '../../../services/onlinePlatformService';
 import { getApiSyncUrl } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
+import { OnlineDiagnosticsPanel } from '../../online-orders/OnlineDiagnosticsPanel';
 
 export interface PlatformApiSettingsTabProps {
   onSaveSuccess?: () => void;
 }
 
 export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ onSaveSuccess }) => {
+  const [diagOpen, setDiagOpen] = useState(false);
   const [activePlatform, setActivePlatform] = useState<OnlinePlatformCode>('TRENDYOL');
   const [config, setConfig] = useState<FoodPlatformsConfig>(restaurantDataService.getFoodPlatformsConfig());
   const [testingConnection, setTestingConnection] = useState<string | null>(null);
@@ -193,7 +195,8 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
 
   return (
     <div className="space-y-6 select-none font-sans">
-      
+      {diagOpen && <OnlineDiagnosticsPanel onClose={() => setDiagOpen(false)} />}
+
       {/* ÜST BİLGİLENDİRME VE POLİTİKA */}
       <div className="bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
@@ -221,6 +224,15 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
             />
             <span className="text-xs font-bold text-white">Kesintisiz Sesli Zil</span>
           </label>
+
+          <button
+            type="button"
+            onClick={() => setDiagOpen(true)}
+            className="px-4 py-2.5 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] rounded-2xl text-xs font-black cursor-pointer"
+            title="Platformdan gelen tüm istekleri ve neden kabul edilmediklerini gör"
+          >
+            Gelen İstekler / Tanı
+          </button>
 
           <button
             onClick={handleSaveAll}

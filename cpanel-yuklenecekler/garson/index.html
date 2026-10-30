@@ -556,12 +556,26 @@
 
     // Eşleşme sonrası sunucudan gelen kalıcı cihaz anahtarı.
     let deviceToken = persistentGet('gtu_device_token') || '';
+    // Oturum, sayfa yenilense/uygulama kapanıp açılsa da korunur (sunucu belirteci 12 saat geçerli).
+    // PIN hiçbir yerde saklanmaz; yalnızca imzalı oturum belirteci ve garson adı tutulur.
+    const SESSION_KEEP_MS = 11 * 3600 * 1000;
     let sessionToken = '';
-    try { sessionToken = sessionStorage.getItem('gtu_session') || ''; } catch (e) {}
+    let restoredWaiter = null;
+    try {
+      const raw = localStorage.getItem('gtu_session_v2');
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (o && o.token && o.waiter && o.exp > Date.now()) { sessionToken = o.token; restoredWaiter = o.waiter; }
+        else localStorage.removeItem('gtu_session_v2');
+      }
+    } catch (e) {}
 
-    function setSessionToken(t) {
+    function setSessionToken(t, waiter) {
       sessionToken = t || '';
-      try { if (t) sessionStorage.setItem('gtu_session', t); else sessionStorage.removeItem('gtu_session'); } catch (e) {}
+      try {
+        if (t && waiter) localStorage.setItem('gtu_session_v2', JSON.stringify({ token: t, waiter: { id: waiter.id, name: waiter.name }, exp: Date.now() + SESSION_KEEP_MS }));
+        else localStorage.removeItem('gtu_session_v2');
+      } catch (e) {}
     }
 
     let sessionExpiredShown = false;
@@ -995,7 +1009,7 @@
         if (data.success && data.waiter) {
           loginSuccessful = true;
           authenticatedWaiter = data.waiter;
-          setSessionToken(data.session || data.token || '');
+          setSessionToken(data.session || data.token || '', data.waiter);
         } else if (data && data.message) {
           showToast(data.message, 'error');
           enteredPin = '';
@@ -1283,6 +1297,19 @@
 
     // Gerçek Zamanlı Dinleyicileri Başlat
     initSyncListeners();
+
+    // Sayfa yenilendiğinde PIN'i yeniden sormadan oturumu geri yükle.
+    // Belirteç sunucuda geçersizse ilk istek 401 döner ve handleSessionExpired PIN ekranına döndürür.
+    if (restoredWaiter && sessionToken && deviceToken) {
+      currentWaiter = restoredWaiter;
+      updateWaiterUI();
+      document.getElementById('pinScreen').classList.add('hidden');
+      document.getElementById('pairingScreen').classList.add('hidden');
+      document.getElementById('pairingScreen').classList.remove('flex');
+      document.getElementById('mainApp').classList.remove('hidden');
+      document.getElementById('mainApp').classList.add('flex');
+      fetchLiveState();
+    }
 
     function updateHeaderStats() {
       const occupied = liveTables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');

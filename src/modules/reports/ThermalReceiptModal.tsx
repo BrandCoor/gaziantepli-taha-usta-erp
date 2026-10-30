@@ -1,6 +1,6 @@
 import React from 'react';
 import { Printer, X } from 'lucide-react';
-import { ZReport } from '../../services/restaurantDataService';
+import { ZReport, restaurantDataService } from '../../services/restaurantDataService';
 
 interface ThermalReceiptModalProps {
   receiptData: {
@@ -82,11 +82,18 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({ receip
           >
             {/* Üst Bilgi */}
             <div className="text-center pb-2 border-b border-dashed border-slate-400">
-              <div className="font-bold text-sm tracking-wider">GAZİANTEPLİ TAHA USTA</div>
-              <div className="text-[10px]">Kebap & Lahmacun Salonu</div>
-              <div className="text-[9px] text-slate-700">Şehitkamil / Gaziantep</div>
-              <div className="text-[9px] text-slate-700">Tel: 0 (342) 555 00 27</div>
-              <div className="text-[9px] text-slate-700">V.D: Şehitkamil • V.No: 1234567890</div>
+              {(() => {
+                const r = restaurantDataService.getReceiptSettings();
+                return (
+                  <>
+                    <div className="font-bold text-sm tracking-wider">{r.title}</div>
+                    {r.subtitle && <div className="text-[10px]">{r.subtitle}</div>}
+                    {r.address && <div className="text-[9px] text-slate-700">{r.address}</div>}
+                    {r.phone && <div className="text-[9px] text-slate-700">Tel: {r.phone}</div>}
+                    {(r.taxOffice || r.taxNumber) && <div className="text-[9px] text-slate-700">{r.taxOffice}{r.taxNumber ? ` • VKN: ${r.taxNumber}` : ''}</div>}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Belge Türü & Z No */}

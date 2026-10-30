@@ -38,8 +38,6 @@ import {
 } from '../../services/onlinePlatformService';
 import { printerService } from '../../services/printerService';
 import { notify } from '../../services/notificationService';
-import { PlatformApiSettingsTab } from '../restaurant-settings/components/PlatformApiSettingsTab';
-import { OnlineDiagnosticsPanel } from './OnlineDiagnosticsPanel';
 
 
 export type OrderDeliveryModel = 'RESTAURANT' | 'PLATFORM' | 'RESTAURANT_COURIER' | 'PLATFORM_COURIER';
@@ -109,9 +107,7 @@ export function mapServerOrder(o: any): OnlineOrder {
 
 export const OnlineOrdersView: React.FC = () => {
   const [activePlatformFilter, setActivePlatformFilter] = useState<'ALL' | 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI'>('ALL');
-  const [activeDeliveryFilter, setActiveDeliveryFilter] = useState<'ALL' | 'RESTAURANT' | 'PLATFORM'>('ALL');
   const [activeStatusTab, setActiveStatusTab] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [rejectModalOrder, setRejectModalOrder] = useState<OnlineOrder | null>(null);
   const [selectedRejectReason, setSelectedRejectReason] = useState('Mutfak Kapasitesi Dolu');
   const [assignCourierModalOrder, setAssignCourierModalOrder] = useState<OnlineOrder | null>(null);
@@ -157,7 +153,6 @@ export const OnlineOrdersView: React.FC = () => {
   });
   const [serverError, setServerError] = useState<string>('');
   const [hiddenCount, setHiddenCount] = useState(0);
-  const [diagOpen, setDiagOpen] = useState(false);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY_ONLINE_ORDERS, JSON.stringify(orders)); } catch (e) {}
@@ -426,11 +421,6 @@ export const OnlineOrdersView: React.FC = () => {
     if (activePlatformFilter !== 'ALL' && o.platform !== activePlatformFilter) return false;
 
     // 3. Teslimat Modeli Filtresi
-    if (activeDeliveryFilter !== 'ALL') {
-      const isRest = o.deliveryModel === 'RESTAURANT' || o.deliveryModel === 'RESTAURANT_COURIER';
-      if (activeDeliveryFilter === 'RESTAURANT' && !isRest) return false;
-      if (activeDeliveryFilter === 'PLATFORM' && isRest) return false;
-    }
 
     // 4. Durum Sekmesi
     if (activeStatusTab === 'ACTIVE') return o.status !== 'DELIVERED' && o.status !== 'CANCELLED';
@@ -512,7 +502,6 @@ export const OnlineOrdersView: React.FC = () => {
           ⚠ {hiddenCount} aktif sipariş, platform "PASİF" olduğu için bu listede GİZLİ. Platformu Ayarlar › Yemek Platformları'ndan aktif edin.
         </div>
       )}
-      {diagOpen && <OnlineDiagnosticsPanel onClose={() => setDiagOpen(false)} />}
       
       {/* 🔴 SESLİ BİLDİRİM VE BEKLEYEN SİPARİŞ ÇUBUĞU */}
       {hasNewOrder && (
@@ -591,21 +580,6 @@ export const OnlineOrdersView: React.FC = () => {
             </button>
           )}
 
-          <button
-            onClick={() => setSettingsModalOpen(true)}
-            className="px-4 py-2.5 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] border border-[#F5C877]/30 rounded-2xl text-xs font-black flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-95"
-          >
-            <Settings className="w-4 h-4" />
-            <span>API & Platform Ayarları</span>
-          </button>
-
-          <button
-            onClick={() => setDiagOpen(true)}
-            className="px-3 py-2 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer"
-            title="Platformdan gelen tüm istekleri ve neden kabul edilmediklerini gör"
-          >
-            <span>🔎 Gelen İstekler / Tanı</span>
-          </button>
         </div>
       </div>
 
@@ -615,15 +589,8 @@ export const OnlineOrdersView: React.FC = () => {
           <Store className="w-12 h-12 text-[#8E8E98] mx-auto opacity-50" />
           <h3 className="text-base font-black text-white">Aktif Online Yemek Platformu Bulunmuyor</h3>
           <p className="text-xs text-[#8E8E98] max-w-md mx-auto">
-            Yemeksepeti, Trendyol Yemek veya GetirYemek kanallarını aktifleştirmek ve API ayarlarını yapılandırmak için ayarlar panelini açın.
+            Yemeksepeti, Trendyol Yemek veya GetirYemek kanallarını kullanmak için Restoran & Donanım Ayarları bölümünden platformu etkinleştirin.
           </p>
-          <button
-            onClick={() => setSettingsModalOpen(true)}
-            className="px-5 py-2.5 bg-[#F5C877] hover:bg-[#ffcf7f] text-slate-950 rounded-2xl text-xs font-black inline-flex items-center gap-2 cursor-pointer shadow-lg transition-all"
-          >
-            <Settings className="w-4 h-4" />
-            <span>Platformları Aktifleştir & Yapılandır</span>
-          </button>
         </div>
       ) : (
         <div className={`grid grid-cols-1 ${
@@ -767,35 +734,6 @@ export const OnlineOrdersView: React.FC = () => {
             })}
           </div>
 
-          {/* Kurye Modeli Filtresi */}
-          <div className="flex bg-[#1C1C20] p-1.5 rounded-2xl border border-[#2C2C34] gap-1">
-            <button
-              onClick={() => setActiveDeliveryFilter('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeDeliveryFilter === 'ALL' ? 'bg-zinc-700 text-white' : 'text-[#8E8E98] hover:text-white'
-              }`}
-            >
-              Tüm Kuryeler
-            </button>
-            <button
-              onClick={() => setActiveDeliveryFilter('RESTAURANT')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                activeDeliveryFilter === 'RESTAURANT' ? 'bg-emerald-600 text-white' : 'text-emerald-400 hover:text-white'
-              }`}
-            >
-              <Bike className="w-3.5 h-3.5" />
-              <span>Restoran Kuryesi</span>
-            </button>
-            <button
-              onClick={() => setActiveDeliveryFilter('PLATFORM')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                activeDeliveryFilter === 'PLATFORM' ? 'bg-indigo-600 text-white' : 'text-indigo-400 hover:text-white'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Platform Kuryesi</span>
-            </button>
-          </div>
         </div>
 
         {/* Aktif / Geçmiş Sekmeleri */}
@@ -832,15 +770,6 @@ export const OnlineOrdersView: React.FC = () => {
                 Trendyol Yemek, Getir Yemek veya Yemeksepeti üzerinden gelen siparişler anlık olarak bu alanda listelenecek ve sesli bildirim devreye girecektir.
               </p>
             </div>
-            <div className="pt-2">
-              <button
-                onClick={() => setSettingsModalOpen(true)}
-                className="px-5 py-2.5 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] border border-[#F5C877]/30 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-2"
-              >
-                <Settings className="w-4 h-4" />
-                <span>API & Entegrasyon Ayarlarını Görüntüle</span>
-              </button>
-            </div>
           </div>
         ) : (
           filteredOrders.map((ord) => {
@@ -848,7 +777,7 @@ export const OnlineOrdersView: React.FC = () => {
             const isPreparing = ord.status === 'PREPARING';
             const isOnWay = ord.status === 'ON_WAY';
             const isRestaurantCourier = ord.deliveryModel === 'RESTAURANT' || ord.deliveryModel === 'RESTAURANT_COURIER';
-            const handoverCode = ord.handoverCode || ord.platformCode?.replace(/[^0-9]/g, '').slice(-4) || '1842';
+            const handoverCode = ord.handoverCode || ord.platformCode?.replace(/[^0-9]/g, '').slice(-4) || '';
 
             return (
               <div 
@@ -1167,44 +1096,6 @@ export const OnlineOrdersView: React.FC = () => {
           })
         )}
       </div>
-
-      {/* MODAL 1: PLATFORM API & KURYE AYARLARI MODALI */}
-      {settingsModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#18181C] border border-[#2C2C34] rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-4">
-              <div>
-                <h3 className="text-lg font-black text-white flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-[#F5C877]" />
-                  <span>Yemek Platformları API & Teslimat Yapılandırması</span>
-                </h3>
-                <p className="text-xs text-[#8E8E98] mt-0.5">
-                  Trendyol Yemek, Getir Yemek ve Yemeksepeti API anahtarları, satıcı tanımları ve kurye teslimat modelleri.
-                </p>
-              </div>
-              <button
-                onClick={() => setSettingsModalOpen(false)}
-                className="w-8 h-8 bg-[#282830] hover:bg-[#34343E] text-[#8E8E98] hover:text-white rounded-full flex items-center justify-center text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <PlatformApiSettingsTab onSaveSuccess={() => {
-              setPlatformConfig(restaurantDataService.getFoodPlatformsConfig());
-            }} />
-
-            <div className="pt-4 border-t border-[#2C2C34] flex justify-end">
-              <button
-                onClick={() => setSettingsModalOpen(false)}
-                className="px-6 py-2.5 bg-[#F5C877] text-slate-950 rounded-2xl text-xs font-black cursor-pointer shadow-lg hover:brightness-110"
-              >
-                Tamamla ve Kapat
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODAL 2: SİPARİŞ İPTAL / RED GEREKÇESİ MODALI */}
       {rejectModalOrder && (

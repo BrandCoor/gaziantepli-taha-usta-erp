@@ -15,6 +15,7 @@ import {
   listSystemPrinters,
   scanLocalNetworkPrinters
 } from './printer';
+import { buildTicketBuffer } from './receiptBuilder';
 import { gCallerIdDriver, CallerIdEvent } from './callerid/gcallerid';
 
 import { isAllowedOrigin, isAllowedHost, isPrivateOrLoopbackIp } from './netGuard';
@@ -144,16 +145,7 @@ app.post('/api/printers/print-ticket', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Yazıcı bilgisi eksik' });
     }
 
-    let buffer: Buffer;
-    if (jobType === 'BILL') {
-      buffer = generateBillReceipt(data);
-    } else if (jobType === 'CANCEL') {
-      buffer = generateCancelReceipt(data);
-    } else if (jobType === 'Z_REPORT') {
-      buffer = generateZReportReceipt(data);
-    } else {
-      buffer = generateKitchenReceipt(data);
-    }
+    const buffer = buildTicketBuffer(jobType, { ...data, paperWidth: data?.paperWidth ?? printer.paperWidth });
 
     if (printer.type === 'NETWORK' && printer.ipAddress) {
       const success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);

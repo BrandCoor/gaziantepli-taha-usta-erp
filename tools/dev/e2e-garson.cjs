@@ -70,8 +70,16 @@ const check = (name, ok, extra = '') => { results.push(ok); console.log((ok ? 'G
   await sleep(2500);
   const mainVisible = await ev(`!document.getElementById('mainApp').classList.contains('hidden')`);
   check('PIN ile giriş yapıldı, ana ekran açıldı', mainVisible === true);
-  const sess = await ev(`sessionStorage.getItem('gtu_session') || ''`);
+  const sess = await ev(`(function(){try{return JSON.parse(localStorage.getItem('gtu_session_v2')||'{}').token||''}catch(e){return ''}})()`);
   check('sunucu imzalı oturum verdi (PIN telefonda saklanmıyor)', sess.includes('.') && (await ev(`(function(){var bad=false;[localStorage,sessionStorage].forEach(function(st){for(var i=0;i<st.length;i++){var k=st.key(i),v=st.getItem(k)||''; if(v==='2468'||/"pin"\s*:\s*"?2468"?/.test(v)||/pin/i.test(k)&&v.indexOf('2468')>-1) bad=true;}});return bad})()`)) === false);
+
+  // --- 2b) sayfa yenilenince oturum korunur (PIN yeniden sorulmaz)
+  await send('Page.reload', {});
+  await sleep(3500);
+  const afterReload = await ev(`!document.getElementById('mainApp').classList.contains('hidden') && document.getElementById('pinScreen').classList.contains('hidden')`);
+  check('sayfa yenilenince oturum korundu, PIN tekrar sorulmadı', afterReload === true);
+  const keepsName = await ev(`document.getElementById('activeWaiterName').innerText`);
+  check('yenilemeden sonra garson adı görünüyor', keepsName === 'E2E Garson', keepsName);
 
   // --- 3) sipariş hazırlama (gerçek sunucu verisiyle)
   await ev(`fetchLiveState()`);

@@ -19,6 +19,7 @@ import {
   sendToNetworkPrinter,
   sendToWindowsSpooler
 } from './printer';
+import { buildTicketBuffer } from './receiptBuilder';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -187,16 +188,7 @@ secureHandle('print-network-ticket', async (event, { ip, port, ticketType, data 
   try {
     const bad = validNetTarget(ip, port);
     if (bad) return { success: false, error: bad };
-    let buffer: Buffer;
-    if (ticketType === 'BILL') {
-      buffer = generateBillReceipt(data);
-    } else if (ticketType === 'CANCEL') {
-      buffer = generateCancelReceipt(data);
-    } else if (ticketType === 'Z_REPORT') {
-      buffer = generateZReportReceipt(data);
-    } else {
-      buffer = generateKitchenReceipt(data);
-    }
+    const buffer = buildTicketBuffer(ticketType, data);
     const success = await sendToNetworkPrinter(ip, port || 9100, buffer);
     return { success };
   } catch (err: any) {
@@ -205,8 +197,12 @@ secureHandle('print-network-ticket', async (event, { ip, port, ticketType, data 
 });
 
 // USB / WINDOWS YAZICISINA SESSİZ FİŞ DÖKÜMÜ & WIN32 RAW SPOOLER
-secureHandle('print-usb-receipt', async (event, { printerName, rawText, buffer, html }) => {
+secureHandle('print-usb-receipt', async (event, { printerName, rawText, buffer, html, ticketType, data }) => {
   try {
+    if (ticketType) {
+      const spoolRes = await sendToWindowsSpooler(printerName, buildTicketBuffer(ticketType, data));
+      return { success: spoolRes.success, error: spoolRes.error };
+    }
     if (buffer) {
       const spoolRes = await sendToWindowsSpooler(printerName, Buffer.from(buffer));
       return { success: spoolRes.success, error: spoolRes.error };
