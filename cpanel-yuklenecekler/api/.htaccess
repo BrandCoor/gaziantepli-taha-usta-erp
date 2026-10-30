@@ -1,0 +1,33 @@
+# Gizli/yapılandırma ve veri dosyaları web'den okunamaz
+<FilesMatch "^(config\.php|config\.local\.php|config\.local\.example\.php|security\.php|version\.php|restaurant_sync\.json)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "\.(log|sql|bak)$">
+  Require all denied
+</FilesMatch>
+Options -Indexes
+
+# ---- Güvenlik (otomatik eklendi) ----
+Options -Indexes
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "no-referrer"
+  Header always set Strict-Transport-Security "max-age=31536000"
+  Header always set Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+</IfModule>
+
+# ---- Platform webhook adresleri ----
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Eski adres düzeni (api alt klasörü ile) geriye dönük uyum
+  RewriteRule ^api/online/webhook\.php$ online/webhook.php [QSA,L]
+  RewriteRule ^api/index\.php$ index.php [QSA,L]
+</IfModule>

@@ -1,3 +1,4 @@
+import { getBusinessDate, formatLocalDate } from '../../utils/businessDate';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart2, 
@@ -62,7 +63,7 @@ export const ReportsView: React.FC = () => {
   const [selectedZHistoryDetail, setSelectedZHistoryDetail] = useState<ZReport | null>(null);
 
   // Filtreleme State'leri
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getBusinessDate();
   const [datePreset, setDatePreset] = useState<'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'last_30_days' | 'this_year' | 'custom'>('today');
   const [startDate, setStartDate] = useState<string>(todayStr);
   const [endDate, setEndDate] = useState<string>(todayStr);
@@ -135,46 +136,37 @@ export const ReportsView: React.FC = () => {
 
   // Tarih Presetleri
   useEffect(() => {
-    const now = new Date();
+    // Tüm hazır aralıklar İŞ GÜNÜNE göre hesaplanır (gece 05:00 kesimi): gece yarısından sonra bile "bugün" doğru gün olur.
+    const [by, bm, bd] = getBusinessDate().split('-').map(Number);
+    const now = new Date(by, bm - 1, bd);
+    const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+    const monday = addDays(now, -((now.getDay() + 6) % 7));
     if (datePreset === 'today') {
-      const d = now.toISOString().split('T')[0];
+      const d = formatLocalDate(now);
       setStartDate(d);
       setEndDate(d);
     } else if (datePreset === 'yesterday') {
-      const y = new Date();
-      y.setDate(now.getDate() - 1);
-      const yStr = y.toISOString().split('T')[0];
+      const yStr = formatLocalDate(addDays(now, -1));
       setStartDate(yStr);
       setEndDate(yStr);
     } else if (datePreset === 'this_week') {
-      const curr = new Date();
-      const first = new Date(curr.setDate(curr.getDate() - (curr.getDay() === 0 ? 6 : curr.getDay() - 1)));
-      setStartDate(first.toISOString().split('T')[0]);
-      setEndDate(new Date().toISOString().split('T')[0]);
+      setStartDate(formatLocalDate(monday));
+      setEndDate(formatLocalDate(now));
     } else if (datePreset === 'last_week') {
-      const curr = new Date();
-      const first = new Date(curr.setDate(curr.getDate() - (curr.getDay() === 0 ? 6 : curr.getDay() - 1) - 7));
-      const last = new Date(curr.setDate(curr.getDate() + 6));
-      setStartDate(first.toISOString().split('T')[0]);
-      setEndDate(last.toISOString().split('T')[0]);
+      setStartDate(formatLocalDate(addDays(monday, -7)));
+      setEndDate(formatLocalDate(addDays(monday, -1)));
     } else if (datePreset === 'this_month') {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      setStartDate(first);
-      setEndDate(now.toISOString().split('T')[0]);
+      setStartDate(formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setEndDate(formatLocalDate(now));
     } else if (datePreset === 'last_month') {
-      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
-      const last = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
-      setStartDate(first);
-      setEndDate(last);
+      setStartDate(formatLocalDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+      setEndDate(formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 0)));
     } else if (datePreset === 'last_30_days') {
-      const past = new Date();
-      past.setDate(now.getDate() - 30);
-      setStartDate(past.toISOString().split('T')[0]);
-      setEndDate(now.toISOString().split('T')[0]);
+      setStartDate(formatLocalDate(addDays(now, -29))); // bugün dahil 30 gün
+      setEndDate(formatLocalDate(now));
     } else if (datePreset === 'this_year') {
-      const first = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
-      setStartDate(first);
-      setEndDate(now.toISOString().split('T')[0]);
+      setStartDate(formatLocalDate(new Date(now.getFullYear(), 0, 1)));
+      setEndDate(formatLocalDate(now));
     }
   }, [datePreset]);
 
@@ -1245,7 +1237,7 @@ export const ReportsView: React.FC = () => {
                           </tr>
                         ) : (
                           filteredProductsList.map(([pName, stat]: [string, any], idx) => {
-                            const share = filteredReportData.netTotal > 0 ? (stat.total / filteredReportData.netTotal) * 100 : 0;
+                            const share = filteredReportData.grossTotal > 0 ? (stat.total / filteredReportData.grossTotal) * 100 : 0; // ürün tutarları indirim öncesidir
                             return (
                               <tr key={pName} className="hover:bg-[#141416]/50 transition-colors">
                                 <td className="p-3.5 font-bold text-white flex items-center gap-2">

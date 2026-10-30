@@ -12,3 +12,18 @@ bun.lock
 yedek_*/
 *.bak
 app/
+
+# Gizli sunucu yapılandırması
+cpanel-yuklenecekler/api/config.local.php
+prisma/*.db-journal
+.claude/settings.local.json
+cpanel-yuklenecekler/api/online/*.json
+
+# Geliştirici/araç dosyaları (sır içerebilir)
+opencode.json
+prompt.txt
+.claude/
+.github/prompts/
+
+# Sunucu: göç öncesi veri yedekleri (asla Git/paket içine girmez)
+cpanel-yuklenecekler/api/_yedek/

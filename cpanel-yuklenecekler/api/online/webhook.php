@@ -1,256 +1,139 @@
 <?php
 /**
- * GAZİANTEPLİ TAHA USTA ERP - Online Yemek Platformları Webhook Alıcısı
- * -------------------------------------------------------------------------
- * Yemeksepeti / Delivery Hero, Trendyol Yemek ve GetirYemek platformlarından
- * gelen anlık sipariş bildirimlerini güvenli şekilde karşılar ve MySQL'e kaydeder.
+ * Online platform webhook alıcısı (Yemeksepeti Partner API / Trendyol Go Yemek).
+ *
+ * Yemeksepeti: Partner Portal'da "sipariş bildirimi (webhook)" adresi olarak şunu kaydedin:
+ *     https://<api>/online/webhook.php?platform=YEMEKSEPETI
+ *   Portal'daki "statik token" alanına Ayarlar'daki Webhook Gizli Anahtarını yazın (Authorization başlığı veya x-api-key olarak gelir).
+ * Trendyol Go: sipariş çekme (polling) varsayılandır; webhook kayıtlıysa:
+ *     https://<api>/online/webhook.php?platform=TRENDYOL
+ *
+ * Her çağrı (kabul/ret) `online_webhook_log` tablosuna yazılır.
  */
-
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Signature, X-Platform, X-Api-Key');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Api-Key, X-Signature, X-Platform, X-Webhook-Secret, Token');
+header('Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($method === 'OPTIONS') { http_response_code(200); exit; }
+
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/lib.php';
+
+$pdo = getDbConnection();
+if (!$pdo) { http_response_code(503); echo json_encode(['success' => false, 'error' => 'Veritabanı yok']); exit; }
+ensureDatabaseTables($pdo);
+
+// Adres doğrulama/ping istekleri (bazı platformlar kayıt sırasında GET/HEAD atar)
+if ($method === 'GET' || $method === 'HEAD') {
+    echo json_encode(['success' => true, 'service' => 'online-webhook', 'time' => date('c')]);
     exit;
 }
 
-require_once __DIR__ . '/../config.php';
-
-$pdo = getDbConnection();
-if ($pdo) {
-    ensureDatabaseTables($pdo);
+$raw = file_get_contents('php://input') ?: '';
+$headers = op_headers_lower();
+$headerNames = array_keys($headers);
+$data = json_decode($raw, true);
+if (!is_array($data)) {
+    $form = [];
+    parse_str($raw, $form);
+    $data = is_array($form) && $form ? $form : [];
 }
 
-// 1. Platformu Belirle (Query string, Header veya Payload)
-$platformParam = isset($_GET['platform']) ? strtoupper(trim($_GET['platform'])) : '';
-if (empty($platformParam)) {
-    $platformHeader = isset($_SERVER['HTTP_X_PLATFORM']) ? strtoupper(trim($_SERVER['HTTP_X_PLATFORM'])) : '';
-    if (!empty($platformHeader)) {
-        $platformParam = $platformHeader;
-    }
+/* ---------- platform tespiti ---------- */
+$platform = strtoupper(trim((string)($_GET['platform'] ?? '')));
+if ($platform === '' && !empty($headers['x-platform'])) { $platform = strtoupper(trim($headers['x-platform'])); }
+if (strpos($platform, 'TREND') !== false || strpos($platform, 'GETIR') !== false) { $platform = 'TRENDYOL'; } // GetirYemek siparişleri Trendyol üzerinden gelir
+elseif (strpos($platform, 'YEMEK') !== false || strpos($platform, 'YS') === 0) { $platform = 'YEMEKSEPETI'; }
+if (!in_array($platform, OP_PLATFORMS, true)) {
+    op_log($pdo, 'BILINMIYOR', 'WEBHOOK', 'REJECTED', 400, 'Platform belirlenemedi (adreste ?platform= yok)', $headerNames, $raw);
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Platform belirlenemedi']);
+    exit;
 }
 
-// Ham Payload Oku
-$rawPayload = file_get_contents('php://input');
-$data = json_decode($rawPayload, true) ?: [];
+$row = op_platform($pdo, $platform);
+$secret = $row['secret'];
 
-// Eğer query parametresinde platform yoksa payload yapısından tespit et
-if (empty($platformParam)) {
-    if (isset($data['supplierId']) || isset($data['packageId']) || isset($data['orderNumber'])) {
-        $platformParam = 'TRENDYOL';
-    } elseif (isset($data['restaurantId']) && (isset($data['confirmationId']) || isset($data['clientOrderId']))) {
-        $platformParam = 'GETIR';
-    } elseif (isset($data['vendorId']) || isset($data['chainCode']) || isset($data['deliveryHeroOrderId'])) {
-        $platformParam = 'YEMEKSEPETI';
+/* ---------- kimlik doğrulama (platforma özgü) ---------- */
+$given = [];
+$auth = $headers['authorization'] ?? '';
+if ($auth !== '') {
+    $given[] = $auth;
+    if (stripos($auth, 'bearer ') === 0) { $given[] = trim(substr($auth, 7)); }
+    if (stripos($auth, 'basic ') === 0) { $given[] = trim(substr($auth, 6)); $dec = base64_decode(trim(substr($auth, 6)), true); if ($dec !== false) { $given[] = $dec; $given[] = ltrim(strstr($dec, ':') ?: '', ':'); } }
+}
+foreach (['x-api-key', 'x-webhook-secret', 'x-secret', 'x-webhook-token', 'token', 'apikey', 'api-key'] as $h) { if (!empty($headers[$h])) { $given[] = $headers[$h]; } }
+foreach (['secret', 'key', 'token', 'apikey', 'api_key'] as $q) { if (!empty($_GET[$q])) { $given[] = (string)$_GET[$q]; } }
+// Eski HMAC imza düzeni (geri uyumluluk)
+$sigOk = false;
+$sig = $headers['x-signature'] ?? ($headers['x-hmac-signature'] ?? '');
+if ($secret !== '' && $sig !== '') { $sigOk = hash_equals(hash_hmac('sha256', $raw, $secret), $sig); }
+
+$authOk = $sigOk;
+foreach ($given as $g) { if (op_secret_equals($secret, (string)$g)) { $authOk = true; break; } }
+
+if (strlen($secret) < 8) {
+    op_log($pdo, $platform, 'WEBHOOK', 'REJECTED', 403, 'Bu platform için Webhook Gizli Anahtarı kaydedilmemiş (Ayarlar › Yemek Platformları)', $headerNames, $raw);
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Webhook gizli anahtarı yapılandırılmamış']);
+    exit;
+}
+if (!$authOk) {
+    $why = $given ? 'Gönderilen anahtar kayıtlı gizli anahtarla eşleşmedi' : 'İstekte anahtar/Authorization başlığı yok';
+    op_log($pdo, $platform, 'WEBHOOK', 'REJECTED', 401, $why, $headerNames, $raw);
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'Yetkisiz']);
+    exit;
+}
+
+/* ---------- olay türü: platformun gönderdiği DURUMdan çıkarılır ---------- */
+if (isset($data['order']) && is_array($data['order'])) { $data = $data['order']; } // bazı sarmalayıcılar
+$n = op_normalize($platform, $data);
+$statusWord = (string)$n['status'];
+$mapped = op_map_remote_status($platform, $statusWord);
+$event = $mapped === 'IPTAL' ? 'cancel' : (($mapped === 'BEKLIYOR' || $mapped === null) ? 'new' : 'status');
+
+if ($n['id'] === '') {
+    op_log($pdo, $platform, 'WEBHOOK', 'ERROR', 200, 'Sipariş kimliği ayrıştırılamadı — ham veri kaydedildi, alan eşlemesi gözden geçirilmeli', $headerNames, $raw);
+    // Platformun yeniden deneme fırtınası oluşturmaması için 200; ham veri günlükte saklı.
+    echo json_encode(['success' => true, 'warning' => 'ayrıştırılamadı']);
+    exit;
+}
+
+try {
+    $pdo->prepare("UPDATE `online_platforms` SET `last_webhook_at` = NOW() WHERE `platform_code` = ?")->execute([$platform]);
+} catch (Throwable $e) {}
+
+/* ---------- iptal / durum ---------- */
+if ($event === 'cancel' || $event === 'status') {
+    $order = op_find_order($pdo, $n['id']);
+    if ($order) {
+        $changed = op_sync_remote_status($pdo, $platform, $n['id'], $statusWord);
+        if ($event === 'cancel') {
+            $reason = op_str(op_pick($data, ['cancellation.reason', 'cancelInfo.reason', 'cancelReason', 'reason'], 'Platform tarafından iptal edildi'));
+            $pdo->prepare("UPDATE `online_orders` SET `cancel_reason` = ? WHERE `id` = ? AND `local_status` = 'IPTAL'")->execute([mb_substr($reason, 0, 250), $order['id']]);
+        }
+        op_log($pdo, $platform, 'WEBHOOK', 'ACCEPTED', 200, ($event === 'cancel' ? 'Platform iptali işlendi' : 'Durum bildirimi işlendi: ' . $statusWord) . ($changed ? '' : ' (yerel durum zaten güncel)'), $headerNames, $raw, $n['id']);
     } else {
-        $platformParam = 'TRENDYOL'; // Varsayılan
+        op_log($pdo, $platform, 'WEBHOOK', 'ACCEPTED', 200, ($event === 'cancel' ? 'İptal' : 'Durum') . ' bildirimi geldi ama sipariş kayıtlı değil: ' . $statusWord, $headerNames, $raw, $n['id']);
     }
+    echo json_encode(['success' => true]);
+    exit;
 }
 
-// Normalize platform kodu
-if (strpos($platformParam, 'TREND') !== false) {
-    $platformCode = 'TRENDYOL';
-} elseif (strpos($platformParam, 'GETIR') !== false) {
-    $platformCode = 'GETIR';
-} else {
-    $platformCode = 'YEMEKSEPETI';
+/* ---------- yeni sipariş ---------- */
+try {
+    $res = op_store_order($pdo, $platform, $n, $raw);
+    $enabledNote = empty($row['is_enabled']) ? ' (UYARI: platform kasada "pasif" — sipariş kayıtlı ama listede gizli)' : '';
+    op_log($pdo, $platform, 'WEBHOOK', $res['created'] ? 'ACCEPTED' : 'DUPLICATE', 200,
+        ($res['created'] ? 'Yeni sipariş kaydedildi' : 'Tekrar gelen sipariş (yeni kayıt oluşturulmadı)') . $enabledNote, $headerNames, $raw, $n['id']);
+    echo json_encode(['success' => true, 'orderId' => $res['id'], 'duplicate' => !$res['created']], JSON_UNESCAPED_UNICODE);
+} catch (Throwable $e) {
+    error_log('Online sipariş kayıt hatası: ' . $e->getMessage());
+    op_log($pdo, $platform, 'WEBHOOK', 'ERROR', 503, 'Veritabanına yazılamadı: ' . $e->getMessage(), $headerNames, $raw, $n['id']);
+    // Kalıcı kayıt yoksa BAŞARI dönülmez: platform siparişi yeniden dener.
+    http_response_code(503);
+    echo json_encode(['success' => false, 'error' => 'Sipariş şu an kaydedilemedi']);
 }
-
-// 2. Güvenlik & İmza Doğrulama (HMAC / Secret Key)
-$platformConfig = null;
-if ($pdo) {
-    try {
-        $stmt = $pdo->prepare("SELECT * FROM `online_platforms` WHERE `platform_code` = ? LIMIT 1");
-        $stmt->execute([$platformCode]);
-        $platformConfig = $stmt->fetch(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-}
-
-$webhookSecret = !empty($platformConfig['webhook_secret']) ? $platformConfig['webhook_secret'] : '';
-$incomingSignature = $_SERVER['HTTP_X_SIGNATURE'] ?? $_SERVER['HTTP_X_HMAC_SIGNATURE'] ?? '';
-
-if (!empty($webhookSecret) && !empty($incomingSignature)) {
-    $calculatedSignature = hash_hmac('sha256', $rawPayload, $webhookSecret);
-    if (!hash_equals($calculatedSignature, $incomingSignature)) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'Geçersiz webhook imzası (Signature mismatch)']);
-        exit;
-    }
-}
-
-// 3. Platforma Özgü Alanları Standart Formata Ayrıştır
-$platformOrderId = '';
-$customerName = 'Bilinmeyen Müşteri';
-$customerPhone = '';
-$deliveryAddress = 'Adres Belirtilmedi';
-$orderNote = '';
-$items = [];
-$totalAmount = 0.00;
-$paymentMethod = 'ONLINE';
-$platformStatus = 'NEW';
-
-if ($platformCode === 'TRENDYOL') {
-    $platformOrderId = strval($data['orderNumber'] ?? $data['packageId'] ?? $data['id'] ?? ('TY-' . time()));
-    $customerName = trim(($data['customer']['firstName'] ?? '') . ' ' . ($data['customer']['lastName'] ?? ''));
-    if (empty($customerName)) $customerName = $data['customerName'] ?? 'Trendyol Müşterisi';
-    $customerPhone = $data['customer']['phone'] ?? $data['customerPhone'] ?? '';
-    
-    // Adres
-    if (isset($data['shipmentAddress'])) {
-        $deliveryAddress = ($data['shipmentAddress']['addressText'] ?? '') . ' ' . ($data['shipmentAddress']['district'] ?? '') . '/' . ($data['shipmentAddress']['city'] ?? '');
-    } else {
-        $deliveryAddress = $data['address'] ?? 'Trendyol Teslimat Adresi';
-    }
-    
-    $orderNote = $data['notes'] ?? $data['orderNote'] ?? '';
-    $totalAmount = floatval($data['totalPrice'] ?? $data['grossAmount'] ?? $data['totalAmount'] ?? 0);
-    $paymentMethod = $data['paymentType'] ?? 'Online Kredi Kartı';
-    $platformStatus = $data['status'] ?? 'Created';
-
-    if (isset($data['lines']) && is_array($data['lines'])) {
-        foreach ($data['lines'] as $line) {
-            $items[] = [
-                'name' => $line['productName'] ?? $line['name'] ?? 'Ürün',
-                'quantity' => intval($line['quantity'] ?? 1),
-                'price' => floatval($line['price'] ?? $line['amount'] ?? 0),
-                'note' => $line['notes'] ?? '',
-                'options' => $line['options'] ?? []
-            ];
-        }
-    }
-} elseif ($platformCode === 'GETIR') {
-    $platformOrderId = strval($data['clientOrderId'] ?? $data['id'] ?? ('GTR-' . time()));
-    $customerName = $data['client']['name'] ?? $data['customerName'] ?? 'Getir Müşterisi';
-    $customerPhone = $data['client']['phone'] ?? $data['customerPhone'] ?? '';
-    $deliveryAddress = $data['client']['deliveryAddress']['address'] ?? $data['deliveryAddress'] ?? 'Getir Teslimat Adresi';
-    $orderNote = $data['clientNote'] ?? $data['orderNote'] ?? '';
-    $totalAmount = floatval($data['totalPrice'] ?? $data['totalAmount'] ?? 0);
-    $paymentMethod = $data['paymentMethodText'] ?? 'Getir Online Ödeme';
-    $platformStatus = $data['status'] ?? 'WAITING_FOR_VERIFICATION';
-
-    if (isset($data['products']) && is_array($data['products'])) {
-        foreach ($data['products'] as $prod) {
-            $items[] = [
-                'name' => $prod['name'] ?? 'Ürün',
-                'quantity' => intval($prod['count'] ?? 1),
-                'price' => floatval($prod['price'] ?? 0),
-                'note' => $prod['note'] ?? '',
-                'options' => $prod['options'] ?? []
-            ];
-        }
-    }
-} else { // YEMEKSEPETI
-    $platformOrderId = strval($data['orderId'] ?? $data['code'] ?? $data['id'] ?? ('YS-' . time()));
-    $customerName = trim(($data['customer']['firstName'] ?? '') . ' ' . ($data['customer']['lastName'] ?? ''));
-    if (empty($customerName)) $customerName = $data['customerName'] ?? 'Yemeksepeti Müşterisi';
-    $customerPhone = $data['customer']['mobilePhone'] ?? $data['customerPhone'] ?? '';
-    $deliveryAddress = $data['delivery']['address']['street'] ?? $data['deliveryAddress'] ?? 'Yemeksepeti Teslimat Adresi';
-    $orderNote = $data['notes'] ?? $data['orderNote'] ?? '';
-    $totalAmount = floatval($data['price'] ?? $data['totalPrice'] ?? $data['totalAmount'] ?? 0);
-    $paymentMethod = $data['payment']['type'] ?? 'Yemeksepeti Online Ödeme';
-    $platformStatus = $data['status'] ?? 'NEW';
-
-    if (isset($data['products']) && is_array($data['products'])) {
-        foreach ($data['products'] as $prod) {
-            $items[] = [
-                'name' => $prod['name'] ?? 'Ürün',
-                'quantity' => intval($prod['quantity'] ?? 1),
-                'price' => floatval($prod['unitPrice'] ?? $prod['price'] ?? 0),
-                'note' => $prod['instructions'] ?? '',
-                'options' => $prod['selectedOptions'] ?? []
-            ];
-        }
-    }
-}
-
-// Fallback: Kalemler boşsa ham veriden dene
-if (empty($items) && isset($data['items']) && is_array($data['items'])) {
-    $items = $data['items'];
-}
-
-$itemsJson = json_encode($items, JSON_UNESCAPED_UNICODE);
-
-// 4. MySQL'e Kaydet (online_orders tablosu)
-$savedToDb = false;
-$orderDbId = null;
-
-if ($pdo) {
-    try {
-        $stmt = $pdo->prepare("
-            INSERT INTO `online_orders` (
-                `platform_code`, `platform_order_id`, `customer_name`, `customer_phone`,
-                `delivery_address`, `order_note`, `items_json`, `total_amount`,
-                `payment_method`, `platform_status`, `local_status`, `created_at`
-            ) VALUES (
-                :platform_code, :platform_order_id, :customer_name, :customer_phone,
-                :delivery_address, :order_note, :items_json, :total_amount,
-                :payment_method, :platform_status, 'BEKLIYOR', NOW()
-            )
-            ON DUPLICATE KEY UPDATE
-                `customer_name` = VALUES(`customer_name`),
-                `customer_phone` = VALUES(`customer_phone`),
-                `delivery_address` = VALUES(`delivery_address`),
-                `order_note` = VALUES(`order_note`),
-                `items_json` = VALUES(`items_json`),
-                `total_amount` = VALUES(`total_amount`),
-                `platform_status` = VALUES(`platform_status`),
-                `updated_at` = NOW()
-        ");
-
-        $stmt->execute([
-            ':platform_code' => $platformCode,
-            ':platform_order_id' => $platformOrderId,
-            ':customer_name' => $customerName,
-            ':customer_phone' => $customerPhone,
-            ':delivery_address' => $deliveryAddress,
-            ':order_note' => $orderNote,
-            ':items_json' => $itemsJson,
-            ':total_amount' => $totalAmount,
-            ':payment_method' => $paymentMethod,
-            ':platform_status' => $platformStatus
-        ]);
-
-        $orderDbId = $pdo->lastInsertId();
-        $savedToDb = true;
-    } catch (Exception $e) {
-        error_log("Online order DB kayıt hatası: " . $e->getMessage());
-    }
-}
-
-// Yedek Dosya Kuyruğu (Offline veya DB erişim sorunlarına karşı tam garanti)
-$queueFile = __DIR__ . '/online_orders_queue.json';
-$queue = [];
-if (file_exists($queueFile)) {
-    $queue = json_decode(file_get_contents($queueFile), true) ?: [];
-}
-$orderObject = [
-    'id' => $orderDbId ? strval($orderDbId) : ('onl-' . time() . '-' . rand(100, 999)),
-    'platform' => $platformCode,
-    'platform_order_id' => $platformOrderId,
-    'customer_name' => $customerName,
-    'customer_phone' => $customerPhone,
-    'delivery_address' => $deliveryAddress,
-    'order_note' => $orderNote,
-    'items' => $items,
-    'total_amount' => $totalAmount,
-    'payment_method' => $paymentMethod,
-    'platform_status' => $platformStatus,
-    'local_status' => 'BEKLIYOR',
-    'created_at' => date('Y-m-d H:i:s')
-];
-array_unshift($queue, $orderObject);
-$queue = array_slice($queue, 0, 200);
-@file_put_contents($queueFile, json_encode($queue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
-// Platforma HTTP 200 Başarılı Yanıtı
-echo json_encode([
-    'success' => true,
-    'message' => 'Sipariş başarıyla kabul edildi ve kasa kuyruğuna alındı.',
-    'platform' => $platformCode,
-    'platformOrderId' => $platformOrderId,
-    'dbSaved' => $savedToDb,
-    'localStatus' => 'BEKLIYOR',
-    'timestamp' => date('c')
-], JSON_UNESCAPED_UNICODE);

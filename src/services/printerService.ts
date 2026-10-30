@@ -1,3 +1,5 @@
+import { PrintQueue, PrintJob } from './printQueue';
+import { isElectronApp, ipcInvoke } from './electronBridge';
 import {
   restaurantDataService,
   PrinterConfig,
@@ -67,6 +69,8 @@ export interface BillReceiptData {
   platformName?: string;
   paymentMethod?: string;
   deliveryModel?: string;
+  /** false ise kalem fiyatları basılmaz (adisyon yazıcısı dışındaki kurye/etiket fişi). */
+  showPrices?: boolean;
 }
 
 export interface CancelTicketData {
@@ -182,6 +186,30 @@ export function determineStationForProduct(
 }
 
 class PrinterService {
+  /** Kalıcı yazdırma kuyruğu (localStorage). */
+  public readonly queue: PrintQueue = new PrintQueue(
+    typeof localStorage !== 'undefined' ? localStorage : { getItem: () => null, setItem: () => {} },
+    async (job: PrintJob) => {
+      const printer = job.printer || restaurantDataService.getPrinters().find((p) => p.id === job.printerId);
+      if (!printer) return { success: false, message: 'Yazıcı tanımı bulunamadı' };
+      return this.deliverToHardware(printer, job.jobType as any, job.data);
+    }
+  );
+  private queueTimer: any = null;
+
+  /** Arka plan: bekleyen fişleri periyodik dener. Uygulama açılışında bir kez çağrılır. */
+  public startQueueWorker(): void {
+    if (this.queueTimer || typeof window === 'undefined') return;
+    this.queueTimer = setInterval(() => { this.queue.processDue().catch(() => {}); }, 5000);
+    this.queue.processDue().catch(() => {});
+  }
+
+  /** Kullanıcı açıkça isterse fişi tarayıcı yazdırma penceresiyle basar (donanım doğrulaması yoktur). */
+  public printJobViaBrowser(jobId: string): void {
+    const job = this.queue.list().find((j) => j.id === jobId);
+    if (job) this.printViaHiddenFrame(job.jobType, job.data, job.printer);
+  }
+
   /**
    * Türkçe karakterleri ESC/POS ve termal yazıcılar için ASCII uyumlu metne çevirir
    */
@@ -236,7 +264,7 @@ class PrinterService {
       txt += `MASA  : ${this.cleanTurkish(data.tableName)}\n`;
       txt += `GARSON: ${this.cleanTurkish(data.waiterName)} | SAAT: ${data.orderTime}\n`;
       if (data.orderNumber) {
-        txt += `ADISYON NO: #GTU-${new Date().getFullYear()}-${String(data.orderNumber).padStart(4, '0')}\n`;
+        txt += `SIPARIS NO: ${data.orderNumber}\n`;
       }
       txt += line;
       txt += `HAZIRLANACAK URUNLER:\n`;
@@ -261,7 +289,7 @@ class PrinterService {
       if (data.isHandoverTicket) {
         // MODEL 2: PLATFORM KURYESİ (TRENDYOL GO / VALE / GETİR) - 4 HANELİ TESLİMAT KODU & PAKET ETİKETİ
         const platformTitle = this.cleanTurkish(data.platformName || data.tableName || 'ONLINE PLATFORM');
-        const code = data.handoverCode || (typeof data.orderNumber === 'string' ? data.orderNumber.replace(/[^0-9]/g, '').slice(-4) : '----');
+        const code = data.handoverCode || '';
         
         txt += doubleLine;
         txt += `*** PAKET ETIKETI / TESLIMAT KODU ***\n`;
@@ -354,36 +382,36 @@ class PrinterService {
       }
 
       const s = data.settings || {};
-      const title = s.title || data.restaurantName || 'GAZIANTEPLI TAHA USTA';
-      const subtitle = s.subtitle || 'Kebap & Lahmacun Salonu';
-      const address = s.address || 'Sehitkamil / Gaziantep';
-      const phone = s.phone || '0 (342) 555 00 27';
-      const taxOffice = s.taxOffice || 'Sehitkamil V.D.';
-      const taxNumber = s.taxNumber || '1234567890';
-      const mersisNo = s.mersisNo || '012345678900001';
-      const orderNumber = data.orderNumber || 841;
+      const title = s.title || data.restaurantName || '';
+      const subtitle = s.subtitle || '';
+      const address = s.address || '';
+      const phone = s.phone || '';
+      const taxOffice = s.taxOffice || '';
+      const taxNumber = s.taxNumber || '';
+      const mersisNo = s.mersisNo || '';
+      const orderNumber = data.orderNumber || '';
 
       if (s.printLogo) {
         txt += `[ TU ]\n`;
       }
-      txt += `${this.cleanTurkish(title)}\n`;
-      txt += `${this.cleanTurkish(subtitle)}\n`;
-      txt += `${this.cleanTurkish(address)}\n`;
-      txt += `Tel: ${this.cleanTurkish(phone)}\n`;
-      txt += `${this.cleanTurkish(taxOffice)} . VKN: ${taxNumber}`;
-      if (mersisNo) txt += ` . MERSIS: ${mersisNo}`;
-      txt += `\n` + line;
+      if (title) txt += `${this.cleanTurkish(title)}\n`;
+      if (subtitle) txt += `${this.cleanTurkish(subtitle)}\n`;
+      if (address) txt += `${this.cleanTurkish(address)}\n`;
+      if (phone) txt += `Tel: ${this.cleanTurkish(phone)}\n`;
+      if (taxOffice || taxNumber) txt += `${this.cleanTurkish(taxOffice)}${taxNumber ? ` VKN: ${taxNumber}` : ''}\n`;
+      if (mersisNo) txt += `MERSIS: ${mersisNo}\n`;
+      txt += line;
 
       if (s.showTableNumber !== false) {
         txt += `MASA        : ${this.cleanTurkish(data.tableName)}\n`;
       }
-      if (s.showWaiterName !== false) {
-        txt += `GARSON      : ${this.cleanTurkish(data.waiterName || 'Mehmet Usta')}\n`;
+      if (s.showWaiterName !== false && data.waiterName) {
+        txt += `GARSON      : ${this.cleanTurkish(data.waiterName)}\n`;
       }
       if (s.showOrderTime !== false) {
         txt += `TARIH & SAAT: ${data.orderTime}\n`;
       }
-      txt += `ADISYON NO  : #GTU-${new Date().getFullYear()}-${String(orderNumber).padStart(4, '0')}\n`;
+      if (orderNumber) txt += `ADISYON NO  : ${orderNumber}\n`;
       txt += line;
 
       txt += `URUN ACIKLAMASI                 TUTAR\n`;
@@ -440,10 +468,6 @@ class PrinterService {
 
       txt += `${this.cleanTurkish(s.footerMessage || 'Afiyet Olsun. Yine Bekleriz!')}\n`;
 
-      if (s.showBarcode !== false) {
-        txt += `||||| |||| |||||| |||||\n`;
-        txt += `GTU-${new Date().getFullYear()}-${String(orderNumber).padStart(4, '0')}-KASA\n`;
-      }
     } else if (type === 'CANCEL') {
       txt += `*** SIPARIS IPTAL FISI ***\n`;
       txt += doubleLine;
@@ -466,12 +490,40 @@ class PrinterService {
   public async dispatchPrintJob(
     printer: PrinterConfig,
     jobType: 'KITCHEN' | 'BILL' | 'CANCEL' | 'Z_REPORT',
+    data: any,
+    opts?: { transient?: boolean }
+  ): Promise<{ success: boolean; message: string; queued?: boolean; jobId?: string }> {
+    // Geçici (donanım testi) işler kuyruğa alınmaz, doğrudan denenir.
+    if (opts?.transient) {
+      return this.deliverToHardware(printer, jobType, data);
+    }
+    // Her fiş ÖNCE kalıcı kuyruğa yazılır; sipariş kaydı ile fiziksel basım ayrı olaylardır.
+    const job = this.queue.enqueue({ printerId: printer.id, printerName: printer.name, printer, jobType, data });
+    const done = await this.queue.process(job.id);
+    if (done?.status === 'PRINTED') {
+      return { success: true, message: `[${printer.name}] fişi yazdırıldı.`, jobId: job.id };
+    }
+    return {
+      success: false,
+      queued: done?.status === 'PENDING',
+      jobId: job.id,
+      message: `[${printer.name}] yazıcısına şu an ulaşılamadı${done?.lastError ? ` (${done.lastError})` : ''}. Fiş kuyruğa alındı, otomatik tekrar denenecek.`,
+    };
+  }
+
+  /** Gerçek donanım kanallarına tek deneme yapar. Tarayıcı çerçevesi "başarılı" SAYILMAZ. */
+  private async deliverToHardware(
+    printer: PrinterConfig,
+    jobType: 'KITCHEN' | 'BILL' | 'CANCEL' | 'Z_REPORT',
     data: any
   ): Promise<{ success: boolean; message: string }> {
     // 1. Yazıcı sesli uyarı veriyorsa çal
     if (printer.beepOnPrint) {
       restaurantDataService.playAudioAlert('beep');
     }
+
+    // Yazıcıya özgü baskı parametreleri (kâğıt genişliği, kesici, sesli uyarı) fiş verisine eklenir.
+    data = { ...data, paperWidth: printer.paperWidth, autoCut: printer.autoCut, beep: !!printer.beepOnPrint, printMode: printer.printMode || 'GRAPHIC' };
 
     let printSuccess = false;
     let resultMessage = '';
@@ -497,11 +549,9 @@ class PrinterService {
     // B) Electron Masaüstü IPC Doğrudan Erişim
     if (!printSuccess) {
       try {
-        const win = window as any;
-        if (win.require) {
-          const { ipcRenderer } = win.require('electron');
+        if (isElectronApp()) {
           if (printer.type === 'NETWORK' && printer.ipAddress) {
-            const ipcRes = await ipcRenderer.invoke('print-network-ticket', {
+            const ipcRes = await ipcInvoke('print-network-ticket', {
               ip: printer.ipAddress,
               port: printer.port || 9100,
               ticketType: jobType,
@@ -512,10 +562,10 @@ class PrinterService {
               resultMessage = `[${printer.name}] (${printer.ipAddress}) yazıcısına ağdan fiş iletildi.`;
             }
           } else if (printer.type === 'USB' || printer.type === 'SYSTEM_DRIVER') {
-            const rawText = this.generatePlainTextReceipt(jobType as any, data);
-            const ipcRes = await ipcRenderer.invoke('print-usb-receipt', {
+            const ipcRes = await ipcInvoke('print-usb-receipt', {
               printerName: printer.driverName || printer.usbName || printer.name,
-              rawText,
+              ticketType: jobType,
+              data,
             });
             if (ipcRes && ipcRes.success) {
               printSuccess = true;
@@ -528,15 +578,10 @@ class PrinterService {
       }
     }
 
-    // C) Browser İçi Termal Çerçevesi Fallback
-    if (!printSuccess) {
-      try {
-        this.printViaHiddenFrame(jobType, data, printer);
-        printSuccess = true;
-        resultMessage = `[${printer.name}] fiş dökümü kuyruğa alındı.`;
-      } catch (e) {
-        resultMessage = `[${printer.name}] yazıcısına ulaşılamadı.`;
-      }
+    // (Tarayıcı çerçevesi artık otomatik yedek DEĞİL: yazdırıldığını doğrulayamaz. Kullanıcı kuyruk
+    // ekranından açıkça "Tarayıcıdan yazdır" seçerse printJobViaBrowser kullanılır.)
+    if (!printSuccess && !resultMessage) {
+      resultMessage = `[${printer.name}] yazıcısına ulaşılamadı.`;
     }
 
     // D) Otomatik Yedek (Failover) Yazıcı Desteği
@@ -545,7 +590,7 @@ class PrinterService {
       const backupPrinter = allPrinters.find(p => p.id === printer.failoverPrinterId);
       if (backupPrinter && backupPrinter.id !== printer.id) {
         console.warn(`⚠️ [${printer.name}] çevrimdışı, otomatik yedek yazıcıya ([${backupPrinter.name}]) aktarılıyor...`);
-        return this.dispatchPrintJob(backupPrinter, jobType, data);
+        return this.deliverToHardware(backupPrinter, jobType, data);
       }
     }
 
@@ -1236,7 +1281,7 @@ class PrinterService {
     waiterName: string = 'Garson',
     orderNote?: string,
     isAdditionalOrder?: boolean
-  ): Promise<{ success: boolean; dispatchedCount: number; details: string[] }> {
+  ): Promise<{ success: boolean; dispatchedCount: number; queuedCount?: number; failedDetails?: string[]; details: string[] }> {
     if (!items || items.length === 0) {
       return { success: false, dispatchedCount: 0, details: ['Yazdırılacak ürün yok'] };
     }
@@ -1359,9 +1404,11 @@ class PrinterService {
     }
 
     let dispatchedCount = 0;
+    let queuedCount = 0;
+    const failedDetails: string[] = [];
     const details: string[] = [];
     const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    const orderNumber = table.order?.orderNumber || 841;
+    const orderNumber = table.order?.orderNumber || '';
 
     for (const group of printerGroups.values()) {
       let mainStation: 'OCAK' | 'FIRIN' | 'MUTFAK' | 'BAR' | 'GENEL' = 'GENEL';
@@ -1401,7 +1448,7 @@ class PrinterService {
         chefStation: mainStation,
         chefStationTitle: chefCallout,
         tableName: fullTableName,
-        waiterName: waiterName || table.order?.waiterName || 'Mehmet Usta',
+        waiterName: waiterName || table.order?.waiterName || '',
         orderTime: currentTime,
         orderNumber,
         orderNote: orderNote || table.order?.orderNote || '',
@@ -1414,14 +1461,19 @@ class PrinterService {
       if (result.success) {
         dispatchedCount++;
         details.push(`${group.targetPrinter.name} (${group.items.length} kalem)`);
+      } else {
+        queuedCount++;
+        failedDetails.push(`${group.targetPrinter.name}: ${result.message}`);
       }
     }
 
     restaurantDataService.playAudioAlert('kitchen');
 
     return {
-      success: dispatchedCount > 0,
+      success: dispatchedCount > 0 && queuedCount === 0,
       dispatchedCount,
+      queuedCount,
+      failedDetails,
       details,
     };
   }
@@ -1485,13 +1537,14 @@ class PrinterService {
     const discountPercent = subtotal > 0 && discountAmount > 0 ? Math.round((discountAmount / subtotal) * 100) : undefined;
     const vatBase = grandTotal / 1.1;
     const vatAmount = grandTotal - vatBase;
-    const orderNumber = table.order?.orderNumber || 841;
+    const orderNumber = table.order?.orderNumber || '';
 
     const billData: BillReceiptData = {
       settings,
       restaurantName: settings.title || 'GAZİANTEPLİ TAHA USTA',
       tableName: fullTableName,
-      waiterName: table.order?.waiterName || 'Mehmet Usta',
+      waiterName: table.order?.waiterName || '',
+      showPrices: true,
       orderTime: `${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR', {
         hour: '2-digit',
         minute: '2-digit',
@@ -1552,10 +1605,10 @@ class PrinterService {
     const testBillData: BillReceiptData = {
       settings,
       restaurantName: settings.title,
-      tableName: 'Ana Salon / Masa 4',
-      waiterName: 'Mehmet Usta',
-      orderTime: `${new Date().toLocaleDateString('tr-TR')} - 19:42`,
-      orderNumber: 841,
+      tableName: 'TEST FISI',
+      waiterName: '',
+      orderTime: `${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`,
+      orderNumber: '',
       items: sampleItems,
       subtotal,
       discountAmount,
@@ -1566,7 +1619,7 @@ class PrinterService {
       vatAmount,
     };
 
-    return await this.dispatchPrintJob(billPrinter, 'BILL', testBillData);
+    return await this.dispatchPrintJob(billPrinter, 'BILL', testBillData, { transient: true });
   }
 
   /**
@@ -1590,10 +1643,8 @@ class PrinterService {
 
     // 2. Electron IPC üzerinden test
     try {
-      const win = window as any;
-      if (win.require) {
-        const { ipcRenderer } = win.require('electron');
-        const res = await ipcRenderer.invoke('print-hardware-test', {
+      if (isElectronApp()) {
+        const res = await ipcInvoke('print-hardware-test', {
           printerName: printer.driverName || printer.usbName || printer.name,
           type: printer.type,
           ip: printer.ipAddress,
@@ -1614,7 +1665,7 @@ class PrinterService {
       items: [{ name: 'Donanım & Test Çıktısı', quantity: 1, note: 'Tamamlandı' }],
       orderNote: 'Yazıcı ve kağıt kesici devrede.'
     };
-    return await this.dispatchPrintJob(printer, 'KITCHEN', testTicket);
+    return await this.dispatchPrintJob(printer, 'KITCHEN', testTicket, { transient: true });
   }
 
   /**
@@ -1642,11 +1693,11 @@ class PrinterService {
   }
 
   /**
-   * Online Yemek Platformları (Yemeksepeti, Trendyol, Getir) Sipariş Çıktısı
+   * Online Yemek Platformları (Yemeksepeti, Trendyol Go Yemek; GetirYemek siparişleri Trendyol'dan gelir) Sipariş Çıktısı
    * Lahmacun/Pide fırın yazıcısına, kebaplar ocak yazıcısına, tam kurye fişi ise teslimat yazıcısına otomatik gönderilir.
    */
   public async printOnlineOrder(order: {
-    platform: 'YEMEKSEPETI' | 'TRENDYOL' | 'GETIR' | string;
+    platform: 'YEMEKSEPETI' | 'TRENDYOL' | 'GETIR' | string; // 'GETIR' = Trendyol üzerinden gelen GetirYemek siparişi
     platformOrderId: string;
     customerName: string;
     customerPhone?: string;
@@ -1759,19 +1810,20 @@ class PrinterService {
     // C) Lojistik & Kurye Çıktısı (Restoran Kuryesi Yol Fişi vs. Platform Kuryesi 4 Haneli Paket Etiketi)
     if (kuryePrinter) {
       const isPlatformCourier = order.deliveryModel === 'PLATFORM_COURIER' || order.deliveryModel === 'PLATFORM';
-      const cleanHandoverCode = order.handoverCode || (order.platformOrderId ? order.platformOrderId.replace(/[^0-9]/g, '').slice(-4) : '1842');
+      const cleanHandoverCode = order.handoverCode || (order.platformOrderId ? order.platformOrderId.replace(/[^0-9]/g, '').slice(-4) : '');
 
       const billData: BillReceiptData = {
         tableName: `${pTitle} (#${order.platformOrderId})`,
-        waiterName: isPlatformCourier ? 'Platform Kuryesi' : (order.assignedCourierName || 'Kendi Kuryemiz'),
+        waiterName: '',
         orderTime: nowTime,
         orderNumber: order.platformOrderId,
         platformName: pTitle,
         isCourierTicket: !isPlatformCourier,
         isHandoverTicket: isPlatformCourier,
-        courierName: isPlatformCourier ? (order.platformCourierName || `${pTitle} Kuryesi`) : (order.assignedCourierName || 'Kendi Kuryemiz'),
+        courierName: order.assignedCourierName || '',
         handoverCode: cleanHandoverCode,
         paymentMethod: order.paymentMethod,
+        showPrices: !!kuryePrinter.isBillPrinter,
         customerInfo: {
           name: order.customerName,
           phone: order.customerPhone || 'Belirtilmedi',

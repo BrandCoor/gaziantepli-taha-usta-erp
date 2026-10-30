@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../utils/businessDate';
 import React, { useState, useMemo } from 'react';
 import { 
   X, 
@@ -28,7 +29,7 @@ export const BatchSalaryModal: React.FC<BatchSalaryModalProps> = ({
 }) => {
   const currentMonthName = new Date().toLocaleString('tr-TR', { month: 'long', year: 'numeric' });
   const [periodName, setPeriodName] = useState<string>(`${currentMonthName}`);
-  const [accrualDate, setAccrualDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [accrualDate, setAccrualDate] = useState<string>(getBusinessDate());
   const [filterType, setFilterType] = useState<'ALL' | 'MONTHLY' | 'WEEKLY' | 'DAILY'>('ALL');
 
   // Bekleyen tahakkukları al

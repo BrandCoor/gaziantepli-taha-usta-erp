@@ -167,23 +167,9 @@ export const DeliveryView: React.FC<DeliveryViewProps> = ({ onStartOrder }) => {
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => callerIdService.simulateCall(1, '05321112233')}
-            className="px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
-            title="GCallerID Hat 1 Gelen Çağrıyı Test Et"
-          >
-            <span>🟢 Hat 1 Test</span>
-          </button>
+          
 
-          <button
-            type="button"
-            onClick={() => callerIdService.simulateCall(2, '05423334455')}
-            className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/40 rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
-            title="GCallerID Hat 2 Gelen Çağrıyı Test Et"
-          >
-            <span>🔵 Hat 2 Test</span>
-          </button>
+          
 
           <button
             onClick={() => setManualCallModal(true)}

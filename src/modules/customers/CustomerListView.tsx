@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../utils/businessDate';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
@@ -75,7 +76,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
   const [txType, setTxType] = useState<'DEBT' | 'COLLECTION'>('DEBT');
   const [txAmount, setTxAmount] = useState<string>('');
   const [txPaymentMethod, setTxPaymentMethod] = useState<'CASH' | 'BANK' | 'CREDIT_CARD'>('CASH');
-  const [txDate, setTxDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [txDate, setTxDate] = useState<string>(getBusinessDate());
   const [txDescription, setTxDescription] = useState<string>('');
 
   // Ekstre Hareketi Düzenleme Modalı
@@ -246,7 +247,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
           type: 'DEBT',
           amount: initialBal,
           paymentMethod: 'CASH',
-          date: new Date().toISOString().split('T')[0],
+          date: getBusinessDate(),
           description: 'Açılış Devir Borç Bakiyesi',
         });
       }
@@ -297,7 +298,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
     setTxType(defaultType);
     setTxAmount('');
     setTxPaymentMethod('CASH');
-    setTxDate(new Date().toISOString().split('T')[0]);
+    setTxDate(getBusinessDate());
     setTxDescription(defaultType === 'DEBT' ? 'Harici Borçlandırma' : 'Elden Tahsilat Alındı');
     setTxModalOpen(true);
   };
@@ -364,7 +365,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
     setEditTxAmount(String(tx.amount));
     setEditTxType(tx.type);
     setEditTxPaymentMethod(tx.paymentMethod || 'CASH');
-    setEditTxDate(tx.date ? tx.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+    setEditTxDate(tx.date ? tx.date.split('T')[0] : getBusinessDate());
     setEditTxDescription(tx.description || '');
   };
 

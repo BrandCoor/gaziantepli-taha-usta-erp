@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../utils/businessDate';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Receipt, 
@@ -91,7 +92,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [formCategory, setFormCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [formAmount, setFormAmount] = useState('');
   const [formPaymentMethod, setFormPaymentMethod] = useState<'CASH' | 'CREDIT_CARD' | 'BANK'>('CASH');
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState(getBusinessDate());
   const [formDescription, setFormDescription] = useState('');
 
   // TOPTANCI MODALLARI
@@ -108,7 +109,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [invSupplierId, setInvSupplierId] = useState('');
   const [invAmount, setInvAmount] = useState('');
   const [invNo, setInvNo] = useState('');
-  const [invDate, setInvDate] = useState(new Date().toISOString().split('T')[0]);
+  const [invDate, setInvDate] = useState(getBusinessDate());
   const [invDesc, setInvDesc] = useState('');
 
   // ÖDEME MODALI
@@ -116,7 +117,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
   const [paySupplierId, setPaySupplierId] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState<'BANK' | 'CASH' | 'CREDIT_CARD'>('BANK');
-  const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [payDate, setPayDate] = useState(getBusinessDate());
   const [payDesc, setPayDesc] = useState('');
 
   // EKSTRE DÜZENLEME MODALI
@@ -221,7 +222,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     setFormCategory(EXPENSE_CATEGORIES[0]);
     setFormAmount('');
     setFormPaymentMethod('CASH');
-    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormDate(getBusinessDate());
     setFormDescription('');
     setIsModalOpen(true);
   };
@@ -232,7 +233,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     setFormCategory(exp.category || EXPENSE_CATEGORIES[0]);
     setFormAmount(String(exp.amount || ''));
     setFormPaymentMethod(exp.paymentMethod || 'CASH');
-    setFormDate(exp.date || new Date().toISOString().split('T')[0]);
+    setFormDate(exp.date || getBusinessDate());
     setFormDescription(exp.description || '');
     setIsModalOpen(true);
   };
@@ -413,7 +414,7 @@ export const ExpenseListView: React.FC<ExpenseListViewProps> = () => {
     setEditingTx(tx);
     setEditTxType(tx.type === 'INVOICE' ? 'INVOICE' : 'PAYMENT');
     setEditTxAmount(String(tx.amount || 0));
-    setEditTxDate(tx.date || new Date().toISOString().split('T')[0]);
+    setEditTxDate(tx.date || getBusinessDate());
     setEditTxInvoiceNo(tx.invoiceNo || '');
     setEditTxDesc(tx.description || '');
     setEditTxMethod(tx.paymentMethod === 'CASH' ? 'CASH' : tx.paymentMethod === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'BANK');

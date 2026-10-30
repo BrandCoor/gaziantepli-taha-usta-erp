@@ -1,3 +1,6 @@
+import { FullBackupPanel } from './FullBackupPanel';
+import { fullBackupService } from '../../../services/fullBackupService';
+import { getBusinessDate } from '../../../utils/businessDate';
 import React, { useState, useEffect } from 'react';
 import { 
   HardDrive, 
@@ -19,7 +22,9 @@ import {
   Activity
 } from 'lucide-react';
 import { restaurantDataService, getApiSyncUrl, setApiSyncUrl } from '../../../services/restaurantDataService';
+import { getKasaApiKey, setKasaApiKey, getQrMenuUrl, setQrMenuUrl } from '../../../services/cloudAuth';
 import { notify } from '../../../services/notificationService';
+import { UpdateSettingsCard } from './UpdateSettingsCard';
 
 interface SystemBackupTabProps {
   onRefresh: () => void;
@@ -34,6 +39,8 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
 
   // MySQL & phpMyAdmin API Ayarları
   const [apiUrl, setApiUrlState] = useState(getApiSyncUrl());
+  const [kasaKey, setKasaKeyState] = useState(getKasaApiKey());
+  const [qrMenuUrl, setQrMenuUrlState] = useState(getQrMenuUrl());
   const [isTestingDb, setIsTestingDb] = useState(false);
   const [dbTestResult, setDbTestResult] = useState<{
     success: boolean;
@@ -50,6 +57,8 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
 
   const handleSaveApiUrl = () => {
     setApiSyncUrl(apiUrl);
+    setKasaApiKey(kasaKey);
+    setQrMenuUrl(qrMenuUrl);
     notify.success('API Adresi Kaydedildi', 'Tüm sipariş ve bulut senkronizasyonları bu adres üzerinden yürütülecektir.');
   };
 
@@ -127,7 +136,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = getBusinessDate();
     a.href = url;
     a.download = `taha_usta_pos_yedek_${dateStr}.json`;
     document.body.appendChild(a);
@@ -179,7 +188,13 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
       title: 'Fabrika Ayarlarına Sıfırla',
       message: 'Tüm yazıcılar, menü, masalar ve donanım yapılandırması varsayılan ayarlara döndürülecektir. Bu işlem geri alınamaz! Devam edilsin mi?',
       type: 'danger',
-      onConfirm: () => {
+      onConfirm: async () => {
+        // Güvenlik: sıfırlamadan önce otomatik tam yedek
+        const pre = await fullBackupService.backupNow('fabrika-oncesi');
+        if (fullBackupService.isAvailable() && !pre.success) {
+          notify.error('Sıfırlama İptal', 'Önce yedek alınamadı: ' + (pre.error || ''));
+          return;
+        }
         localStorage.removeItem('gtu_pos_sections');
         localStorage.removeItem('gtu_pos_categories');
         localStorage.removeItem('gtu_pos_products');
@@ -196,6 +211,9 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
 
   return (
     <div className="space-y-6">
+      <FullBackupPanel />
+      <UpdateSettingsCard />
+
       {/* ÜST BİLGİ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
         <div>
@@ -280,6 +298,29 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
               <Save className="w-3.5 h-3.5" />
               <span>Adresi Kaydet</span>
             </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 pt-2">
+            <label className="text-xs font-bold text-white">
+              Kasa API Anahtarı <span className="text-[10px] text-[#A0A0AA] font-normal">(sunucudaki config.local.php içindeki KASA_API_KEY ile aynı olmalı)</span>
+            </label>
+            <input
+              type="password"
+              autoComplete="off"
+              value={kasaKey}
+              onChange={(e) => setKasaKeyState(e.target.value)}
+              placeholder="En az 24 karakterlik gizli anahtar"
+              className="px-4 py-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+            />
+            <label className="text-xs font-bold text-white pt-2">QR Menü Sayfası Adresi <span className="text-[10px] text-[#A0A0AA] font-normal">(masa QR kodları bu adrese gider, ör. https://qr.siteniz.com)</span></label>
+            <input
+              type="text"
+              value={qrMenuUrl}
+              onChange={(e) => setQrMenuUrlState(e.target.value)}
+              placeholder="https://qr.siteniz.com"
+              className="px-4 py-2.5 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+            />
+            <p className="text-[10px] text-[#A0A0AA]">Bu anahtar olmadan sunucu kasadan gelen hiçbir isteği kabul etmez. Anahtar yalnızca yukarıdaki sunucu adresine gönderilir.</p>
           </div>
         </div>
 

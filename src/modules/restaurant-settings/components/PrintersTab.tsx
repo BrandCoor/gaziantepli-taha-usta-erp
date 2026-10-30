@@ -1,3 +1,4 @@
+import { isElectronApp, ipcInvoke } from '../../../services/electronBridge';
 import React, { useState } from 'react';
 import { 
   Printer, 
@@ -128,10 +129,9 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
     const foundNetwork: Array<{ ip: string; port: number; model: string; status?: string }> = [];
 
     // 1. Electron / Windows USB Taraması
-    if ((window as any).require) {
+    if (isElectronApp()) {
       try {
-        const { ipcRenderer } = (window as any).require('electron');
-        const usbList = await ipcRenderer.invoke('get-system-usb-printers');
+        const usbList = await ipcInvoke('get-system-usb-printers');
         if (Array.isArray(usbList)) {
           foundUsb.push(...usbList);
         }
@@ -714,7 +714,7 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
           <div>
             <h3 className="text-sm font-black text-white">Tanımlı veya Bağlı Yazıcı Bulunmuyor</h3>
             <p className="text-xs text-[#8E8E98] mt-1 leading-relaxed">
-              Tüm demo yazıcılar temizlendi. İşletmenizin fiziksel yazıcısını bağlamak için yukarıdaki &quot;+ Manuel Ekle&quot; veya &quot;🔍 USB ve Ağ Yazıcılarını Tara&quot; butonunu kullanabilirsiniz.
+              Henüz yazıcı tanımlı değil. İşletmenizin fiziksel yazıcısını bağlamak için yukarıdaki &quot;+ Manuel Ekle&quot; veya &quot;🔍 USB ve Ağ Yazıcılarını Tara&quot; butonunu kullanabilirsiniz.
             </p>
           </div>
           <div className="pt-2 flex items-center justify-center gap-3">
@@ -1039,15 +1039,14 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-[#C4C4CC]">Karakter Kodlama</label>
+                  <label className="text-[11px] font-bold text-[#C4C4CC]">Baskı Biçimi</label>
                   <select
-                    value={form.codePage}
-                    onChange={(e) => setForm({ ...form, codePage: e.target.value as any })}
+                    value={form.printMode || 'GRAPHIC'}
+                    onChange={(e) => setForm({ ...form, printMode: e.target.value as any })}
                     className="w-full mt-1 p-2 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white"
                   >
-                    <option value="CP857">CP857 (Türkçe)</option>
-                    <option value="UTF8">UTF-8</option>
-                    <option value="WIN1254">Windows-1254</option>
+                    <option value="GRAPHIC">Okunaklı yazı tipi, tam Türkçe (önerilir)</option>
+                    <option value="TEXT">Yazıcının kendi yazı tipi (hızlı, Türkçe karakter yok)</option>
                   </select>
                 </div>
 

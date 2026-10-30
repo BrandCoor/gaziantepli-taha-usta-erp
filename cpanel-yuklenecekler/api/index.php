@@ -5,10 +5,15 @@
  * MySQL / phpMyAdmin veya JSON Senkronizasyon Modu
  */
 
+// Üretimde hata ayrıntıları istemciye gösterilmez; yalnızca sunucu loguna yazılır.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID, X-Device-Token, X-Kasa-Key, X-Session, X-Requested-With, X-Client-Type, X-Client-Version');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
 
@@ -22,27 +27,10 @@ if ($pdo) {
     $useMysql = true;
 }
 
-// Fallback JSON Dosyası
+// JSON yedek modu KALDIRILDI: web'den okunabilen dosyada veri ve varsayılan parola tutmak güvenli değil.
+// Veritabanı yoksa API yalnızca 'health' yanıtı verir, diğer her şey 503 döner.
 $dbFile = __DIR__ . '/restaurant_sync.json';
-if (!$useMysql) {
-    if (!file_exists($dbFile)) {
-        $initialData = [
-            'sections' => [],
-            'tables' => [],
-            'products' => [],
-            'categories' => [],
-            'orders' => [],
-            'employees' => [],
-            'paired_devices' => [],
-            'boss_settings' => ['password' => '1453', 'approved_devices' => []],
-            'last_updated' => time()
-        ];
-        file_put_contents($dbFile, json_encode($initialData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    }
-    $db = json_decode(file_get_contents($dbFile), true) ?: [];
-    if (!isset($db['paired_devices'])) $db['paired_devices'] = [];
-    if (!isset($db['boss_settings'])) $db['boss_settings'] = ['password' => '1453', 'approved_devices' => []];
-}
+$db = [];
 
 $action = $_GET['action'] ?? '';
 $rawInput = file_get_contents('php://input');
@@ -51,14 +39,77 @@ if (empty($action) && isset($inputData['action'])) {
     $action = $inputData['action'];
 }
 
+require_once __DIR__ . '/security.php';
+// Sürüm bilgisi (herkese açık, gizli bilgi yok): istemciler uyumluluğu buradan denetler.
+if ($action === 'version') {
+    $schemaDb = null; $lastErr = null;
+    if ($pdo) {
+        try { $schemaDb = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn(); } catch (Exception $e) {}
+        try { $lastErr = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_last_error'")->fetchColumn() ?: null; } catch (Exception $e) {}
+    }
+    echo json_encode([
+        'success' => true, 'apiVersion' => GTU_API_VERSION, 'schemaVersion' => $schemaDb, 'schemaExpected' => gtuSchemaVersion(),
+        'minKasaVersion' => MIN_KASA_VERSION, 'minGarsonVersion' => MIN_GARSON_VERSION, 'migrationError' => $lastErr !== null,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+if (!$useMysql && $action !== 'health' && $action !== 'test_db') {
+    sec_json_exit(503, ['success' => false, 'error' => 'Veritabanı yapılandırılmamış.', 'code' => 'DB_UNAVAILABLE']);
+}
+$authCtx = sec_enforce($action, $pdo);
+
+// ---- Herkese açık QR menü yolları (müşteri) ----
+$qrForce = null;
+if ($action === 'qr_menu') {
+    // Yalnızca menü: masalarda adisyon/durum bilgisi AÇIĞA ÇIKMAZ.
+    if (!sec_rate_limit($pdo, 'qrmenu:' . sec_client_ip(), 120, 60)) { sec_json_exit(429, ['success' => false, 'error' => 'Çok fazla istek.']); }
+    ob_start(function ($buf) {
+        $d = json_decode($buf, true);
+        if (!is_array($d)) return $buf;
+        $t = [];
+        foreach (($d['tables'] ?? []) as $x) {
+            $t[] = ['id' => $x['id'] ?? null, 'sectionId' => $x['sectionId'] ?? null, 'sectionName' => $x['sectionName'] ?? null, 'name' => $x['name'] ?? null];
+        }
+        $d['tables'] = $t;
+        unset($d['last_updated']);
+        return json_encode($d, JSON_UNESCAPED_UNICODE);
+    });
+    $action = 'get_live_state';
+} elseif ($action === 'qr_table_state') {
+    $qTable = (string)($_GET['table'] ?? '');
+    if (!sec_table_qr_valid($qTable, (string)($_GET['qrt'] ?? ''))) { sec_json_exit(403, ['success' => false, 'error' => 'Geçersiz masa QR kodu.']); }
+    if (!sec_rate_limit($pdo, 'qrtbl:' . sec_client_ip(), 120, 60)) { sec_json_exit(429, ['success' => false, 'error' => 'Çok fazla istek.']); }
+    $GLOBALS['__qrTable'] = $qTable;
+    ob_start(function ($buf) {
+        $d = json_decode($buf, true);
+        if (!is_array($d)) return $buf;
+        $only = null;
+        foreach (($d['tables'] ?? []) as $x) { if (($x['id'] ?? '') === $GLOBALS['__qrTable']) { $only = $x; break; } }
+        return json_encode(['success' => true, 'table' => $only], JSON_UNESCAPED_UNICODE);
+    });
+    $action = 'get_live_state';
+} elseif ($action === 'qr_send' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $qIn = json_decode(file_get_contents('php://input'), true) ?: [];
+    $qTable = (string)($qIn['tableId'] ?? '');
+    if (!sec_table_qr_valid($qTable, (string)($qIn['qrt'] ?? ''))) { sec_json_exit(403, ['success' => false, 'error' => 'Geçersiz masa QR kodu.']); }
+    $qType = $qIn['type'] ?? 'ORDER';
+    if (!in_array($qType, ['ORDER', 'WAITER_CALL', 'BILL_REQUEST'], true)) { sec_json_exit(400, ['success' => false, 'error' => 'Desteklenmeyen istek.']); }
+    if (!sec_rate_limit($pdo, 'qrsend:ip:' . sec_client_ip(), 12, 600) || !sec_rate_limit($pdo, 'qrsend:tbl:' . $qTable, 30, 600)) {
+        sec_json_exit(429, ['success' => false, 'error' => 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.']);
+    }
+    $qrForce = ['waiterName' => 'QR Menü (Müşteri)'];
+    $authCtx = ['who' => 'device', 'identity' => null]; // sunucuda fiyat doğrulaması uygulanır
+    $action = 'send_order';
+}
+
 // Cihaz eşleme ve kimlik doğrulama işlemleri doğrudan auth.php tarafından ele alınır
 if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status'])) {
     require __DIR__ . '/auth.php';
     exit;
 }
 
-// Online Yemek Platformları (Yemeksepeti, Trendyol Yemek, GetirYemek)
-if (in_array($action, ['get_online_orders', 'list_online_orders', 'get_online_platforms', 'create_test_online_order'])) {
+// Online Yemek Platformları (Yemeksepeti, Trendyol Go Yemek; GetirYemek siparişleri Trendyol üzerinden gelir)
+if (in_array($action, ['get_online_orders', 'list_online_orders', 'get_online_platforms'])) {
     require __DIR__ . '/online/orders.php';
     exit;
 }
@@ -66,7 +117,8 @@ if (in_array($action, [
     'online_action', 'accept_online_order', 'reject_online_order', 'cancel_online_order',
     'dispatch_online_order', 'deliver_online_order', 'update_online_store_status',
     'update_platform_store_status', 'get_platform_store_status',
-    'toggle_online_platform', 'save_online_platform_config', 'test_online_connection'
+    'toggle_online_platform', 'save_online_platform_config', 'test_online_connection',
+    'poll_online_orders', 'get_online_diagnostics'
 ])) {
     // get_platform_store_status desteği
     if ($action === 'get_platform_store_status') {
@@ -119,7 +171,12 @@ function sort_tables_naturally_php(&$tables, $sections = []) {
 // ========================================================
 // 0. VERİTABANI BAĞLANTI TESTİ (test_db / health)
 // ========================================================
-if ($action === 'test_db' || $action === 'health') {
+if ($action === 'health' || $action === 'test_db') {
+    if ($action === 'test_db' && !sec_is_kasa()) { sec_json_exit(401, ['success' => false, 'error' => 'Yetkisiz istek.']); }
+    if ($action === 'health' && !sec_is_kasa()) {
+        echo json_encode(['success' => true, 'status' => $useMysql ? 'ONLINE' : 'DB_UNAVAILABLE', 'serverTime' => date('c')]);
+        exit;
+    }
     if ($useMysql) {
         $tableCounts = [];
         try {
@@ -160,45 +217,7 @@ if ($action === 'test_db' || $action === 'health') {
 // ========================================================
 // 1. CİHAZ EŞLEŞTİRME VE MÜHÜRLEME (pair_device)
 // ========================================================
-if ($action === 'pair_device' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    if ($input && !empty($input['waiterId'])) {
-        $waiterId = $input['waiterId'];
-        $waiterName = $input['waiterName'] ?? 'Garson';
-        $deviceUuid = $input['deviceUuid'] ?? ('TEL-' . rand(1000, 9999));
-        $deviceName = $input['deviceName'] ?? 'Mobil Cihaz';
-        $status = 'APPROVED';
-
-        if ($useMysql) {
-            $stmt = $pdo->prepare("INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `device_name`, `durum`, `eslesme_tarihi`) 
-                                   VALUES (?, ?, ?, ?, ?, NOW()) 
-                                   ON DUPLICATE KEY UPDATE `waiter_name` = VALUES(`waiter_name`), `device_uuid` = VALUES(`device_uuid`), `device_name` = VALUES(`device_name`), `durum` = VALUES(`durum`), `eslesme_tarihi` = NOW()");
-            $stmt->execute([$waiterId, $waiterName, $deviceUuid, $deviceName, $status]);
-        } else {
-            $db['paired_devices'][$waiterId] = [
-                'waiterId' => $waiterId,
-                'waiterName' => $waiterName,
-                'deviceUuid' => $deviceUuid,
-                'deviceName' => $deviceName,
-                'pairedAt' => date('Y-m-d H:i:s'),
-                'status' => $status
-            ];
-            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        }
-
-        echo json_encode([
-            'success' => true,
-            'device' => [
-                'waiterId' => $waiterId,
-                'waiterName' => $waiterName,
-                'deviceUuid' => $deviceUuid,
-                'deviceName' => $deviceName,
-                'status' => $status
-            ]
-        ]);
-        exit;
-    }
-}
+// (Eski 'pair_device' kimliksiz kayıt yolu kaldırıldı; eşleştirme yalnızca auth.php içinde, süreli tek kullanımlık kodla yapılır.)
 
 // ========================================================
 // 2. KASA İÇİN EŞLEŞEN CİHAZLARI GETİR (get_paired_devices)
@@ -270,7 +289,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($tblIds)) {
                         $inQ = implode(',', array_fill(0, count($tblIds), '?'));
-                        $pdo->prepare("DELETE FROM `masalar` WHERE `id` NOT IN ($inQ)")->execute($tblIds);
+                        $pdo->prepare("DELETE FROM `masalar` WHERE `id` NOT IN ($inQ) AND `durum` = 'EMPTY'")->execute($tblIds);
                     }
                 }
 
@@ -292,16 +311,16 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($catIds)) {
                         $inQ = implode(',', array_fill(0, count($catIds), '?'));
-                        $pdo->prepare("DELETE FROM `kategoriler` WHERE `id` NOT IN ($inQ)")->execute($catIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
                 // Ürünler
                 if (isset($input['products']) && is_array($input['products'])) {
                     $prodIds = [];
-                    $stmt = $pdo->prepare("INSERT INTO `urunler` (`id`, `kategori_id`, `ad`, `fiyat`, `hazirlik_dk`, `barkod`, `yazici_id`, `aktif`, `aciklama`, `resim_url`) 
-                                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
-                                           ON DUPLICATE KEY UPDATE `kategori_id` = VALUES(`kategori_id`), `ad` = VALUES(`ad`), `fiyat` = VALUES(`fiyat`), `hazirlik_dk` = VALUES(`hazirlik_dk`), `barkod` = VALUES(`barkod`), `yazici_id` = VALUES(`yazici_id`), `aktif` = VALUES(`aktif`), `aciklama` = VALUES(`aciklama`), `resim_url` = VALUES(`resim_url`)");
+                    $stmt = $pdo->prepare("INSERT INTO `urunler` (`id`, `kategori_id`, `ad`, `fiyat`, `hazirlik_dk`, `barkod`, `yazici_id`, `aktif`, `aciklama`, `resim_url`, `varyantlar`) 
+                                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                                           ON DUPLICATE KEY UPDATE `kategori_id` = VALUES(`kategori_id`), `ad` = VALUES(`ad`), `fiyat` = VALUES(`fiyat`), `hazirlik_dk` = VALUES(`hazirlik_dk`), `barkod` = VALUES(`barkod`), `yazici_id` = VALUES(`yazici_id`), `aktif` = VALUES(`aktif`), `aciklama` = VALUES(`aciklama`), `resim_url` = VALUES(`resim_url`), `varyantlar` = VALUES(`varyantlar`)");
                     foreach ($input['products'] as $prod) {
                         $prodIds[] = $prod['id'];
                         $stmt->execute([
@@ -314,12 +333,13 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                             $prod['printerId'] ?? null,
                             isset($prod['isAvailable']) && !$prod['isAvailable'] ? 0 : 1,
                             $prod['description'] ?? null,
-                            $prod['imageUrl'] ?? null
+                            $prod['imageUrl'] ?? null,
+                            gtuEncodeVariants($prod['variants'] ?? null)
                         ]);
                     }
                     if (!empty($prodIds)) {
                         $inQ = implode(',', array_fill(0, count($prodIds), '?'));
-                        $pdo->prepare("DELETE FROM `urunler` WHERE `id` NOT IN ($inQ)")->execute($prodIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -352,7 +372,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($empIds)) {
                         $inQ = implode(',', array_fill(0, count($empIds), '?'));
-                        $pdo->prepare("DELETE FROM `personeller` WHERE `id` NOT IN ($inQ)")->execute($empIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -380,7 +400,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($epIds)) {
                         $inQ = implode(',', array_fill(0, count($epIds), '?'));
-                        $pdo->prepare("DELETE FROM `personel_hareketler` WHERE `id` NOT IN ($inQ)")->execute($epIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -404,7 +424,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($custIds)) {
                         $inQ = implode(',', array_fill(0, count($custIds), '?'));
-                        $pdo->prepare("DELETE FROM `musteriler` WHERE `id` NOT IN ($inQ)")->execute($custIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -428,7 +448,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($ctxIds)) {
                         $inQ = implode(',', array_fill(0, count($ctxIds), '?'));
-                        $pdo->prepare("DELETE FROM `cari_hareketler` WHERE `id` NOT IN ($inQ)")->execute($ctxIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -454,7 +474,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($supIds)) {
                         $inQ = implode(',', array_fill(0, count($supIds), '?'));
-                        $pdo->prepare("DELETE FROM `toptancilar` WHERE `id` NOT IN ($inQ)")->execute($supIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -479,7 +499,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($stxIds)) {
                         $inQ = implode(',', array_fill(0, count($stxIds), '?'));
-                        $pdo->prepare("DELETE FROM `toptanci_hareketler` WHERE `id` NOT IN ($inQ)")->execute($stxIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -505,7 +525,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($expIds)) {
                         $inQ = implode(',', array_fill(0, count($expIds), '?'));
-                        $pdo->prepare("DELETE FROM `giderler` WHERE `id` NOT IN ($inQ)")->execute($expIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -545,7 +565,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($zIds)) {
                         $inQ = implode(',', array_fill(0, count($zIds), '?'));
-                        $pdo->prepare("DELETE FROM `z_raporlari` WHERE `id` NOT IN ($inQ)")->execute($zIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -575,7 +595,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($coIds)) {
                         $inQ = implode(',', array_fill(0, count($coIds), '?'));
-                        $pdo->prepare("DELETE FROM `tamamlanan_adisyonlar` WHERE `id` NOT IN ($inQ)")->execute($coIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -678,11 +698,13 @@ if ($action === 'get_all_erp_data') {
 
         $categories = $pdo->query("SELECT `id`, `ad` as name, `renk` as color, `yazici_id` as printerId, `sira` as `order` FROM `kategoriler` ORDER BY `sira` ASC")->fetchAll();
         
-        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl FROM `urunler`")->fetchAll();
+        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl, `varyantlar` as variantsJson FROM `urunler`")->fetchAll();
         foreach ($products as &$p) {
             $p['price'] = (float)$p['price'];
             $p['preparationMin'] = (int)$p['preparationMin'];
             $p['isAvailable'] = (bool)$p['isAvailable'];
+            $p['variants'] = gtuParseVariants($p['variantsJson'] ?? null);
+            unset($p['variantsJson']);
         }
 
         $empRows = $pdo->query("SELECT `id`, `ad` as fullName, `rol` as role, `pozisyon` as position, `telefon` as phone, `maas` as salary, `maas_gunu` as salaryPaymentDay, `calisma_saati` as dailyWorkHours, `mesai_carpani` as overtimeMultiplier, `iban`, `bakiye` as balance, `pin`, `qr_token` as qrToken, `aktif` as isActive, `baslangic_tarihi` as startDate FROM `personeller`")->fetchAll();
@@ -876,9 +898,10 @@ if ($action === 'delete_item' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // ========================================================
 if ($action === 'get_active_waiters') {
     if ($useMysql) {
-        $waiters = $pdo->query("SELECT `id`, `ad` as name, `rol` as role, `pozisyon` as position, `telefon` as phone, `pin`, `qr_token` as qrToken 
-                                FROM `personeller` 
-                                WHERE `aktif` = 1 AND `pin` IS NOT NULL AND `pin` != '' 
+        // PIN, telefon ve QR anahtarı ASLA döndürülmez.
+        $waiters = $pdo->query("SELECT `id`, `ad` as name, `rol` as role
+                                FROM `personeller`
+                                WHERE `aktif` = 1 AND `pin` IS NOT NULL AND `pin` != ''
                                 ORDER BY `ad` ASC")->fetchAll();
         echo json_encode(['success' => true, 'waiters' => $waiters], JSON_UNESCAPED_UNICODE);
         exit;
@@ -893,107 +916,33 @@ if ($action === 'get_active_waiters') {
 }
 
 if ($action === 'verify_waiter_pin' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $pin = trim($input['pin'] ?? '');
-    $waiterId = trim($input['waiterId'] ?? '');
-    $deviceUuid = trim($input['device_uuid'] ?? ($_SERVER['HTTP_X_DEVICE_UUID'] ?? ''));
-
-    if (empty($pin)) {
-        echo json_encode(['success' => false, 'message' => 'Lütfen PIN kodunuzu girin!']);
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $pin = trim((string)($input['pin'] ?? ''));
+    $ident = $authCtx['identity']; // eşleşmiş cihazdan geldi (sec_enforce)
+    if ($pin === '' || !$ident) {
+        sec_json_exit(400, ['success' => false, 'message' => 'Lütfen PIN kodunuzu girin!']);
+    }
+    // Brute-force koruması: cihaz başına ve garson başına
+    if (!sec_rate_limit($pdo, 'pin:dev:' . $ident['deviceHash'], 8, 600) || !sec_rate_limit($pdo, 'pin:w:' . $ident['waiterId'], 10, 600)) {
+        sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla hatalı deneme. 10 dakika sonra tekrar deneyin.']);
+    }
+    // PIN yalnızca token'daki (eşleşmiş) garsona karşı doğrulanır; istemcinin gönderdiği waiterId yok sayılır.
+    $stmt = $pdo->prepare("SELECT `id`, `ad` as name, `rol` as role, `pin` FROM `personeller` WHERE `id` = ? AND `aktif` = 1 LIMIT 1");
+    $stmt->execute([$ident['waiterId']]);
+    $w = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($w && $w['pin'] !== null && $w['pin'] !== '' && hash_equals((string)$w['pin'], $pin)) {
+        $session = sec_sign(['role' => 'waiter', 'wid' => $w['id'], 'dev' => $ident['deviceHash']], 12 * 3600);
+        if (!$session) { sec_json_exit(503, ['success' => false, 'message' => 'Sunucu gizli anahtarı yapılandırılmamış.']); }
+        try { $pdo->prepare("UPDATE `cihazlar` SET `son_gorulme` = NOW() WHERE `device_token_hash` = ?")->execute([$ident['deviceHash']]); } catch (Throwable $e) {}
+        echo json_encode([
+            'success' => true,
+            'waiter' => ['id' => $w['id'], 'name' => $w['name'], 'role' => $w['role'] ?? 'WAITER'],
+            'token' => $session,
+            'session' => $session
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
-
-    if ($useMysql) {
-        $stmt = null;
-        if (!empty($waiterId)) {
-            $stmt = $pdo->prepare("
-                SELECT `id`, `ad` as name, `rol` as role, `pin`, `device_uuid` 
-                FROM `personeller` 
-                WHERE `id` = ? AND `pin` = ? AND `aktif` = 1
-                UNION
-                SELECT `id`, `ad_soyad` as name, `rol` as role, `pin_kodu` as pin, `device_uuid` 
-                FROM `users` 
-                WHERE `id` = ? AND `pin_kodu` = ? AND `aktif` = 1
-                LIMIT 1
-            ");
-            $stmt->execute([$waiterId, $pin, $waiterId, $pin]);
-        } else {
-            $stmt = $pdo->prepare("
-                SELECT `id`, `ad` as name, `rol` as role, `pin`, `device_uuid` 
-                FROM `personeller` 
-                WHERE `pin` = ? AND `aktif` = 1
-                UNION
-                SELECT `id`, `ad_soyad` as name, `rol` as role, `pin_kodu` as pin, `device_uuid` 
-                FROM `users` 
-                WHERE `pin_kodu` = ? AND `aktif` = 1
-                LIMIT 1
-            ");
-            $stmt->execute([$pin, $pin]);
-        }
-        $w = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($w && ($w['pin'] === $pin || $pin === '1234')) {
-            // Cihaz UUID kaydı kontrolü & otomatik bağlama
-            if (!empty($deviceUuid)) {
-                try {
-                    $pdo->prepare("UPDATE `personeller` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
-                        ->execute([$deviceUuid, $w['id']]);
-                    $pdo->prepare("UPDATE `users` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
-                        ->execute([$deviceUuid, $w['id']]);
-                    $pdo->prepare("INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `durum`, `eslesme_tarihi`) 
-                                   VALUES (?, ?, ?, 'APPROVED', NOW()) 
-                                   ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `durum` = 'APPROVED', `eslesme_tarihi` = NOW()")
-                        ->execute([$w['id'], $w['name'], $deviceUuid]);
-                } catch (Exception $e) {}
-            }
-
-            echo json_encode([
-                'success' => true, 
-                'waiter' => [
-                    'id' => $w['id'],
-                    'name' => $w['name'],
-                    'role' => $w['role'] ?? 'WAITER',
-                    'pin' => $w['pin']
-                ], 
-                'token' => 'WTR-' . md5($w['id'] . time() . 'gtu_salt')
-            ], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-
-        http_response_code(401);
-        echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Yalnızca sisteme tanımlanmış garsonlar giriş yapabilir.']);
-        exit;
-    } else {
-        $emps = $db['employees'] ?? [];
-        foreach ($emps as $e) {
-            if (($e['pin'] ?? '') === $pin && ($e['isActive'] ?? true)) {
-                if (!empty($waiterId) && $e['id'] !== $waiterId) continue;
-                if (!empty($deviceUuid)) {
-                    $db['paired_devices'][$e['id']] = [
-                        'waiterId' => $e['id'],
-                        'waiterName' => $e['name'] ?? $e['fullName'] ?? 'Garson',
-                        'deviceUuid' => $deviceUuid,
-                        'pairedAt' => date('Y-m-d H:i:s'),
-                        'status' => 'APPROVED'
-                    ];
-                    @file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                }
-                echo json_encode([
-                    'success' => true,
-                    'waiter' => [
-                        'id' => $e['id'],
-                        'name' => $e['name'] ?? $e['fullName'],
-                        'pin' => $e['pin']
-                    ],
-                    'token' => 'WTR-' . md5($e['id'] . time())
-                ], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-        }
-        http_response_code(401);
-        echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Tanımlı değilsiniz.']);
-        exit;
-    }
+    sec_json_exit(401, ['success' => false, 'message' => 'Geçersiz Garson PIN Kodu!']);
 }
 
 // ========================================================
@@ -1003,19 +952,7 @@ if ($action === 'get_live_state') {
     if ($useMysql) {
         $sections = $pdo->query("SELECT `id`, `ad` as name, `masa_sayisi` as tableCount, `kapasite_kisi` as capacityPerTable FROM `bolumler` ORDER BY `sira` ASC")->fetchAll();
         
-        // Eğer bölümler boşsa varsayılan salonları yükle
-        if (empty($sections)) {
-            $defaultSecs = [
-                ['id' => 'sec-salon', 'ad' => 'Ana Salon', 'masa_sayisi' => 12, 'kapasite_kisi' => 4, 'sira' => 1],
-                ['id' => 'sec-bahce', 'ad' => 'Bahçe', 'masa_sayisi' => 10, 'kapasite_kisi' => 6, 'sira' => 2],
-                ['id' => 'sec-paket', 'ad' => 'Paket Servis', 'masa_sayisi' => 8, 'kapasite_kisi' => 1, 'sira' => 3]
-            ];
-            $stmt = $pdo->prepare("INSERT IGNORE INTO `bolumler` (`id`, `ad`, `masa_sayisi`, `kapasite_kisi`, `sira`) VALUES (?, ?, ?, ?, ?)");
-            foreach ($defaultSecs as $ds) {
-                $stmt->execute([$ds['id'], $ds['ad'], $ds['masa_sayisi'], $ds['kapasite_kisi'], $ds['sira']]);
-            }
-            $sections = $pdo->query("SELECT `id`, `ad` as name, `masa_sayisi` as tableCount, `kapasite_kisi` as capacityPerTable FROM `bolumler` ORDER BY `sira` ASC")->fetchAll();
-        }
+        // Varsayılan/demo salon OLUŞTURULMAZ: bölüm ve masa düzeni kasadan (push_kasa_state) gelir.
 
         $tableRows = $pdo->query("SELECT `id`, `bolum_id` as sectionId, `ad` as name, `durum` as status, `aktif_siparis` as activeOrder, `toplam_tutar` as totalAmount FROM `masalar` ORDER BY `id` ASC")->fetchAll();
         
@@ -1055,13 +992,15 @@ if ($action === 'get_live_state') {
         sort_tables_naturally_php($tables, $sections);
 
         $categories = $pdo->query("SELECT `id`, `ad` as name, `renk` as color, `yazici_id` as printerId FROM `kategoriler` ORDER BY `sira` ASC")->fetchAll();
-        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl FROM `urunler` WHERE `aktif` = 1")->fetchAll();
+        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl, `varyantlar` as variantsJson FROM `urunler` WHERE `aktif` = 1")->fetchAll();
         
         // Ürün fiyat ve boolean dönüşümleri
         foreach ($products as &$p) {
             $p['price'] = (float)$p['price'];
             $p['preparationMin'] = (int)$p['preparationMin'];
             $p['isAvailable'] = (bool)$p['isAvailable'];
+            $p['variants'] = gtuParseVariants($p['variantsJson'] ?? null);
+            unset($p['variantsJson']);
         }
 
         $lastUpdatedStmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'last_updated'");
@@ -1137,6 +1076,14 @@ if ($action === 'get_live_state') {
     }
 }
 
+if ($action === 'get_table_qr_tokens') {
+    $ids = $pdo->query("SELECT `id` FROM `masalar`")->fetchAll(PDO::FETCH_COLUMN);
+    $map = [];
+    foreach ($ids as $id) { $map[$id] = sec_table_qr_token($id); }
+    echo json_encode(['success' => true, 'tokens' => $map]);
+    exit;
+}
+
 // ========================================================
 // 5. SİPARİŞ / HESAP İSTEĞİ / MASA TAŞIMA (send_order)
 // ========================================================
@@ -1145,6 +1092,18 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($input) {
         $type = $input['type'] ?? 'ORDER';
         $orderId = 'ord-' . time() . '-' . rand(100, 999);
+        // Tekrar-gönderim koruması: istemci kimliği (clientOrderId) varsa sipariş kimliği ondan türetilir.
+        // Aynı kimlikle gelen ikinci istek PRIMARY KEY nedeniyle yeni kayıt oluşturamaz.
+        if (is_array($qrForce)) { $input['waiterName'] = $qrForce['waiterName']; }
+        if (($authCtx['who'] ?? '') === 'device' && !empty($authCtx['identity'])) {
+            // İstemcinin yazdığı garson adı yok sayılır; kimlik eşleşmiş cihazdan gelir.
+            $input['waiterName'] = $authCtx['identity']['waiterName'];
+            $input['waiterId'] = $authCtx['identity']['waiterId'];
+        }
+        $clientOrderId = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($input['clientOrderId'] ?? ''));
+        if ($clientOrderId !== '' && strlen($clientOrderId) >= 8 && strlen($clientOrderId) <= 48) {
+            $orderId = 'ord-' . $clientOrderId;
+        }
 
         if ($useMysql) {
             if ($type === 'BILL_REQUEST') {
@@ -1158,6 +1117,12 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $srcId = $input['sourceTableId'];
                 $tgtId = $input['targetTableId'];
 
+                $tgtChk = $pdo->prepare("SELECT `durum` FROM `masalar` WHERE `id` = ?");
+                $tgtChk->execute([$tgtId]);
+                $tgtRow = $tgtChk->fetch();
+                if (!$tgtRow || ($tgtRow['durum'] ?? 'EMPTY') !== 'EMPTY') {
+                    sec_json_exit(409, ['success' => false, 'error' => 'Hedef masa boş değil; taşıma yapılmadı.', 'code' => 'TARGET_OCCUPIED']);
+                }
                 $stmt = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ?");
                 $stmt->execute([$srcId]);
                 $src = $stmt->fetch();
@@ -1177,20 +1142,79 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                                        VALUES (?, ?, ?, 'MÜŞTERİ', 'WAITER_CALL', '[]', 0, 0, 'NEW', NOW())");
                 $stmt->execute(['call-' . time(), $input['tableId'], $input['tableName'] ?? 'Masa']);
             } else {
-                // Standart Yemek Siparişi
+                // Standart Yemek Siparişi (tek işlem: kayıt + masa güncelleme birlikte olur ya da hiç olmaz)
+                $pdo->beginTransaction();
+                try {
+                $dupStmt = $pdo->prepare("SELECT `id` FROM `siparisler` WHERE `id` = ? FOR UPDATE");
+                $dupStmt->execute([$orderId]);
+                if ($dupStmt->fetch()) {
+                    $pdo->commit();
+                    echo json_encode(['success' => true, 'orderId' => $orderId, 'duplicate' => true, 'mode' => 'MYSQL']);
+                    exit;
+                }
                 $newItems = $input['items'] ?? [];
+                if (($authCtx['who'] ?? '') === 'device') {
+                    // Garson cihazından gelen fiyat/tutar GÜVENİLMEZ: ürün veritabanından yeniden hesaplanır.
+                    if (!is_array($newItems) || count($newItems) === 0 || count($newItems) > 100) {
+                        $pdo->rollBack();
+                        sec_json_exit(422, ['success' => false, 'error' => 'Sipariş kalemi geçersiz.']);
+                    }
+                    $priceStmt = $pdo->prepare("SELECT `ad`, `fiyat`, `varyantlar` FROM `urunler` WHERE `id` = ? AND `aktif` = 1");
+                    $clean = [];
+                    foreach ($newItems as $it) {
+                        $pid = (string)($it['productId'] ?? '');
+                        $qty = (int)($it['quantity'] ?? 0);
+                        $portion = (float)($it['portion'] ?? 1);
+                        if ($pid === '' || $qty < 1 || $qty > 99 || !in_array($portion, [0.5, 1.0, 1.5], true)) {
+                            $pdo->rollBack();
+                            sec_json_exit(422, ['success' => false, 'error' => 'Sipariş kalemi geçersiz.']);
+                        }
+                        $priceStmt->execute([$pid]);
+                        $prod = $priceStmt->fetch(PDO::FETCH_ASSOC);
+                        if (!$prod) {
+                            $pdo->rollBack();
+                            sec_json_exit(422, ['success' => false, 'error' => 'Ürün bulunamadı veya satışta değil.', 'code' => 'PRODUCT_UNAVAILABLE']);
+                        }
+                        $variants = gtuParseVariants($prod['varyantlar'] ?? null);
+                        if (count($variants) > 0) {
+                            // Seçenekli ürün: seçenek ZORUNLU; fiyat ve ad sunucuda seçenekten belirlenir (istemci fiyatına güvenilmez)
+                            $vid = (string)($it['variantId'] ?? '');
+                            if ($vid === '') {
+                                $pdo->rollBack();
+                                sec_json_exit(422, ['success' => false, 'error' => '"' . $prod['ad'] . '" için boyut/porsiyon seçeneği seçilmelidir.', 'code' => 'VARIANT_REQUIRED']);
+                            }
+                            $picked = null;
+                            foreach ($variants as $vv) { if ($vv['id'] === $vid) { $picked = $vv; break; } }
+                            if (!$picked || $portion !== 1.0) {
+                                $pdo->rollBack();
+                                sec_json_exit(422, ['success' => false, 'error' => 'Seçilen seçenek geçersiz veya artık satışta değil. Menüyü yenileyin.', 'code' => 'VARIANT_INVALID']);
+                            }
+                            $it['price'] = $picked['price'];
+                            $it['variantId'] = $picked['id'];
+                            $it['productName'] = $prod['ad'] . ' (' . $picked['name'] . ')';
+                        } else {
+                            unset($it['variantId']); // seçeneksiz üründe seçenek kimliği yok sayılır
+                            $it['price'] = round((float)$prod['fiyat'] * $portion);
+                        }
+                        $it['quantity'] = $qty;
+                        $it['portion'] = $portion;
+                        $it['note'] = mb_substr((string)($it['note'] ?? ''), 0, 200);
+                        $clean[] = $it;
+                    }
+                    $newItems = $clean;
+                }
                 $orderTotal = 0;
                 foreach ($newItems as $it) {
                     $orderTotal += ((float)($it['price'] ?? 0)) * ((int)($it['quantity'] ?? 1));
                 }
-                if (!empty($input['totalAmount'])) {
+                if (!empty($input['totalAmount']) && ($authCtx['who'] ?? '') !== 'device') {
                     $orderTotal = (float)$input['totalAmount'];
                 }
 
                 // Masadaki mevcut açık adisyonu al ve birleştir
                 $existingItems = [];
                 $existingTotal = 0.0;
-                $stmtExist = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ?");
+                $stmtExist = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ? FOR UPDATE");
                 $stmtExist->execute([$input['tableId']]);
                 $curRow = $stmtExist->fetch();
                 if ($curRow && !empty($curRow['aktif_siparis'])) {
@@ -1234,6 +1258,14 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $combinedTotal,
                     $input['tableId']
                 ]);
+                $pdo->commit();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                    error_log('send_order hata: ' . $e->getMessage());
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Sipariş kaydedilemedi']);
+                    exit;
+                }
             }
 
             $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`) VALUES ('last_updated', ?) ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([time()]);
@@ -1320,35 +1352,62 @@ if ($action === 'pull_pending_orders') {
         $idsToMark = [];
 
         foreach ($rows as $r) {
-            $r['items'] = json_decode($r['kalemler'], true) ?: [];
-            unset($r['kalemler']);
+            $r['items'] = json_decode((string)($r['items'] ?? ''), true) ?: [];
             $r['totalAmount'] = (float)$r['totalAmount'];
             $pending[] = $r;
             $idsToMark[] = $r['id'];
         }
 
-        if (!empty($idsToMark)) {
-            $inClause = implode(',', array_fill(0, count($idsToMark), '?'));
-            $updateStmt = $pdo->prepare("UPDATE `siparisler` SET `yazdirildi` = 1 WHERE `id` IN ($inClause)");
-            $updateStmt->execute($idsToMark);
-        }
-
+        // NOT: Siparişler burada "tüketilmez". Kasa kalıcı olarak kaydettikten sonra ack_orders ile onaylar.
         echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'MYSQL']);
         exit;
     } else {
         $pending = [];
         if (!empty($db['orders'])) {
-            foreach ($db['orders'] as &$ord) {
+            foreach ($db['orders'] as $ord) {
                 if (empty($ord['printed'])) {
                     $pending[] = $ord;
-                    $ord['printed'] = true;
                 }
             }
-            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         }
         echo json_encode(['success' => true, 'orders' => $pending, 'mode' => 'JSON']);
         exit;
     }
+}
+
+// ========================================================
+// 6b. KASA SİPARİŞİ KALICI KAYDETTİKTEN SONRA ONAYLAR (ack_orders)
+// ========================================================
+if ($action === 'ack_orders' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $in = json_decode(file_get_contents('php://input'), true);
+    $ids = [];
+    if (is_array($in) && isset($in['ids']) && is_array($in['ids'])) {
+        foreach ($in['ids'] as $i) {
+            if (is_string($i) && $i !== '' && strlen($i) <= 60) { $ids[] = $i; }
+        }
+    }
+    $ids = array_slice(array_values(array_unique($ids)), 0, 200);
+    if (empty($ids)) {
+        echo json_encode(['success' => true, 'acked' => 0]);
+        exit;
+    }
+    if ($useMysql) {
+        $inClause = implode(',', array_fill(0, count($ids), '?'));
+        $upd = $pdo->prepare("UPDATE `siparisler` SET `yazdirildi` = 1, `durum` = 'RECEIVED' WHERE `id` IN ($inClause)");
+        $upd->execute($ids);
+        echo json_encode(['success' => true, 'acked' => $upd->rowCount()]);
+    } else {
+        $n = 0;
+        if (!empty($db['orders'])) {
+            foreach ($db['orders'] as &$ord) {
+                if (in_array($ord['id'] ?? '', $ids, true) && empty($ord['printed'])) { $ord['printed'] = true; $n++; }
+            }
+            unset($ord);
+            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        }
+        echo json_encode(['success' => true, 'acked' => $n]);
+    }
+    exit;
 }
 
 // ========================================================
@@ -1358,7 +1417,7 @@ if ($action === 'platform_webhook' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     if ($input) {
         $platform = strtoupper($input['platform'] ?? 'TRENDYOL');
-        $code = $input['platformCode'] ?? ($platform === 'TRENDYOL' ? '#TY-' : ($platform === 'GETIR' ? '#GT-' : '#YS-')) . rand(1000, 9999);
+        $code = $input['platformCode'] ?? ($platform === 'TRENDYOL' ? '#TY-' : '#YS-') . rand(1000, 9999);
         $deliveryModel = strtoupper($input['deliveryModel'] ?? 'RESTAURANT');
         if (!in_array($deliveryModel, ['RESTAURANT', 'PLATFORM'])) $deliveryModel = 'RESTAURANT';
 
@@ -1478,67 +1537,61 @@ if ($action === 'update_platform_order_status' && $_SERVER['REQUEST_METHOD'] ===
 // ========================================================
 // 8. PATRON GİRİŞİ (boss_login) & PAROLA DEĞİŞTİRME & ÖZET RAPORLAR
 // ========================================================
+/** Patron parolasını okur: ayarlar tablosu (hash'li ya da eski düz metin) veya yapılandırma değeri. */
+function boss_stored_secret($pdo) {
+    $val = null;
+    try {
+        $val = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'")->fetchColumn();
+    } catch (Throwable $e) {}
+    $val = is_string($val) ? trim($val) : '';
+    return $val !== '' ? $val : (string)DEFAULT_BOSS_PASSWORD;
+}
+function boss_check_password($stored, $input) {
+    if ($stored === '' || $input === '') return false;
+    if (strpos($stored, '$2y$') === 0 || strpos($stored, '$argon2') === 0) return password_verify($input, $stored);
+    return hash_equals($stored, $input); // eski düz metin kayıt; başarılı girişte hash'e yükseltilir
+}
+
 if ($action === 'boss_login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $pwd = trim($input['password'] ?? '');
-    $deviceFp = $input['deviceFingerprint'] ?? '';
-
-    $bossPwd = DEFAULT_BOSS_PASSWORD;
-    if ($useMysql) {
-        $stmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'");
-        $val = $stmt ? $stmt->fetchColumn() : null;
-        if ($val && trim($val) !== '') {
-            $bossPwd = trim($val);
-        }
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $pwd = trim((string)($input['password'] ?? ''));
+    if (!sec_rate_limit($pdo, 'boss_login:' . sec_client_ip(), 5, 900)) {
+        sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla deneme. 15 dakika sonra tekrar deneyin.']);
     }
-
-    // Kesin doğrulama: Sadece kayıtlı patron parolası ile eşleşirse giriş verilir!
-    if ($pwd !== '' && $pwd === $bossPwd) {
-        $token = 'BOSS-' . md5($deviceFp . time() . 'gtu_salt_' . $bossPwd);
-        echo json_encode([
-            'success' => true, 
-            'token' => $token, 
-            'message' => 'Patron girişi başarılı'
-        ]);
+    $stored = boss_stored_secret($pdo);
+    if (boss_check_password($stored, $pwd)) {
+        $token = sec_sign(['role' => 'boss'], 8 * 3600);
+        if (!$token) { sec_json_exit(503, ['success' => false, 'message' => 'Sunucu gizli anahtarı yapılandırılmamış.']); }
+        if (strpos($stored, '$2y$') !== 0) {
+            try {
+                $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('boss_password', ?, 'Patron Parolası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")
+                    ->execute([password_hash($pwd, PASSWORD_DEFAULT)]);
+            } catch (Throwable $e) {}
+        }
+        echo json_encode(['success' => true, 'token' => $token, 'message' => 'Patron girişi başarılı']);
     } else {
-        echo json_encode([
-            'success' => false, 
-            'message' => 'Hatalı Patron Parolası! Lütfen şifrenizi kontrol ediniz.'
-        ]);
+        sec_json_exit(401, ['success' => false, 'message' => 'Hatalı Patron Parolası! Lütfen şifrenizi kontrol ediniz.']);
     }
     exit;
 }
 
 if ($action === 'change_boss_password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $currentPwd = trim($input['currentPassword'] ?? '');
-    $newPwd = trim($input['newPassword'] ?? '');
-
-    $bossPwd = DEFAULT_BOSS_PASSWORD;
-    if ($useMysql) {
-        $stmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'");
-        $val = $stmt ? $stmt->fetchColumn() : null;
-        if ($val && trim($val) !== '') $bossPwd = trim($val);
-
-        if ($currentPwd !== $bossPwd) {
-            echo json_encode(['success' => false, 'message' => 'Mevcut patron parolası hatalı!']);
-            exit;
-        }
-
-        if (strlen($newPwd) < 4) {
-            echo json_encode(['success' => false, 'message' => 'Yeni parola en az 4 karakter olmalıdır!']);
-            exit;
-        }
-
-        $stmt = $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('boss_password', ?, 'Patron Parolası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)");
-        $stmt->execute([$newPwd]);
-
-        echo json_encode(['success' => true, 'message' => 'Patron parolası başarıyla değiştirildi.']);
-        exit;
-    } else {
-        echo json_encode(['success' => false, 'message' => 'MySQL veritabanı aktif değil!']);
-        exit;
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $currentPwd = trim((string)($input['currentPassword'] ?? ''));
+    $newPwd = trim((string)($input['newPassword'] ?? ''));
+    if (!sec_rate_limit($pdo, 'boss_chpw:' . sec_client_ip(), 5, 900)) {
+        sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla deneme.']);
     }
+    if (!boss_check_password(boss_stored_secret($pdo), $currentPwd)) {
+        sec_json_exit(403, ['success' => false, 'message' => 'Mevcut patron parolası hatalı!']);
+    }
+    if (strlen($newPwd) < 8) {
+        sec_json_exit(400, ['success' => false, 'message' => 'Yeni parola en az 8 karakter olmalıdır!']);
+    }
+    $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('boss_password', ?, 'Patron Parolası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")
+        ->execute([password_hash($newPwd, PASSWORD_DEFAULT)]);
+    echo json_encode(['success' => true, 'message' => 'Patron parolası başarıyla değiştirildi.']);
+    exit;
 }
 
 // Z-Raporları Detaylı Filtreleme ve Ekstre Çekimi
@@ -2043,11 +2096,13 @@ if ($action === 'cancel_item' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($useMysql) {
         // PIN Doğrulama: Patron şifresi veya yönetici personeli
         $pinOk = false;
-        $bossStmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'");
-        $bossPass = $bossStmt ? $bossStmt->fetchColumn() : '1453';
-        if ($pin === $bossPass || $pin === '1453') {
+        // Sabit/arka kapı PIN'i YOK. Patron parolası (hash'li) veya yönetici personel PIN'i; hız sınırlı.
+        if (!sec_rate_limit($pdo, 'cancel_pin:' . sec_client_ip(), 8, 600)) {
+            sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla hatalı deneme. Lütfen bekleyin.']);
+        }
+        if ($pin !== '' && boss_check_password(boss_stored_secret($pdo), $pin)) {
             $pinOk = true;
-        } else {
+        } elseif ($pin !== '') {
             $empChk = $pdo->prepare("SELECT COUNT(*) FROM `personeller` WHERE `pin` = ? AND `rol` IN ('ADMIN', 'CASHIER') AND `aktif` = 1");
             $empChk->execute([$pin]);
             if ($empChk->fetchColumn() > 0) {
@@ -2511,10 +2566,6 @@ if ($action === 'get_printer_routes') {
     exit;
 }
 
-// Varsayılan Yanıt
-echo json_encode([
-    'success' => true, 
-    'status' => 'ONLINE', 
-    'mode' => $useMysql ? 'MYSQL' : 'JSON_FALLBACK',
-    'version' => '3.3.0'
-]);
+// Bilinmeyen eylem: asla "başarılı" dönülmez (yazım hatası/eski istemci sessizce başarı sanılmasın).
+http_response_code(404);
+echo json_encode(['success' => false, 'error' => 'Bilinmeyen eylem', 'code' => 'UNKNOWN_ACTION']);

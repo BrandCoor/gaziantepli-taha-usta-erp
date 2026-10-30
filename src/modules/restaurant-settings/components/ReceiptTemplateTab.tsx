@@ -15,6 +15,7 @@ import {
 import { ReceiptSettingsConfig, restaurantDataService } from '../../../services/restaurantDataService';
 import { printerService } from '../../../services/printerService';
 import { notify } from '../../../services/notificationService';
+import { isElectronApp, ipcInvoke } from '../../../services/electronBridge';
 
 interface ReceiptTemplateTabProps {
   settings: ReceiptSettingsConfig;
@@ -25,14 +26,14 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
   const [form, setForm] = useState<ReceiptSettingsConfig>({
     title: settings.title || 'GAZİANTEPLİ TAHA USTA',
     subtitle: settings.subtitle || 'Kebap & Lahmacun Salonu',
-    phone: settings.phone || '0 (342) 555 00 27',
-    address: settings.address || 'Şehitkamil / Gaziantep',
-    taxNumber: settings.taxNumber || '1234567890',
-    taxOffice: settings.taxOffice || 'Şehitkamil V.D.',
-    mersisNo: settings.mersisNo || '012345678900001',
-    wifiName: settings.wifiName || 'TahaUsta_Misafir',
-    wifiPassword: settings.wifiPassword || 'anteplilezzetleri',
-    instagram: settings.instagram || '@gazianteplitahausta',
+    phone: settings.phone || '',
+    address: settings.address || '',
+    taxNumber: settings.taxNumber || '',
+    taxOffice: settings.taxOffice || '',
+    mersisNo: settings.mersisNo || '',
+    wifiName: settings.wifiName || '',
+    wifiPassword: settings.wifiPassword || '',
+    instagram: settings.instagram || '',
     footerMessage: settings.footerMessage || 'Afiyet Olsun. Yine Bekleriz!',
     showWaiterName: settings.showWaiterName ?? true,
     showTableNumber: settings.showTableNumber ?? true,
@@ -44,6 +45,21 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
   });
 
   const [copied, setCopied] = useState(false);
+  const [previewImg, setPreviewImg] = useState<string | null>(null);
+
+  /** Yazıcıya gidecek görüntünün birebir önizlemesi (gerçek yazı tipi, örnek ürünlerle). */
+  const handleRealPreview = async () => {
+    if (!isElectronApp()) { notify.info('Önizleme', 'Gerçek fiş önizlemesi yalnızca masaüstü uygulamasında çalışır.'); return; }
+    const r = await ipcInvoke('receipt-preview', {
+      jobType: 'BILL',
+      data: {
+        settings: form, tableName: 'Salon / Masa 4', waiterName: 'Garson', orderTime: new Date().toLocaleString('tr-TR'), orderNumber: 17, paperWidth: form.paperWidth || 80,
+        items: [{ name: 'Adana Kebap', quantity: 2, price: 280, totalPrice: 560, note: 'Acılı' }, { name: 'Ayran', quantity: 2, price: 40, totalPrice: 80 }],
+        subtotal: 640, totalAmount: 640,
+      },
+    });
+    if (r?.success) setPreviewImg(r.image); else notify.error('Önizleme Alınamadı', r?.error || 'Bilinmeyen hata');
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +83,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
   const handleCopyReceiptText = () => {
     const text = printerService.generatePlainTextReceipt('BILL', {
       settings: form,
-      tableName: 'Ana Salon / Masa 4',
+      tableName: 'Masa 4',
       waiterName: 'Mehmet Usta',
       orderTime: `${new Date().toLocaleDateString('tr-TR')} - 19:42`,
       orderNumber: 841,
@@ -104,6 +120,14 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRealPreview}
+            className="px-4 py-2.5 bg-[#141416] hover:bg-slate-800 text-[#FAF7F2] border border-[#383844] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shadow-md"
+          >
+            <span>Gerçek Fiş Önizleme</span>
+          </button>
+
           <button
             type="button"
             onClick={handleTestThermalPrint}
@@ -196,7 +220,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                     type="text"
                     value={form.taxOffice || ''}
                     onChange={(e) => setForm({ ...form, taxOffice: e.target.value })}
-                    placeholder="Şehitkamil V.D."
+                    placeholder="Vergi dairesi"
                     className="w-full mt-1 p-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-bold text-white"
                   />
                 </div>
@@ -207,7 +231,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                     type="text"
                     value={form.taxNumber}
                     onChange={(e) => setForm({ ...form, taxNumber: e.target.value })}
-                    placeholder="1234567890"
+                    placeholder="Vergi kimlik numarası"
                     className="w-full mt-1 p-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono font-bold text-amber-300"
                   />
                 </div>
@@ -218,7 +242,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                     type="text"
                     value={form.mersisNo || ''}
                     onChange={(e) => setForm({ ...form, mersisNo: e.target.value })}
-                    placeholder="012345678900001"
+                    placeholder="Mersis no (isteğe bağlı)"
                     className="w-full mt-1 p-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono font-bold text-white"
                   />
                 </div>
@@ -238,7 +262,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                     type="text"
                     value={form.wifiName || ''}
                     onChange={(e) => setForm({ ...form, wifiName: e.target.value })}
-                    placeholder="TahaUsta_Misafir"
+                    placeholder="Wi-Fi adı (isteğe bağlı)"
                     className="w-full mt-1 p-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-bold text-white"
                   />
                 </div>
@@ -249,7 +273,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                     type="text"
                     value={form.wifiPassword || ''}
                     onChange={(e) => setForm({ ...form, wifiPassword: e.target.value })}
-                    placeholder="anteplilezzetleri"
+                    placeholder="Wi-Fi şifresi (isteğe bağlı)"
                     className="w-full mt-1 p-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-mono font-bold text-sky-300"
                   />
                 </div>
@@ -260,7 +284,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                     type="text"
                     value={form.instagram || ''}
                     onChange={(e) => setForm({ ...form, instagram: e.target.value })}
-                    placeholder="@gazianteplitahausta"
+                    placeholder="Instagram hesabı (isteğe bağlı)"
                     className="w-full mt-1 p-2 bg-[#141416] border border-[#383844] rounded-xl text-xs font-bold text-pink-400"
                   />
                 </div>
@@ -423,13 +447,13 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
               {form.showTableNumber && (
                 <div className="flex justify-between font-bold">
                   <span>MASA:</span>
-                  <span className="text-slate-950 font-black">Ana Salon / Masa 4</span>
+                  <span className="text-slate-950 font-black">Masa 4</span>
                 </div>
               )}
               {form.showWaiterName && (
                 <div className="flex justify-between text-slate-700">
                   <span>GARSON:</span>
-                  <span>Mehmet Usta</span>
+                  <span>Garson</span>
                 </div>
               )}
               {form.showOrderTime && (
@@ -440,7 +464,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
               )}
               <div className="flex justify-between text-slate-600 text-[9px]">
                 <span>ADİSYON NO:</span>
-                <span className="font-bold">#GTU-2026-0841</span>
+                <span className="font-bold">#0841</span>
               </div>
             </div>
 
@@ -542,7 +566,7 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
                   ))}
                 </div>
                 <div className="text-[8px] font-mono tracking-widest text-slate-600 mt-0.5">
-                  GTU-2026-0841-KASA
+                  0841
                 </div>
               </div>
             )}
@@ -560,6 +584,14 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
         </div>
 
       </div>
+      {previewImg && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPreviewImg(null)}>
+          <div className="bg-white rounded-2xl p-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImg} alt="Fiş önizleme" style={{ width: (form.paperWidth || 80) === 58 ? 384 : 576, maxWidth: '100%', imageRendering: 'pixelated' }} />
+            <button type="button" onClick={() => setPreviewImg(null)} className="mt-3 w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer">Kapat</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

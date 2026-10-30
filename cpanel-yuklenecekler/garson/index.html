@@ -2,13 +2,52 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
+  <script src="./config.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Gaziantepli Taha Usta - Garson Mobil Terminali</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script src="./zxing-browser.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js'"></script>
+  <link rel="stylesheet" href="./assets/app.css">
+  <link rel="stylesheet" href="./assets/fa/css/all.min.css">
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#141416">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Garson">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="./icon-180.png">
+  <script src="./zxing-browser.min.js"></script>
   <style>
     body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    /* ---- DUYARLI DÜZEN (telefon, tablet, yatay, masaüstü) ---- */
+    /* Mobil tarayıcıda araç çubuğu değişse de ekranı doğru doldur (100vh yerine dinamik yükseklik) */
+    body { min-height: 100vh; min-height: 100dvh; }
+    #mainApp { height: 100vh; height: 100dvh; }
+    #orderModal, #cartDrawer, #existingOrderModal, #transferTableModal { height: 100vh; height: 100dvh; }
+    /* Izgaralar: kısa ekranda kartlar ezilmesin; içerik kadar yükseklik, kaydırma kapsayıcıda */
+    #productsList, #tablesGrid { grid-auto-rows: max-content; align-content: start; }
+    @media (min-width: 900px)  { #productsList { grid-template-columns: repeat(4, minmax(0, 1fr)); } #tablesGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+    @media (min-width: 1280px) { #productsList { grid-template-columns: repeat(5, minmax(0, 1fr)); } #tablesGrid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+    /* Üst başlık ve istatistik satırı dar ekranda sığmazsa alt satıra geçer; metin taşmaz */
+    #appHeaderTitle { min-width: 0; }
+    #appHeaderTitle h2, #appHeaderTitle p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #statsBar { flex-wrap: wrap; row-gap: 6px; column-gap: 12px; }
+    #statsBar > div { min-width: 0; }
+    /* PIN ekranı: kaydırılabilir; kısa YATAY ekranda iki sütun (bilgi solda, tuş takımı sağda) */
+    #pinScreen, #pairingScreen { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    @media (orientation: landscape) and (max-height: 520px) {
+      #pinScreen { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr; column-gap: 24px; align-items: center; max-width: 760px; padding-top: 8px; padding-bottom: 8px; }
+      #pinScreen > :nth-child(1) { grid-column: 1; grid-row: 1; margin-top: 0; }
+      #pinScreen > :nth-child(2) { grid-column: 1; grid-row: 2; margin: 4px 0; }
+      #pinScreen > :nth-child(3) { grid-column: 2; grid-row: 1 / span 2; margin-bottom: 0; }
+      #pinScreen > :nth-child(3) button { height: 46px; font-size: 1.25rem; }
+    }
+    /* Geniş ekranda tek sütun gibi uzayan pencereler ortalanır, satırlar aşırı uzamaz */
+    @media (min-width: 768px) {
+      #cartDrawer { align-items: center; }
+      #cartDrawer > * { width: 100%; max-width: 760px; }
+    }
+    /* Çentik / alt çubuk güvenli alanı */
+    #mainApp, #orderModal, #cartDrawer { padding-bottom: env(safe-area-inset-bottom); }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     @keyframes slideUp {
@@ -34,6 +73,25 @@
   <!-- ========================================== -->
   <!-- TOAST BİLDİRİM KAPSAYICISI (Alert Yerine)  -->
   <!-- ========================================== -->
+  <div id="connBanner" class="hidden fixed top-0 left-0 right-0 z-[110] bg-rose-700 text-white text-center text-xs font-black py-1.5 px-3"></div>
+  <!-- Yeni sürüm bildirimi: sayfa kendiliğinden yenilenmez; sepet/gönderim varken uygulanmaz -->
+  <div id="updateBar" class="hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-[110] w-11/12 max-w-sm p-3 rounded-2xl bg-[#F5C877] text-[#141416] text-xs font-bold shadow-2xl items-center gap-2">
+    <span id="updateBarText" class="flex-1">Yeni sürüm hazır.</span>
+    <button id="updateBarBtn" type="button" class="px-3 py-1.5 rounded-xl bg-[#141416] text-[#F5C877] font-black">Güncelle</button>
+  </div>
+  <!-- Seçenek seçimi (boyut/porsiyon) -->
+  <div id="variantSheet" class="hidden fixed inset-0 z-[115] bg-black/80 items-end sm:items-center justify-center" onclick="if(event.target===this)closeVariantSheet()">
+    <div class="w-full max-w-md bg-[#1C1C20] border border-[#383844] rounded-t-3xl sm:rounded-3xl p-5 space-y-3 shadow-2xl animate-slide-up">
+      <div class="flex items-center justify-between">
+        <div>
+          <div id="variantSheetTitle" class="text-sm font-black text-white">Ürün</div>
+          <div class="text-[11px] text-[#A0A0AA]">Boyut / porsiyon seçin</div>
+        </div>
+        <button type="button" onclick="closeVariantSheet()" class="w-8 h-8 rounded-full bg-[#282830] text-[#C4C4CC]"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="variantSheetList" class="space-y-2"></div>
+    </div>
+  </div>
   <div id="toastContainer" class="fixed top-3 left-1/2 -translate-x-1/2 z-[100] w-11/12 max-w-sm pointer-events-none flex flex-col gap-2"></div>
 
   <!-- ========================================== -->
@@ -146,11 +204,11 @@
   <div id="mainApp" class="hidden flex-1 flex-col h-screen overflow-hidden">
     <!-- Header -->
     <header class="bg-[#121214] border-b border-[#2C2C34] px-4 py-2.5 flex items-center justify-between flex-shrink-0">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-xs shadow-sm">
+      <div id="appHeaderTitle" class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-xs shadow-sm flex-shrink-0">
           <i class="fa-solid fa-utensils"></i>
         </div>
-        <div>
+        <div class="min-w-0">
           <h2 class="text-xs font-black text-white uppercase tracking-tight">Gaziantepli Taha Usta</h2>
           <p id="activeWaiterName" class="text-[10px] text-[#F5C877] font-bold">Garson</p>
         </div>
@@ -172,7 +230,7 @@
     </header>
 
     <!-- Durum İstatistik Çubuğu -->
-    <div class="bg-[#18181C] border-b border-[#2C2C34] px-3 py-2 flex items-center justify-between text-xs flex-shrink-0">
+    <div id="statsBar" class="bg-[#18181C] border-b border-[#2C2C34] px-3 py-2 flex items-center justify-between text-xs flex-shrink-0">
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1">
           <span class="text-[#8E8E98]">Masalar:</span>
@@ -383,26 +441,29 @@
     // Dinamik API Endpoint Yönetimi (Fallback ve Cross-Domain Desteği)
     const API_ENDPOINTS = (function() {
       const list = [];
+      if (window.GTU_API_URL) return [window.GTU_API_URL];
       const custom = localStorage.getItem('CUSTOM_API_URL');
       if (custom && custom.trim() !== '') list.push(custom.trim());
       if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
         list.push(new URL('../api/index.php', window.location.href).href);
         list.push(new URL('/api/index.php', window.location.href).href);
-        list.push(new URL('../api/auth.php', window.location.href).href);
       }
-      list.push('https://api.rymedya.com.tr/index.php');
-      list.push('https://garson.rymedya.com.tr/api/index.php');
-      list.push('https://rymedya.com.tr/api/index.php');
       return Array.from(new Set(list));
     })();
 
     let workingApiUrl = API_ENDPOINTS[0] || '../api/index.php';
+    // Bu sayfanın sürümü (sw.js ve version.json ile AYNI olmalı; sunucu çok eski sürümü 426 ile reddeder).
+    const GARSON_VERSION = '1.1.0';
 
     async function apiFetch(action, options = {}) {
-      const headers = { 'X-Device-UUID': deviceUuid, ...(options.headers || {}) };
+      const headers = { 'X-Device-UUID': deviceUuid, 'X-Client-Type': 'garson', 'X-Client-Version': GARSON_VERSION, ...(options.headers || {}) };
       // Kalıcı cihaz anahtarı: eşleşme sonrası sunucunun verdiği, iptal edilebilir kimlik.
       if (typeof deviceToken === 'string' && deviceToken) {
         headers['X-Device-Token'] = deviceToken;
+      }
+      // PIN ile açılan, sunucunun imzaladığı oturum (12 saat). PIN telefonda saklanmaz.
+      if (sessionToken) {
+        headers['X-Session'] = sessionToken;
       }
       const tryEndpoints = [workingApiUrl, ...API_ENDPOINTS.filter(u => u !== workingApiUrl)];
       let lastError = null;
@@ -431,6 +492,13 @@
             continue;
           }
           workingApiUrl = base;
+          if (res.status === 426) {
+            // Sürüm uyumsuz: işlem YAPILMADI (sepet yerinde). Kullanıcıya açık uyarı + yenileme.
+            cloned.json().then(j => showUpdateBar((j && j.error) || 'Bu uygulama sürümü sunucu ile uyumsuz. Güncelleyin.', true)).catch(() => showUpdateBar('Bu uygulama sürümü sunucu ile uyumsuz. Güncelleyin.', true));
+          }
+          if (res.status === 401 && action !== 'verify_waiter_pin' && action !== 'pair_with_code') {
+            handleSessionExpired();
+          }
           return res;
         } catch (err) {
           lastError = err;
@@ -542,6 +610,38 @@
 
     // Eşleşme sonrası sunucudan gelen kalıcı cihaz anahtarı.
     let deviceToken = persistentGet('gtu_device_token') || '';
+    // Oturum, sayfa yenilense/uygulama kapanıp açılsa da korunur (sunucu belirteci 12 saat geçerli).
+    // PIN hiçbir yerde saklanmaz; yalnızca imzalı oturum belirteci ve garson adı tutulur.
+    const SESSION_KEEP_MS = 11 * 3600 * 1000;
+    let sessionToken = '';
+    let restoredWaiter = null;
+    try {
+      const raw = localStorage.getItem('gtu_session_v2');
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (o && o.token && o.waiter && o.exp > Date.now()) { sessionToken = o.token; restoredWaiter = o.waiter; }
+        else localStorage.removeItem('gtu_session_v2');
+      }
+    } catch (e) {}
+
+    function setSessionToken(t, waiter) {
+      sessionToken = t || '';
+      try {
+        if (t && waiter) localStorage.setItem('gtu_session_v2', JSON.stringify({ token: t, waiter: { id: waiter.id, name: waiter.name }, exp: Date.now() + SESSION_KEEP_MS }));
+        else localStorage.removeItem('gtu_session_v2');
+      } catch (e) {}
+    }
+
+    let sessionExpiredShown = false;
+    function handleSessionExpired() {
+      // Sunucu 401 döndü: oturum bitti ya da cihaz yetkisi kasadan kaldırıldı.
+      if (sessionExpiredShown) return;
+      sessionExpiredShown = true;
+      setSessionToken('');
+      showToast('Oturum sona erdi veya cihaz yetkisi kaldırıldı. PIN ile tekrar giriş yapın.', 'error');
+      setTimeout(() => { sessionExpiredShown = false; }, 4000);
+      if (typeof logout === 'function' && currentWaiter) logout();
+    }
 
     function storeDeviceToken(token) {
       if (!token) return;
@@ -635,18 +735,8 @@
         console.warn('Eşleşme API hatası, yerel eşleşme devrede:', e);
       }
 
-      // Ağ/Sunucu offline olsa bile kesintisiz yerel eşleşme
-      const fallbackWaiter = {
-        id: 'waiter-' + code,
-        name: 'Garson (' + code + ')',
-        pin: code,
-        deviceUuid: deviceUuid
-      };
-      persistentSet('gtu_paired_waiter', JSON.stringify(fallbackWaiter));
-      selectedWaiter = fallbackWaiter;
-      showToast(`Cihaz [${fallbackWaiter.name}] hesabına başarıyla eşleştirildi.`, 'success');
-      showPinScreen();
-      loadActiveWaiters();
+      // Eşleştirme yalnızca sunucu tarafından doğrulanır; sunucuya ulaşılamazsa yerel/uydurma eşleştirme YAPILMAZ.
+      showToast('Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.', 'error');
     }
 
     function getPairingParams(scannedText) {
@@ -973,6 +1063,7 @@
         if (data.success && data.waiter) {
           loginSuccessful = true;
           authenticatedWaiter = data.waiter;
+          setSessionToken(data.session || data.token || '', data.waiter);
         } else if (data && data.message) {
           showToast(data.message, 'error');
           enteredPin = '';
@@ -1016,6 +1107,7 @@
     }
 
     function logout() {
+      setSessionToken('');
       currentWaiter = null;
       selectedWaiter = null;
       enteredPin = '';
@@ -1055,12 +1147,6 @@
     }
 
     // Canlı Veri Çekme & Kasa ile Tam Eşzamanlama
-    const DEFAULT_KASA_SECTIONS = [
-      { id: 'sec-salon', name: 'Ana Salon', tableCount: 12, capacityPerTable: 4 },
-      { id: 'sec-bahce', name: 'Bahçe', tableCount: 10, capacityPerTable: 6 },
-      { id: 'sec-paket', name: 'Paket Servis', tableCount: 8, capacityPerTable: 1 }
-    ];
-
     function extractTableNumber(table) {
       if (!table) return 0;
       if (table.name) {
@@ -1108,25 +1194,6 @@
         }
         return collator.compare(a.name || a.id || '', b.name || b.id || '');
       });
-    }
-
-    function generateTablesFromSections(secs) {
-      const generated = [];
-      secs.forEach(sec => {
-        const count = Number(sec.tableCount) || 10;
-        for (let i = 1; i <= count; i++) {
-          generated.push({
-            id: `tbl-${sec.id}-${i}`,
-            sectionId: sec.id,
-            sectionName: sec.name,
-            name: `${sec.name} ${i}`,
-            capacity: sec.capacityPerTable || 4,
-            status: 'EMPTY',
-            order: null
-          });
-        }
-      });
-      return sortTablesNaturally(generated, secs);
     }
 
     function initSyncListeners() {
@@ -1219,11 +1286,85 @@
       } catch (e) {}
     }
 
+
+    // ---- Bağlantı durumu: gönderilemeyen sipariş "gitti" sanılmasın ----
+    let lastSyncOk = 0;
+    function updateConnBanner() {
+      const el = document.getElementById('connBanner');
+      if (!el) return;
+      let msg = '';
+      if (!navigator.onLine) msg = 'İnternet yok — sipariş gönderilemez.';
+      else if (lastSyncOk && Date.now() - lastSyncOk > 20000) msg = 'Kasa sunucusuna ulaşılamıyor — sipariş gönderilemez.';
+      else if (!lastSyncOk && (!liveTables || liveTables.length === 0)) msg = 'Masa listesi yüklenemedi. Bağlantınızı kontrol edin.';
+      el.textContent = msg ? '⚠️ ' + msg : '';
+      el.classList.toggle('hidden', !msg);
+    }
+    window.addEventListener('online', updateConnBanner);
+    window.addEventListener('offline', updateConnBanner);
+    setInterval(updateConnBanner, 3000);
+    updateConnBanner();
+
+    // ---- PWA: servis çalışanı (ana ekrana ekleme + çevrimdışı kabuk) ----
+    // ---- PWA güncelleme yönetimi ----
+    // Yeni sürüm arka planda indirilir ("bekleyen" servis çalışanı); garson "Güncelle" der ya da
+    // uygun olduğunda uygulanır. Sepet doluyken / sipariş gönderilirken sayfa ASLA kendiliğinden yenilenmez.
+    let swReg = null;
+    const hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+    function isBusyForReload() {
+      const btn = document.getElementById('btnFinalKitchenSend');
+      return (typeof cart !== 'undefined' && cart.length > 0) || !!(btn && btn.disabled);
+    }
+    function showUpdateBar(text, force) {
+      const bar = document.getElementById('updateBar');
+      document.getElementById('updateBarText').innerText = text;
+      bar.classList.remove('hidden'); bar.classList.add('flex');
+      document.getElementById('updateBarBtn').onclick = applyUpdate;
+      if (force) bar.style.background = '#fb7185';
+    }
+    function applyUpdate() {
+      if (isBusyForReload()) { showToast('Sepette ürün veya gönderilen sipariş var. Siparişi tamamlayıp tekrar deneyin.', 'info'); return; }
+      if (swReg && swReg.waiting) swReg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      else location.reload();
+    }
+    function markUpdateReady() { showUpdateBar('Yeni sürüm hazır. Uygun olduğunda "Güncelle"ye dokunun.'); }
+    async function checkVersionFile() {
+      try {
+        const r = await fetch('./version.json', { cache: 'no-store' });
+        const j = await r.json();
+        if (j && j.version && j.version !== GARSON_VERSION) {
+          if (swReg) swReg.update().catch(() => {});
+          if (!(swReg && swReg.waiting)) markUpdateReady(); // servis çalışanı yoksa (iOS vb.) sayfa yenilemesi yeterli
+        }
+      } catch (e) { /* çevrimdışı: sessizce geç */ }
+    }
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || window.__reloadingForUpdate) return; // ilk kurulumda yenileme yok
+        window.__reloadingForUpdate = true;
+        location.reload();
+      });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          swReg = reg;
+          if (reg.waiting && hadController) markUpdateReady();
+          reg.addEventListener('updatefound', () => {
+            const nw = reg.installing;
+            if (nw) nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) markUpdateReady(); });
+          });
+          // Tarayıcı/işletim sistemi arka planda güncelleme denetimini kısıtlayabilir; bu yüzden açıkça da denetlenir.
+          setInterval(() => { reg.update().catch(() => {}); checkVersionFile(); }, 30 * 60 * 1000);
+          document.addEventListener('visibilitychange', () => { if (!document.hidden) { reg.update().catch(() => {}); checkVersionFile(); } });
+          checkVersionFile();
+        }).catch(() => {});
+      });
+    }
+
     async function fetchLiveState(isManual = false) {
       try {
         const res = await apiFetch('get_live_state');
         const data = await res.json();
         if (data && data.success) {
+          lastSyncOk = Date.now();
           if (Array.isArray(data.sections) && data.sections.length > 0) {
             liveSections = data.sections;
           }
@@ -1241,36 +1382,9 @@
         console.warn('Canlı veri çekilemedi, yerel veri devreye alınıyor:', e);
       }
 
-      // Eğer sunucudan veya yerelden masa/bölüm boş geldiyse varsayılan Kasa şemasını yükle
-      if (!liveSections || liveSections.length === 0) {
-        liveSections = DEFAULT_KASA_SECTIONS;
-      }
-      if (!liveTables || liveTables.length === 0) {
-        liveTables = generateTablesFromSections(liveSections);
-      }
-      if (!liveCategories || liveCategories.length === 0) {
-        liveCategories = [
-          { id: 'cat-kebap', name: 'Kebaplar & Izgaralar' },
-          { id: 'cat-firin', name: 'Pide & Lahmacun' },
-          { id: 'cat-corba', name: 'Çorbalar & Mezeler' },
-          { id: 'cat-icecek', name: 'İçecekler & Meşrubat' },
-          { id: 'cat-tatli', name: 'Tatlılar & Meyve' }
-        ];
-      }
-      if (!liveProducts || liveProducts.length === 0) {
-        liveProducts = [
-          { id: 'p-1', name: 'Adana Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-          { id: 'p-2', name: 'Urfa Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-          { id: 'p-3', name: 'Kuzu Şiş Kebap', categoryId: 'cat-kebap', price: 380, printer: 'Ocak' },
-          { id: 'p-4', name: 'Ali Nazik Kebap', categoryId: 'cat-kebap', price: 390, printer: 'Ocak' },
-          { id: 'p-5', name: 'Antep Lahmacun', categoryId: 'cat-firin', price: 110, printer: 'Fırın' },
-          { id: 'p-6', name: 'Kuşbaşılı Kaşarlı Pide', categoryId: 'cat-firin', price: 280, printer: 'Fırın' },
-          { id: 'p-7', name: 'Kıymalı Kaşarlı Pide', categoryId: 'cat-firin', price: 260, printer: 'Fırın' },
-          { id: 'p-8', name: 'Açık Yayık Ayranı', categoryId: 'cat-icecek', price: 40, printer: 'Kasa' },
-          { id: 'p-9', name: 'Kutu Meşrubat / Şalgam', categoryId: 'cat-icecek', price: 45, printer: 'Kasa' },
-          { id: 'p-10', name: 'Antep Fıstıklı Katmer', categoryId: 'cat-tatli', price: 220, printer: 'Fırın' }
-        ];
-      }
+      // Uydurma/demo menü ve masa YOKTUR. Sunucudan veri gelmediyse önceki başarılı veri korunur;
+      // hiç veri yoksa boş durum ve açık bir uyarı gösterilir.
+      updateConnBanner();
 
       if (!currentSectionId) {
         currentSectionId = liveSections[0] ? liveSections[0].id : 'ALL';
@@ -1285,72 +1399,21 @@
       if (isManual) showToast('Masalar ve menü güncellendi.', 'success');
     }
 
-    function fallbackLocalData() {
-      // 1. Önce Kasa'nın localStorage verisini kontrol et
-      try {
-        const rawSec = localStorage.getItem('gtu_sections');
-        const rawTbl = localStorage.getItem('gtu_tables');
-        const rawProd = localStorage.getItem('gtu_products');
-        const rawCat = localStorage.getItem('gtu_categories');
-
-        if (rawSec) {
-          const parsedSec = JSON.parse(rawSec);
-          if (Array.isArray(parsedSec) && parsedSec.length > 0) liveSections = parsedSec;
-        }
-        if (rawTbl) {
-          const parsedTbl = JSON.parse(rawTbl);
-          if (Array.isArray(parsedTbl) && parsedTbl.length > 0) liveTables = sortTablesNaturally(parsedTbl, liveSections);
-        }
-        if (rawProd) {
-          const parsedProd = JSON.parse(rawProd);
-          if (Array.isArray(parsedProd) && parsedProd.length > 0) liveProducts = parsedProd;
-        }
-        if (rawCat) {
-          const parsedCat = JSON.parse(rawCat);
-          if (Array.isArray(parsedCat) && parsedCat.length > 0) liveCategories = parsedCat;
-        }
-
-        if (liveSections.length > 0 && liveTables.length > 0) {
-          if (!currentSectionId) currentSectionId = liveSections[0].id;
-          if (!transferActiveSectionId) transferActiveSectionId = liveSections[0].id;
-          renderSectionTabs();
-          renderTables();
-          updateHeaderStats();
-          return;
-        }
-      } catch (e) {}
-
-      // 2. Kasa ile 100% birebir eşleşen varsayılan bölümler ve masalar
-      liveSections = DEFAULT_KASA_SECTIONS;
-      liveTables = generateTablesFromSections(liveSections);
-      liveCategories = [
-        { id: 'cat-kebap', name: 'Kebaplar & Izgaralar' },
-        { id: 'cat-firin', name: 'Pide & Lahmacun' },
-        { id: 'cat-corba', name: 'Çorbalar & Mezeler' },
-        { id: 'cat-icecek', name: 'İçecekler & Meşrubat' },
-        { id: 'cat-tatli', name: 'Tatlılar & Meyve' }
-      ];
-      liveProducts = [
-        { id: 'p-1', name: 'Adana Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-        { id: 'p-2', name: 'Urfa Kebap (Porsiyon)', categoryId: 'cat-kebap', price: 320, printer: 'Ocak' },
-        { id: 'p-3', name: 'Kuzu Şiş Kebap', categoryId: 'cat-kebap', price: 380, printer: 'Ocak' },
-        { id: 'p-4', name: 'Ali Nazik Kebap', categoryId: 'cat-kebap', price: 390, printer: 'Ocak' },
-        { id: 'p-5', name: 'Antep Lahmacun', categoryId: 'cat-firin', price: 110, printer: 'Fırın' },
-        { id: 'p-6', name: 'Kuşbaşılı Kaşarlı Pide', categoryId: 'cat-firin', price: 280, printer: 'Fırın' },
-        { id: 'p-7', name: 'Kıymalı Kaşarlı Pide', categoryId: 'cat-firin', price: 260, printer: 'Fırın' },
-        { id: 'p-8', name: 'Açık Yayık Ayranı', categoryId: 'cat-icecek', price: 40, printer: 'Kasa' },
-        { id: 'p-9', name: 'Kutu Meşrubat / Şalgam', categoryId: 'cat-icecek', price: 45, printer: 'Kasa' },
-        { id: 'p-10', name: 'Antep Fıstıklı Katmer', categoryId: 'cat-tatli', price: 220, printer: 'Fırın' }
-      ];
-      currentSectionId = liveSections[0].id;
-      transferActiveSectionId = liveSections[0].id;
-      renderSectionTabs();
-      renderTables();
-      updateHeaderStats();
-    }
-
     // Gerçek Zamanlı Dinleyicileri Başlat
     initSyncListeners();
+
+    // Sayfa yenilendiğinde PIN'i yeniden sormadan oturumu geri yükle.
+    // Belirteç sunucuda geçersizse ilk istek 401 döner ve handleSessionExpired PIN ekranına döndürür.
+    if (restoredWaiter && sessionToken && deviceToken) {
+      currentWaiter = restoredWaiter;
+      updateWaiterUI();
+      document.getElementById('pinScreen').classList.add('hidden');
+      document.getElementById('pairingScreen').classList.add('hidden');
+      document.getElementById('pairingScreen').classList.remove('flex');
+      document.getElementById('mainApp').classList.remove('hidden');
+      document.getElementById('mainApp').classList.add('flex');
+      fetchLiveState();
+    }
 
     function updateHeaderStats() {
       const occupied = liveTables.filter(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');
@@ -1547,33 +1610,62 @@
       renderProducts();
     }
 
-    function quickAddProductToCart(p) {
+    // Seçenekli ürün (ör. 1 Porsiyon / 1,5 Porsiyon, 330 ml / 1 Litre): önce seçenek seçilir; fiyat sunucuda seçenekten belirlenir.
+    function quickAddProductToCart(p, variant) {
+      if (p && Array.isArray(p.variants) && p.variants.length > 0 && !variant) { openVariantSheet(p); return; }
       playBeep();
       playHaptic();
 
-      const portionText = activePortion === 0.5 ? ' (0.5 Porsiyon)' : activePortion === 1.5 ? ' (1.5 Porsiyon)' : '';
-      const unitPrice = Math.round(p.price * activePortion);
-      const itemName = p.name + portionText;
+      const hasVariant = !!variant;
+      const portion = hasVariant ? 1 : activePortion; // seçenekli üründe 0.5x/1.5x çarpanı kullanılmaz
+      const portionText = !hasVariant && activePortion === 0.5 ? ' (0.5 Porsiyon)' : (!hasVariant && activePortion === 1.5 ? ' (1.5 Porsiyon)' : '');
+      const unitPrice = hasVariant ? Number(variant.price) : Math.round(p.price * portion);
+      const itemName = hasVariant ? `${p.name} (${variant.name})` : p.name + portionText;
+      const variantId = hasVariant ? variant.id : '';
 
-      const existingIndex = cart.findIndex(i => i.productId === p.id && i.portion === activePortion && !i.note);
+      const existingIndex = cart.findIndex(i => i.productId === p.id && (i.variantId || '') === variantId && i.portion === portion && !i.note);
 
       if (existingIndex > -1) {
         cart[existingIndex].quantity += 1;
       } else {
-        cart.push({
+        const line = {
           id: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           productId: p.id,
           productName: itemName,
-          portion: activePortion,
+          portion: portion,
           price: unitPrice,
           quantity: 1,
           note: '',
           targetPrinter: p.printer && p.printer.includes('Fırın') ? 'FIRIN' : p.printer && p.printer.includes('Ocak') ? 'OCAK' : 'KASA'
-        });
+        };
+        if (hasVariant) line.variantId = variantId;
+        cart.push(line);
       }
 
       showToast(`+1 ${itemName} sepete eklendi`, 'success');
       updateCartBar();
+    }
+
+    function openVariantSheet(p) {
+      document.getElementById('variantSheetTitle').innerText = p.name;
+      const box = document.getElementById('variantSheetList');
+      box.innerHTML = '';
+      p.variants.forEach(v => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-full flex items-center justify-between px-4 py-4 rounded-2xl bg-[#24242A] border border-[#383844] active:border-[#F5C877] active:bg-[#2E2E36] text-left';
+        const nm = document.createElement('span'); nm.className = 'text-sm font-black text-white'; nm.textContent = v.name;
+        const pr = document.createElement('span'); pr.className = 'text-sm font-black text-[#F5C877] font-mono'; pr.textContent = Number(v.price).toFixed(2) + ' ₺';
+        btn.appendChild(nm); btn.appendChild(pr);
+        btn.onclick = () => { closeVariantSheet(); quickAddProductToCart(p, v); };
+        box.appendChild(btn);
+      });
+      const sh = document.getElementById('variantSheet');
+      sh.classList.remove('hidden'); sh.classList.add('flex');
+    }
+    function closeVariantSheet() {
+      const sh = document.getElementById('variantSheet');
+      sh.classList.add('hidden'); sh.classList.remove('flex');
     }
 
     function updateCartBar() {
@@ -1625,7 +1717,7 @@
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5 min-w-0 flex-1">
               <div class="w-10 h-10 rounded-xl bg-[#141416] border border-[#2C2C34] overflow-hidden shrink-0">
-                <img src="${itemImg}" alt="${item.productName}" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';"/>
+                <img src="${itemImg}" alt="${item.productName}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src=PLACEHOLDER_IMG;"/>
               </div>
               <div class="min-w-0 flex-1">
                 <div class="font-black text-xs text-white truncate">${item.productName}</div>
@@ -1891,7 +1983,14 @@
       btn.innerText = 'Mutfağa İletiliyor...';
 
       const orderNote = document.getElementById('generalOrderNoteInput').value.trim();
+      // Aynı sepet için tekrar denemelerde AYNI clientOrderId kullanılır; sunucu mükerrer kaydı engeller.
+      const fingerprint = JSON.stringify([selectedTable.id, orderNote, cart.map(i => [i.productId || i.id, i.variantId || '', i.quantity, i.note || ''])]);
+      if (!window.__pendingOrder || window.__pendingOrder.fingerprint !== fingerprint) {
+        const rnd = (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+        window.__pendingOrder = { fingerprint, clientOrderId: rnd };
+      }
       const orderPayload = {
+        clientOrderId: window.__pendingOrder.clientOrderId,
         tableId: selectedTable.id,
         tableName: selectedTable.name,
         waiterName: currentWaiter.name,
@@ -1900,19 +1999,36 @@
         totalAmount: cart.reduce((s, i) => s + (i.price * i.quantity), 0)
       };
 
-      broadcastRealtime('ORDER_SUBMITTED', orderPayload);
-
+      let accepted = false;
+      let errorText = 'Sunucuya ulaşılamadı';
       try {
-        await apiFetch('send_order', {
+        const res = await apiFetch('send_order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderPayload)
         });
-      } catch (e) {}
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && data.success === true) {
+          accepted = true;
+        } else {
+          errorText = (data && data.error) ? data.error : `Sunucu siparişi kabul etmedi (${res.status})`;
+        }
+      } catch (e) {
+        errorText = 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.';
+      }
 
-      showToast(`✅ ${selectedTable.name} siparişi mutfağa iletildi ve fiş basıldı!`, 'success');
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-fire text-base"></i> <span>Siparişi Onayla & Mutfağa Gönder</span>';
+
+      if (!accepted) {
+        // Sepet KORUNUR; sipariş gönderilmiş gibi gösterilmez. "Tekrar dene" aynı kimlikle gönderir.
+        showToast(`❌ Sipariş GÖNDERİLEMEDİ: ${errorText} Sepetiniz korundu, tekrar deneyin.`, 'error');
+        return;
+      }
+
+      window.__pendingOrder = null;
+      broadcastRealtime('ORDER_SUBMITTED', orderPayload);
+      showToast(`✅ ${selectedTable.name} siparişi kasaya iletildi.`, 'success');
 
       closeCartDrawer();
       closeOrderModal();
@@ -1943,18 +2059,10 @@
       });
     }
 
+    // Görsel yoksa nötr tabak simgesi (dış sitelerden hazır/stok fotoğraf YOKTUR)
+    const PLACEHOLDER_IMG = 'data:image/svg+xml;utf8,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'><rect width='400' height='300' fill='#24242A'/><circle cx='200' cy='150' r='62' fill='none' stroke='#4A4A56' stroke-width='6'/><circle cx='200' cy='150' r='36' fill='none' stroke='#4A4A56' stroke-width='4'/></svg>");
     function getGarsonProductImage(p) {
-      if (p && p.imageUrl && p.imageUrl.trim().length > 5) return p.imageUrl;
-      const name = (p && p.name) ? p.name.toLowerCase() : '';
-      if (name.includes('ali nazik')) return 'https://images.unsplash.com/photo-1544025162-d76694265947?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('beyti') || name.includes('adana') || name.includes('kebap') || name.includes('urfa') || name.includes('kuşbaşı') || name.includes('kıyma')) return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('lahmacun')) return 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('pide') || name.includes('kaşarlı') || name.includes('sucuklu')) return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('çorba') || name.includes('beyran') || name.includes('kelle') || name.includes('ayak')) return 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('baklava') || name.includes('kadayıf') || name.includes('katmer') || name.includes('künefe') || name.includes('tatlı')) return 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('ayran') || name.includes('şalgam') || name.includes('kola') || name.includes('fanta') || name.includes('su') || name.includes('içecek') || name.includes('gazoz')) return 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('salata') || name.includes('ezme') || name.includes('meze') || name.includes('cacık')) return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&auto=format&fit=crop&q=80';
-      return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';
+      return (p && p.imageUrl && p.imageUrl.trim().length > 5) ? p.imageUrl : PLACEHOLDER_IMG;
     }
 
     function renderProducts() {
@@ -1985,9 +2093,12 @@
         const div = document.createElement('div');
         div.className = 'bg-[#1C1C20] border border-[#2C2C34] rounded-2xl flex flex-col justify-between overflow-hidden active:scale-95 active:border-[#F5C877] transition-all cursor-pointer shadow-sm';
         div.onclick = () => quickAddProductToCart(p);
+        if (Array.isArray(p.variants) && p.variants.length > 0) div.setAttribute('data-variants', String(p.variants.length));
         
         const printerLabel = p.printer && p.printer.includes('Fırın') ? '🔥 FIRIN' : (p.printer && p.printer.includes('Ocak') ? '🍖 OCAK' : 'KASA');
-        const calculatedPrice = Math.round(p.price * activePortion);
+        const hasVar = Array.isArray(p.variants) && p.variants.length > 0;
+        const varPrices = hasVar ? p.variants.map(v => Number(v.price)) : [];
+        const calculatedPrice = hasVar ? Math.min(...varPrices) : Math.round(p.price * activePortion);
         const imgUrl = getGarsonProductImage(p);
 
         div.innerHTML = `
@@ -1996,7 +2107,7 @@
               src="${imgUrl}" 
               alt="${p.name}" 
               class="w-full h-full object-cover" 
-              onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';"
+              onerror="this.onerror=null;this.src=PLACEHOLDER_IMG;"
             />
             <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20"></div>
             <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm text-[8px] text-[#F5C877] font-black rounded-md border border-[#F5C877]/30">
@@ -2007,7 +2118,7 @@
           <div class="p-2 flex-1 flex flex-col justify-between">
             <div class="font-black text-xs text-white line-clamp-1">${p.name}</div>
             <div class="flex justify-between items-center mt-2 pt-1 border-t border-[#2C2C34]/80">
-              <span class="font-black text-sm text-[#F5C877] font-mono">${calculatedPrice} ₺</span>
+              <span class="font-black text-sm text-[#F5C877] font-mono">${hasVar ? calculatedPrice + ' ₺\'den' : calculatedPrice + ' ₺'}</span>
               <span class="w-6 h-6 bg-[#F5C877] text-[#141416] rounded-xl flex items-center justify-center text-xs font-black shadow-md">+</span>
             </div>
           </div>

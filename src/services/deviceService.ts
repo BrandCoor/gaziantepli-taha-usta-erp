@@ -149,20 +149,22 @@ class DeviceService {
         try { result = JSON.parse(raw); } catch { result = {}; }
         if (response.ok && result.success && result.token) {
           if (waiter) restaurantDataService.updateWaiter(userId, { qrToken: result.token, pairingCode });
-          return { ...result, pairingCode };
+          return { ...result, pairingCode: result.pairingCode || pairingCode };
+        }
+        if (result && result.error) {
+          return { success: false, error: result.error } as any;
         }
       } catch (error: any) {
         // Devam et, diğer URL veya fallback'e geç
       }
     }
 
-    // Çevrimdışı / Yerel Fallback: Her zaman anında geçerli eşleşme tokenı ve 6 haneli kod sağla
+    // Sunucuya ulaşılamadıysa eşleştirme KODU ÜRETİLMEZ: yerelde uydurulan kod telefonda çalışmaz
+    // ve kullanıcıyı yanıltır. Eşleştirme yalnızca sunucunun ürettiği tek kullanımlık kodla yapılır.
     return {
-      success: true,
-      token: fallbackToken,
-      pairingCode,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
-    };
+      success: false,
+      error: 'Sunucuya ulaşılamadı veya kasa API anahtarı hatalı. Restoran & Donanım Ayarları > Bulut & Yedekleme bölümünden sunucu adresini ve kasa anahtarını kontrol edin.'
+    } as any;
   }
 
   /**
@@ -313,34 +315,6 @@ class DeviceService {
   }
 
   /**
-   * Kasa Yöneticisi: 1 tıkla personeli doğrudan onayla ve eşleştir (QR taramadan)
-   */
-  public quickApproveAndPair(userId: string, customDeviceName?: string): { success: boolean; message: string } {
-    const waiters = restaurantDataService.getWaiters();
-    const waiter = waiters.find(w => w.id === userId);
-    if (!waiter) {
-      return { success: false, message: 'Personel bulunamadı.' };
-    }
-
-    const uuid = this.getOrCreateDeviceUuid();
-    const devName = customDeviceName || waiter.deviceName || this.detectDeviceType();
-
-    restaurantDataService.updateWaiter(userId, {
-      status: 'APPROVED',
-      deviceUuid: uuid,
-      macAddress: uuid,
-      deviceName: devName
-    });
-
-    realtimeSyncService.broadcastWaiterPaired(userId, uuid, devName);
-
-    return {
-      success: true,
-      message: `[${waiter.name}] için cihaz eşleşmesi onaylandı.`
-    };
-  }
-
-  /**
    * Kasa Yöneticisi: Cihaz eşleşmesini sıfırlar
    */
   public async resetDevicePairing(userId: string): Promise<{ success: boolean; message?: string; error?: string }> {
@@ -361,16 +335,29 @@ class DeviceService {
 
       realtimeSyncService.broadcastWaiterReset(userId);
 
-      // Arka planda sunucuya bildir
+      // Sunucuya bildir ve SONUCU bekle: telefonun yetkisi yalnızca sunucuda iptal edilince gerçekten düşer.
+      let serverOk = false;
+      let serverErr = '';
       try {
         const url = this.getAuthApiUrl('reset_device_pairing');
         if (!url) throw new Error('Senkronizasyon sunucusu ayarlanmadı.');
-        fetch(url, {
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, action: 'reset_device_pairing' })
-        }).catch(() => {});
-      } catch {}
+        });
+        const data = await res.json().catch(() => ({}));
+        serverOk = res.ok && data.success === true;
+        if (!serverOk) serverErr = data.error || `Sunucu HTTP ${res.status}`;
+      } catch (e: any) {
+        serverErr = e?.message || 'Sunucuya ulaşılamadı';
+      }
+      if (!serverOk) {
+        return {
+          success: false,
+          error: `Telefonun yetkisi SUNUCUDA İPTAL EDİLEMEDİ (${serverErr}). Telefon hâlâ giriş yapabilir; bağlantıyı/Kasa API anahtarını kontrol edip tekrar deneyin.`
+        };
+      }
 
       return {
         success: true,

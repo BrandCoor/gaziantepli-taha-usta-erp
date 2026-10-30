@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../utils/businessDate';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UserCheck, 
@@ -225,7 +226,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
     setFormSalaryPaymentDay(1);
     setFormDailyWorkHours(8);
     setFormIban('');
-    setFormStartDate(new Date().toISOString().split('T')[0]);
+    setFormStartDate(getBusinessDate());
     setIsEmployeeModalOpen(true);
   };
 
@@ -309,7 +310,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         salaryPaymentDay: finalPaymentDay,
         dailyWorkHours: Number(formDailyWorkHours) || 8,
         iban: formIban.trim(),
-        startDate: formStartDate || new Date().toISOString().split('T')[0],
+        startDate: formStartDate || getBusinessDate(),
         isActive: true,
       });
 
@@ -377,7 +378,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   const openEditPaymentItem = (p: EmployeePayment) => {
     setEditingPaymentItem(p);
     setEditPayAmount(String(p.amount || 0));
-    setEditPayDate(p.date ? p.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+    setEditPayDate(p.date ? p.date.split('T')[0] : getBusinessDate());
     setEditPayType(p.type);
     setEditPayMethod(p.paymentMethod === 'BANK' ? 'BANK' : 'CASH');
     setEditPayDescription(p.description || '');

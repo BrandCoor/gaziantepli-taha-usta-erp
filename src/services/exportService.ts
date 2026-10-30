@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../utils/businessDate';
 import ExcelJS from 'exceljs';
 import { Customer, Employee, Expense, Supplier, dataService } from './dataService';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -139,7 +140,7 @@ export const exportService = {
     totalRow.getCell(5).numFmt = '#,##0.00 "₺"';
 
     const buffer = await workbook.xlsx.writeBuffer();
-    this.downloadFile(buffer, `${employee.fullName}_Maas_Mesai_Dokumu_${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    this.downloadFile(buffer, `${employee.fullName}_Maas_Mesai_Dokumu_${getBusinessDate()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   },
 
   // Tekil Müşteri ve Toptancı Raporları
@@ -219,7 +220,7 @@ export const exportService = {
     totalRow.getCell(6).numFmt = '#,##0.00 "₺"';
 
     const buffer = await workbook.xlsx.writeBuffer();
-    this.downloadFile(buffer, `${supplier.name}_Toptanci_Ekstre_${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    this.downloadFile(buffer, `${supplier.name}_Toptanci_Ekstre_${getBusinessDate()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   },
 
   async exportSuppliersExcel(suppliers: Supplier[], totalDebt: number, dateRange?: DateRange) {
@@ -247,7 +248,7 @@ export const exportService = {
     totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
     totalRow.getCell(5).numFmt = '#,##0.00 "₺"';
     const buffer = await workbook.xlsx.writeBuffer();
-    this.downloadFile(buffer, `${company.companyName}_Toptanci_Borc_Raporu_${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    this.downloadFile(buffer, `${company.companyName}_Toptanci_Borc_Raporu_${getBusinessDate()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   },
 
   exportSuppliersPdf(suppliers: Supplier[], totalDebt: number, dateRange?: DateRange) {
@@ -324,7 +325,7 @@ export const exportService = {
     totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
     totalRow.getCell(5).numFmt = '#,##0.00 "₺"';
     const buffer = await workbook.xlsx.writeBuffer();
-    this.downloadFile(buffer, `${customer.name}_Ekstre_${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    this.downloadFile(buffer, `${customer.name}_Ekstre_${getBusinessDate()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   },
 
   async exportCustomersExcel(customers: Customer[], totalBalance: number, dateRange?: DateRange) {
@@ -352,7 +353,7 @@ export const exportService = {
     totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
     totalRow.getCell(5).numFmt = '#,##0.00 "₺"';
     const buffer = await workbook.xlsx.writeBuffer();
-    this.downloadFile(buffer, `${company.companyName}_Musteri_Raporu_${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    this.downloadFile(buffer, `${company.companyName}_Musteri_Raporu_${getBusinessDate()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   },
 
   exportCustomersPdf(customers: Customer[], totalBalance: number, dateRange?: DateRange) {
@@ -404,7 +405,7 @@ export const exportService = {
     totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
     totalRow.getCell(7).numFmt = '#,##0.00 "₺"';
     const buffer = await workbook.xlsx.writeBuffer();
-    this.downloadFile(buffer, `${company.companyName}_Personel_Raporu_${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    this.downloadFile(buffer, `${company.companyName}_Personel_Raporu_${getBusinessDate()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   },
 
   exportEmployeesPdf(employees: Employee[], totalBalance: number, dateRange?: DateRange) {
@@ -457,7 +458,7 @@ export const exportService = {
     totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
     totalRow.getCell(6).numFmt = '#,##0.00 "₺"';
     const buffer = await workbook.xlsx.writeBuffer();
-    this.downloadFile(buffer, `${company.companyName}_Gider_Raporu_${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    this.downloadFile(buffer, `${company.companyName}_Gider_Raporu_${getBusinessDate()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   },
 
   exportExpensesPdf(expenses: Expense[], totalAmount: number, dateRange?: DateRange) {

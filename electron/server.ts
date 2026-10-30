@@ -15,15 +15,59 @@ import {
   listSystemPrinters,
   scanLocalNetworkPrinters
 } from './printer';
+import { buildPrintBuffer } from './receiptPrint';
 import { gCallerIdDriver, CallerIdEvent } from './callerid/gcallerid';
 
+import { isAllowedOrigin, isAllowedHost, isPrivateOrLoopbackIp } from './netGuard';
+
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// 1) DNS-rebinding koruması: yalnızca localhost/127.0.0.1 Host başlığı kabul edilir.
+app.use((req, res, next) => {
+  if (!isAllowedHost(req.headers.host)) {
+    return res.status(403).json({ success: false, error: 'Geçersiz Host' });
+  }
+  next();
+});
+
+// 2) CORS: yalnızca uygulamanın kendi penceresi (file:// → "null", geliştirmede localhost:3000).
+app.use(
+  cors({
+    origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
+  })
+);
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string | undefined;
+  if (origin && !isAllowedOrigin(origin)) {
+    return res.status(403).json({ success: false, error: 'İzin verilmeyen kaynak' });
+  }
+  next();
+});
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// 3) Yazıcı hedefi yalnızca yerel/özel ağ adresi olabilir (SSRF / ağ tarama koruması).
+app.use('/api/printers', (req, res, next) => {
+  const candidates: any[] = [
+    (req.body as any)?.printer?.ipAddress,
+    (req.body as any)?.ip,
+    (req.body as any)?.ipAddress,
+    (req.query as any)?.ip,
+  ].filter((v) => typeof v === 'string' && v.length > 0);
+  for (const ip of candidates) {
+    if (!isPrivateOrLoopbackIp(ip)) {
+      return res.status(400).json({ success: false, error: 'Yazıcı adresi yerel ağ (özel IP) olmalıdır.' });
+    }
+  }
+  next();
+});
+
 const httpServer = createServer(app);
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({
+  server: httpServer,
+  verifyClient: (info: { origin?: string; req: { headers: { host?: string } } }) =>
+    isAllowedHost(info.req.headers.host) && isAllowedOrigin(info.origin),
+});
 
 const activeClients = new Set<WebSocket>();
 
@@ -59,6 +103,11 @@ export function getLocalIPAddress(): string {
   return '127.0.0.1';
 }
 
+// SAĞLIK: arayüzün "Yazıcı Servisi Aktif" kontrolü bu ucu çağırır (eskiden yoktu → servis çalışsa da OFFLINE görünürdü)
+app.get('/api/health', (_req, res) => {
+  res.json({ success: true, service: 'print-agent', time: new Date().toISOString() });
+});
+
 // 1. AĞ VE ETHERNET YAZICILARI TARAMA
 app.get('/api/printers/auto-scan', async (req, res) => {
   try {
@@ -73,13 +122,13 @@ app.get('/api/printers/auto-scan', async (req, res) => {
 app.post('/api/printers/test-print', async (req, res) => {
   try {
     const { ip, port, name } = req.body;
-    const testBuffer = generateKitchenReceipt({
-      ticketTitle: 'YAZICI BAGLANTI TESTI',
+    const testBuffer = (await buildPrintBuffer('KITCHEN', {
+      ticketTitle: 'YAZICI BAĞLANTI TESTİ',
       tableName: 'TEST MASASI',
       waiterName: 'Kasa Terminali',
       orderTime: new Date().toLocaleTimeString('tr-TR'),
-      items: [{ name: `${name || 'Afanda 892E'}`, quantity: 1, note: 'Baglanti Kusursuz' }],
-    });
+      items: [{ name: `${name || 'Yazıcı'}`, quantity: 1, note: 'Türkçe karakter testi: ÇĞİÖŞÜ çğıöşü' }],
+    })).buffer;
 
     const success = await sendToNetworkPrinter(ip, port || 9100, testBuffer);
     res.json({ success });
@@ -96,16 +145,7 @@ app.post('/api/printers/print-ticket', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Yazıcı bilgisi eksik' });
     }
 
-    let buffer: Buffer;
-    if (jobType === 'BILL') {
-      buffer = generateBillReceipt(data);
-    } else if (jobType === 'CANCEL') {
-      buffer = generateCancelReceipt(data);
-    } else if (jobType === 'Z_REPORT') {
-      buffer = generateZReportReceipt(data);
-    } else {
-      buffer = generateKitchenReceipt(data);
-    }
+    const buffer = (await buildPrintBuffer(jobType, { ...data, paperWidth: data?.paperWidth ?? printer.paperWidth, autoCut: data?.autoCut ?? printer.autoCut, printMode: data?.printMode ?? printer.printMode })).buffer;
 
     if (printer.type === 'NETWORK' && printer.ipAddress) {
       const success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -138,7 +178,7 @@ app.post('/api/printers/test-hardware', async (req, res) => {
   try {
     const { printer } = req.body;
     const targetName = printer?.driverName || printer?.usbName || printer?.name || 'Afanda 892E';
-    const buffer = generateHardwareTestReceipt(targetName);
+    const buffer = (await buildPrintBuffer('HARDWARE_TEST', { printerName: targetName, paperWidth: printer?.paperWidth, printMode: printer?.printMode, autoCut: true })).buffer;
 
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       const ok = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -159,7 +199,7 @@ app.post('/api/printers/test-hardware', async (req, res) => {
 app.post('/api/printers/print-kitchen', async (req, res) => {
   try {
     const { printer, ticket } = req.body;
-    const buffer = generateKitchenReceipt(ticket);
+    const buffer = (await buildPrintBuffer('KITCHEN', { ...ticket, paperWidth: ticket?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -177,7 +217,7 @@ app.post('/api/printers/print-kitchen', async (req, res) => {
 app.post('/api/printers/print-bill', async (req, res) => {
   try {
     const { printer, bill } = req.body;
-    const buffer = generateBillReceipt(bill);
+    const buffer = (await buildPrintBuffer('BILL', { ...bill, paperWidth: bill?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -195,7 +235,7 @@ app.post('/api/printers/print-bill', async (req, res) => {
 app.post('/api/printers/print-cancel', async (req, res) => {
   try {
     const { printer, cancelData } = req.body;
-    const buffer = generateCancelReceipt(cancelData);
+    const buffer = (await buildPrintBuffer('CANCEL', { ...cancelData, paperWidth: cancelData?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -213,7 +253,7 @@ app.post('/api/printers/print-cancel', async (req, res) => {
 app.post('/api/printers/print-courier', async (req, res) => {
   try {
     const { printer, courierData } = req.body;
-    const buffer = generateCourierReceipt(courierData);
+    const buffer = (await buildPrintBuffer('COURIER', { ...courierData, paperWidth: courierData?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -272,15 +312,9 @@ app.get('/api/callerid/status', (req, res) => {
 });
 
 // Test / Simülasyon çağrısı fırlatır (Hat 1 veya Hat 2)
-app.post('/api/callerid/simulate', (req, res) => {
-  const line = req.body.line === 2 ? 2 : 1;
-  const phone = req.body.phone || '05321234567';
-  const event = gCallerIdDriver.handleHttpWebhook(line, phone);
-  res.json({ success: true, event });
-});
-
 export function startLocalServer(port: number = 4545) {
-  httpServer.listen(port, '0.0.0.0', () => {
+  // Yalnızca bu bilgisayar: yerel ağdaki başka cihazlar yazıcı/çağrı servisine erişemez.
+  httpServer.listen(port, '127.0.0.1', () => {
     console.log(`📡 Restoran Yerel Sunucusu Calisiyor: http://${getLocalIPAddress()}:${port}`);
     // Otomatik olarak GCallerID portunu dinlemeye başla
     gCallerIdDriver.connect('AUTO').catch(err => {

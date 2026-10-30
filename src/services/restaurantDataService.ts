@@ -1,4 +1,8 @@
+import type { ProductVariant } from '../utils/variants';
 // Gaziantepli Taha Usta - Restoran Veri Servisi (Gider, Toptancı & Net Kasa Destekli Z Raporu)
+import { mergeById, safeParseArray } from './syncMerge';
+import { getBusinessDate, formatLocalDate } from '../utils/businessDate';
+import { ProcessedIdStore, normalizeIncomingId } from './incomingOrderDedup';
 import { dataService } from './dataService';
 import { realtimeSyncService } from './realtimeSyncService';
 import { sortTablesNaturally } from '../utils/tableSorting';
@@ -35,6 +39,8 @@ export interface TableState {
 export interface OrderItemState {
   id: string;
   productId: string;
+  /** Seçenekli üründe seçilen seçeneğin kimliği; productName "Ürün (Seçenek)" biçimindedir. */
+  variantId?: string;
   productName: string;
   categoryName?: string;
   price: number;
@@ -213,6 +219,8 @@ export interface CategoryConfig {
 
 export interface ProductConfig {
   id: string;
+  /** Boyut/porsiyon seçenekleri (her birinin kendi sabit fiyatı). Varsa `price` = en düşük seçenek fiyatıdır. Bkz. src/utils/variants.ts */
+  variants?: ProductVariant[];
   categoryId: string;
   name: string;
   price: number;
@@ -225,59 +233,18 @@ export interface ProductConfig {
   description?: string;
 }
 
-export const FOOD_IMAGE_PRESETS = [
-  { name: 'Adana / Urfa Kebap', url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kuzu Şiş / Izgara', url: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Ali Nazik / Yoğurtlu Kebap', url: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Antep Lahmacun', url: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kıymalı Kaşarlı Pide', url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kuşbaşılı Kaşarlı Pide', url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Günün Çorbası / Beyran', url: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Antep Meze & Salata', url: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Açık Yayık Ayranı', url: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kutu Meşrubat / Şalgam', url: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Antep Fıstıklı Künefe', url: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Fıstıklı Baklava / Katmer', url: 'https://images.unsplash.com/photo-1519869325930-281384150729?w=500&auto=format&fit=crop&q=80' }
-];
+/** Hazır/stok yemek fotoğrafı YOKTUR: ürün görselini işletme kendisi yükler. */
+export const FOOD_IMAGE_PRESETS: Array<{ name: string; url: string }> = [];
 
-export function getProductFallbackImage(name: string, categoryId: string = ''): string {
-  const n = (name || '').toLowerCase();
-  const c = (categoryId || '').toLowerCase();
-
-  if (n.includes('adana') || n.includes('urfa') || n.includes('kıyma kebap')) {
-    return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('şiş') || n.includes('pirzola') || n.includes('ızgara')) {
-    return 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('ali nazik') || n.includes('yoğurt') || n.includes('beyti')) {
-    return 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('lahmacun')) {
-    return 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('pide')) {
-    return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('çorba') || n.includes('beyran') || n.includes('paça')) {
-    return 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('ayran')) {
-    return 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('kola') || n.includes('fanta') || n.includes('şalgam') || n.includes('su') || n.includes('soda') || c.includes('icecek')) {
-    return 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('künefe') || n.includes('kadayıf')) {
-    return 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('baklava') || n.includes('katmer') || c.includes('tatli')) {
-    return 'https://images.unsplash.com/photo-1519869325930-281384150729?w=500&auto=format&fit=crop&q=80';
-  }
-  if (c.includes('kebap')) {
-    return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
-  }
-  return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
+/** Görsel yoksa ağ gerektirmeyen, nötr bir yer tutucu (tabak simgesi). Demo fotoğraf kullanılmaz. */
+export function getProductFallbackImage(_name: string = '', _categoryId: string = ''): string {
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'>" +
+    "<rect width='400' height='300' fill='#24242A'/>" +
+    "<circle cx='200' cy='150' r='62' fill='none' stroke='#4A4A56' stroke-width='6'/>" +
+    "<circle cx='200' cy='150' r='36' fill='none' stroke='#4A4A56' stroke-width='4'/>" +
+    "</svg>";
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
 export interface WaiterConfig {
@@ -319,6 +286,8 @@ export interface PrinterConfig {
   cutType?: 'FULL' | 'PARTIAL';
   beepOnPrint: boolean;
   codePage?: 'CP857' | 'UTF8' | 'WIN1254' | 'PC857';
+  /** GRAPHIC (varsayılan): gerçek yazı tipiyle görüntü olarak basılır, Türkçe karakterler tam. TEXT: yazıcının kendi yazı tipi (hızlı; Türkçe karakterler ASCII'ye çevrilir). */
+  printMode?: 'GRAPHIC' | 'TEXT';
   copies?: number;
   isBillPrinter: boolean;
   isKitchen: boolean;
@@ -396,43 +365,23 @@ export interface HardwareSettingsConfig {
   };
 }
 
+/** Platform kimlik bilgileri (anahtarlar) sunucuda saklanır (bkz. onlinePlatformService); burada yalnızca davranış ayarları vardır. */
 export interface TrendyolYemekConfig {
   enabled: boolean;
   isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
-  supplierId: string;
-  apiKey: string;
-  secretKey: string;
-  email: string;
   autoPrintReceipt: boolean;
   preparationTimeMinutes: number;
-  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Restoran Kuryesi veya Trendyol GO Kuryesi
-}
-
-export interface GetirYemekConfig {
-  enabled: boolean;
-  isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
-  restaurantName: string;
-  secretKey: string;
-  restaurantId: string;
-  autoPrintReceipt: boolean;
-  preparationTimeMinutes: number;
-  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Restoran Getirsin veya Getir Getirsin
 }
 
 export interface YemekSepetiConfig {
   enabled: boolean;
-  isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
-  username: string;
-  password: string;
-  restaurantId: string;
+  isOpen?: boolean;
   autoPrintReceipt: boolean;
   preparationTimeMinutes: number;
-  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Kendi Kuryemle veya Yemeksepeti Vale
 }
 
 export interface FoodPlatformsConfig {
-  trendyol: TrendyolYemekConfig;
-  getir: GetirYemekConfig;
+  trendyol: TrendyolYemekConfig; // GetirYemek siparişleri de Trendyol üzerinden gelir
   yemeksepeti: YemekSepetiConfig;
   continuousAlarmUntilAction: boolean; // Onay veya iptal edilene kadar zil öter
   autoAcceptOrders: boolean;
@@ -457,37 +406,8 @@ const STORAGE_KEYS = {
 };
 
 export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
-  trendyol: {
-    enabled: true,
-    isOpen: true,
-    supplierId: '770463',
-    apiKey: 'Es32CcLQUCJs51lAPgJ8',
-    secretKey: 'xbuy0pocdpcUOfGd8kNS9',
-    email: 'mehmettahagumus@icloud.com',
-    autoPrintReceipt: true,
-    preparationTimeMinutes: 25,
-    deliveryModel: 'RESTAURANT',
-  },
-  getir: {
-    enabled: true,
-    isOpen: true,
-    restaurantName: 'Gaziantepli Taha Usta (Eğitim Mah.)',
-    secretKey: '85309848fd36282068984f02259f91c2873d2bc6',
-    restaurantId: 'GETIR-27-01',
-    autoPrintReceipt: true,
-    preparationTimeMinutes: 25,
-    deliveryModel: 'RESTAURANT',
-  },
-  yemeksepeti: {
-    enabled: true,
-    isOpen: true,
-    username: 'mehmettahagumus@icloud.com',
-    password: 'Gaziantepli27taha',
-    restaurantId: 'YS-TAHA-27',
-    autoPrintReceipt: true,
-    preparationTimeMinutes: 25,
-    deliveryModel: 'RESTAURANT',
-  },
+  trendyol: { enabled: false, isOpen: true, autoPrintReceipt: true, preparationTimeMinutes: 25 },
+  yemeksepeti: { enabled: false, isOpen: true, autoPrintReceipt: true, preparationTimeMinutes: 25 },
   continuousAlarmUntilAction: true,
   autoAcceptOrders: false,
 };
@@ -564,143 +484,31 @@ export const setPublicBaseUrl = (url: string): void => {
 
 const DEFAULT_PRINTERS: PrinterConfig[] = [];
 
-const DEFAULT_CATEGORIES: CategoryConfig[] = [
-  { id: 'cat-kebap', name: 'Kebaplar & Izgaralar', color: '#ef4444' },
-  { id: 'cat-firin', name: 'Pide & Lahmacun', color: '#f97316' },
-  { id: 'cat-corba', name: 'Çorbalar & Mezeler', color: '#eab308' },
-  { id: 'cat-icecek', name: 'İçecekler & Meşrubat', color: '#06b6d4' },
-  { id: 'cat-tatli', name: 'Tatlılar & Meyve', color: '#ec4899' },
-];
-
-const DEFAULT_PRODUCTS: ProductConfig[] = [
-  { 
-    id: 'p1', 
-    categoryId: 'cat-kebap', 
-    name: 'Adana Kebap (Porsiyon)', 
-    price: 320, 
-    preparationMin: 15, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&auto=format&fit=crop&q=80',
-    description: 'Zırhla çekilmiş kuzu eti, pul biber ve özel baharatlarla kömür ateşinde pişirilir. Közlenmiş biber, domates ve lavaş ile sunulur.'
-  },
-  { 
-    id: 'p2', 
-    categoryId: 'cat-kebap', 
-    name: 'Urfa Kebap (Porsiyon)', 
-    price: 320, 
-    preparationMin: 15, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80',
-    description: 'Acısız, zırhta çekilmiş taze kuzu kıyması. Közde garnitürler ve taze yeşilliklerle servis edilir.'
-  },
-  { 
-    id: 'p3', 
-    categoryId: 'cat-kebap', 
-    name: 'Kuzu Şiş Kebap', 
-    price: 380, 
-    preparationMin: 18, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=600&auto=format&fit=crop&q=80',
-    description: 'Marine edilmiş yumuşacık kuzu but etleri, odun kömüründe özel şişlerde lokum kıvamında pişirilir.'
-  },
-  { 
-    id: 'p4', 
-    categoryId: 'cat-kebap', 
-    name: 'Ali Nazik Kebap', 
-    price: 390, 
-    preparationMin: 20, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=600&auto=format&fit=crop&q=80',
-    description: 'Közlenmiş patlıcanlı süzme yoğurt yatağında tereyağlı kuzu eti veya kebap parçaları ve kızgın tereyağı.'
-  },
-  { 
-    id: 'p5', 
-    categoryId: 'cat-firin', 
-    name: 'Gaziantep Lahmacun', 
-    price: 110, 
-    preparationMin: 8, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=600&auto=format&fit=crop&q=80',
-    description: 'İncecik çıtır Antep hamuru, zırh kıyması, sarımsak, maydanoz ve Antep baharatları. Taş fırında pişer.'
-  },
-  { 
-    id: 'p6', 
-    categoryId: 'cat-firin', 
-    name: 'Kuşbaşılı Kaşarlı Pide', 
-    price: 280, 
-    preparationMin: 12, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&auto=format&fit=crop&q=80',
-    description: 'Marine kuşbaşı kuzu eti, domates, biber ve eriyen leziz kaşar peyniriyle fırınlanmış gevrek pide.'
-  },
-  { 
-    id: 'p7', 
-    categoryId: 'cat-firin', 
-    name: 'Kıymalı Kaşarlı Pide', 
-    price: 260, 
-    preparationMin: 10, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&auto=format&fit=crop&q=80',
-    description: 'Geleneksel kıymalı iç harç ve bol kaşar peyniri ile taş fırında tereyağlı çıtır lezzet.'
-  },
-  { 
-    id: 'p8', 
-    categoryId: 'cat-icecek', 
-    name: 'Açık Yayık Ayranı', 
-    price: 40, 
-    preparationMin: 1, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=600&auto=format&fit=crop&q=80',
-    description: 'Bol köpüklü, doğal köy yoğurdundan taze çalkalanmış enfes soğuk yayık ayranı.'
-  },
-  { 
-    id: 'p9', 
-    categoryId: 'cat-icecek', 
-    name: 'Kutu Meşrubat / Şalgam', 
-    price: 45, 
-    preparationMin: 1, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=600&auto=format&fit=crop&q=80',
-    description: 'Buz gibi kutu içecekler, acılı/acısız Adana şalgamı veya maden suyu.'
-  },
-  { 
-    id: 'p10', 
-    categoryId: 'cat-tatli', 
-    name: 'Antep Fıstıklı Künefe', 
-    price: 180, 
-    preparationMin: 12, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=600&auto=format&fit=crop&q=80',
-    description: 'Hatay peyniri ve taze kadayıfla közde pişen çıtır künefe, bol Antep boz fıstığı ile sıcak servis edilir.'
-  },
-];
-
-const DEFAULT_SECTIONS: SectionConfig[] = [
-  { id: 'sec-salon', name: 'Ana Salon', tableCount: 12, capacityPerTable: 4 },
-  { id: 'sec-bahce', name: 'Bahçe', tableCount: 10, capacityPerTable: 6 },
-  { id: 'sec-paket', name: 'Paket Servis', tableCount: 8, capacityPerTable: 1 },
-];
+// Hazır (demo) kategori, ürün veya salon YOKTUR: işletme kendi menüsünü ve masa düzenini oluşturur.
+const DEFAULT_CATEGORIES: CategoryConfig[] = [];
+const DEFAULT_PRODUCTS: ProductConfig[] = [];
+const DEFAULT_SECTIONS: SectionConfig[] = [];
 
 const DEFAULT_WAITERS: WaiterConfig[] = [];
 
 const DEFAULT_RECEIPT_SETTINGS: ReceiptSettingsConfig = {
   title: 'GAZİANTEPLİ TAHA USTA',
   subtitle: 'Kebap & Lahmacun Salonu',
-  phone: '0 (342) 555 00 27',
-  address: 'Şehitkamil / Gaziantep',
-  taxNumber: '1234567890',
-  taxOffice: 'Şehitkamil V.D.',
-  mersisNo: '012345678900001',
-  wifiName: 'TahaUsta_Misafir',
-  wifiPassword: 'anteplilezzetleri',
-  instagram: '@gazianteplitahausta',
+  phone: '',
+  address: '',
+  taxNumber: '',
+  taxOffice: '',
+  mersisNo: '',
+  wifiName: '',
+  wifiPassword: '',
+  instagram: '',
   footerMessage: 'Afiyet Olsun. Yine Bekleriz!',
   showWaiterName: true,
   showTableNumber: true,
   showVatDetails: true,
   showOrderTime: true,
-  showBarcode: true,
-  printLogo: true,
+  showBarcode: false,
+  printLogo: false,
   paperWidth: 80,
 };
 
@@ -751,13 +559,18 @@ export const DEFAULT_HARDWARE_SETTINGS: HardwareSettingsConfig = {
 
 type ChangeListener = () => void;
 
+/** Para tutarlarını kuruşa yuvarlar (float birikimini engeller). */
+const round2 = (n: number): number => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
 class RestaurantDataService {
   private listeners: Set<ChangeListener> = new Set();
   private pendingActivePosTableId: string | null = null;
   private kitchenPrintCallback?: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void;
   private billPrintCallback?: (table: TableState, items: OrderItemState[]) => void;
   private isProcessingRemoteSync = false;
-  private processedIncomingOrderIds: Set<string> = new Set();
+  private processedIncomingOrderIds = new ProcessedIdStore(localStorage);
+  /** Tam yedek servisi tarafından atanır (döngüsel içe aktarmayı önler). */
+  public autoBackupHook?: (label: string) => Promise<unknown>;
 
   public onKitchenOrderPrint(cb: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void) {
     this.kitchenPrintCallback = cb;
@@ -768,7 +581,6 @@ class RestaurantDataService {
   }
 
   constructor() {
-    this.purgeDemoData();
     this.initRealtimeSyncListener();
     setTimeout(() => this.pushStateToCloud(), 1000);
     setInterval(() => this.pullPendingOrdersFromCloud(), 1500);
@@ -805,107 +617,6 @@ class RestaurantDataService {
         this.listeners.forEach((l) => l());
       }
     });
-  }
-
-  private purgeDemoData() {
-    try {
-      // Purge demo waiters
-      const rawWaiters = localStorage.getItem(STORAGE_KEYS.WAITERS);
-      if (rawWaiters) {
-        const waiters: WaiterConfig[] = JSON.parse(rawWaiters);
-        const demoWaiterIds = ['w-1', 'w-2', 'w-admin'];
-        const filtered = waiters.filter(w => !demoWaiterIds.includes(w.id) && !w.name.includes('Ahmet Yılmaz') && !w.name.includes('Mehmet Demir'));
-        if (filtered.length !== waiters.length) {
-          localStorage.setItem(STORAGE_KEYS.WAITERS, JSON.stringify(filtered));
-        }
-      }
-
-      // Clean and purge demo printers from PRINTERS
-      const rawPrinters = localStorage.getItem(STORAGE_KEYS.PRINTERS);
-      const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-paket', 'pr-mutfak'];
-      if (rawPrinters) {
-        try {
-          const printers: PrinterConfig[] = JSON.parse(rawPrinters);
-          const filteredPrinters = printers.filter(p => 
-            !demoPrinterIds.includes(p.id) &&
-            !p.name.includes('Kasa & Hesap Yazıcısı') &&
-            !p.name.includes('Fırın Yazıcısı') &&
-            !p.name.includes('Ocak & Izgara Yazıcısı') &&
-            !p.name.includes('Paket Servis Yazıcısı')
-          );
-          if (filteredPrinters.length !== printers.length) {
-            localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(filteredPrinters));
-          }
-        } catch {
-          localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify([]));
-        }
-      } else {
-        localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify([]));
-      }
-
-      // Clean demo calls from CALL_LOGS
-      const rawCalls = localStorage.getItem(STORAGE_KEYS.CALL_LOGS);
-      if (rawCalls) {
-        try {
-          const calls: CallLogItem[] = JSON.parse(rawCalls);
-          const filteredCalls = calls.filter(c => 
-            !c.phone?.includes('0532 999 88 77') && 
-            !c.phone?.includes('05329998877') && 
-            !c.phone?.includes('05325554141') && 
-            !c.customerName?.includes('Müdavim Müşteri')
-          );
-          if (filteredCalls.length !== calls.length) {
-            localStorage.setItem(STORAGE_KEYS.CALL_LOGS, JSON.stringify(filteredCalls));
-          }
-        } catch (e) {}
-      }
-
-      // Purge demo printerId bindings from categories
-      const rawCategories = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-      if (rawCategories) {
-        const categories: CategoryConfig[] = JSON.parse(rawCategories);
-        const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-mutfak'];
-        let catChanged = false;
-        const cleanedCategories = categories.map(c => {
-          if (c.printerId && demoPrinterIds.includes(c.printerId)) {
-            catChanged = true;
-            const { printerId, ...rest } = c;
-            return rest;
-          }
-          return c;
-        });
-        if (catChanged) {
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(cleanedCategories));
-        }
-      }
-
-      // Purge seed orders
-      const rawOrders = localStorage.getItem(STORAGE_KEYS.COMPLETED_ORDERS);
-      if (rawOrders) {
-        const orders: CompletedOrderArchive[] = JSON.parse(rawOrders);
-        const filtered = orders.filter(o => !o.id.startsWith('ord-seed-'));
-        if (filtered.length !== orders.length) {
-          localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(filtered));
-        }
-      }
-
-      // Purge seed z-reports
-      const rawZ = localStorage.getItem(STORAGE_KEYS.Z_REPORTS);
-      if (rawZ) {
-        const zReports: ZReport[] = JSON.parse(rawZ);
-        const filtered = zReports.filter(z => !z.id.startsWith('z-seed-'));
-        if (filtered.length !== zReports.length) {
-          localStorage.setItem(STORAGE_KEYS.Z_REPORTS, JSON.stringify(filtered));
-        }
-      }
-    } catch (e) {
-      console.warn('RestaurantDataService demo purge error:', e);
-    }
-
-    // İlk açılışta merkezi MySQL veritabanından tüm canlı verileri çek
-    setTimeout(() => {
-      this.pullAllErpDataFromCloud();
-    }, 100);
   }
 
   public subscribe(listener: ChangeListener): () => void {
@@ -961,7 +672,7 @@ class RestaurantDataService {
     const calls = this.getRecentCalls();
     const isReg = Boolean(customerInfo?.id);
     const newCall: CallLogItem = {
-      id: `call-${Date.now()}`,
+      id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       phone: phone,
       customerId: customerInfo?.id,
       customerName: customerInfo?.name || 'Kayıtsız Numara',
@@ -1052,30 +763,52 @@ class RestaurantDataService {
       if (!res.ok) return false;
       const data = await res.json();
       if (data && data.success) {
-        if (data.sections && data.sections.length > 0) {
+        // Güvenlik: uygulama öncesi yerel verinin anlık kopyası (dosya yedeği, mümkünse)
+        try { await this.autoBackupHook?.('bulut-cekme-oncesi'); } catch {}
+
+        const rawLocal = (key: string) => safeParseArray(localStorage.getItem(key));
+        const localEmpty = (key: string) => rawLocal(key).length === 0;
+
+        // ANA VERİ: yalnızca yerel liste BOŞSA bulutan alınır (kasa asıl kaynaktır).
+        if (data.sections?.length > 0 && localEmpty(STORAGE_KEYS.SECTIONS)) {
           localStorage.setItem(STORAGE_KEYS.SECTIONS, JSON.stringify(data.sections));
         }
-        if (data.categories && data.categories.length > 0) this.saveCategories(data.categories);
-        if (data.products && data.products.length > 0) this.saveProducts(data.products);
-        if (data.employees && data.employees.length > 0) this.saveWaiters(data.employees);
-        if (data.tables && data.tables.length > 0) {
-          const sections = (data.sections && data.sections.length > 0) ? data.sections : this.getSections();
-          const sorted = sortTablesNaturally(data.tables, sections);
-          localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(sorted));
-        } else if (data.sections && data.sections.length > 0) {
-          this.syncTablesWithSections(data.sections);
+        if (data.categories?.length > 0 && localEmpty(STORAGE_KEYS.CATEGORIES)) this.saveCategories(data.categories);
+        if (data.products?.length > 0 && localEmpty(STORAGE_KEYS.PRODUCTS)) this.saveProducts(data.products);
+        if (data.employees?.length > 0 && localEmpty(STORAGE_KEYS.WAITERS)) this.saveWaiters(data.employees);
+        if (data.printers?.length > 0 && localEmpty(STORAGE_KEYS.PRINTERS)) this.savePrinters(data.printers);
+
+        // MASALAR (açık adisyonlar dahil): yerelde hiç masa yoksa bulutan alınır; aksi halde yerel korunur.
+        if (localEmpty(STORAGE_KEYS.TABLES)) {
+          if (data.tables?.length > 0) {
+            const sections = (data.sections?.length > 0) ? data.sections : this.getSections();
+            localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(sortTablesNaturally(data.tables, sections)));
+          } else if (data.sections?.length > 0) {
+            this.syncTablesWithSections(data.sections);
+          }
         }
-        if (data.printers && data.printers.length > 0) this.savePrinters(data.printers);
-        if (data.zReports && data.zReports.length > 0) localStorage.setItem(STORAGE_KEYS.Z_REPORTS, JSON.stringify(data.zReports));
-        if (data.completedOrders && data.completedOrders.length > 0) localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(data.completedOrders));
+
+        // GEÇMİŞ KAYITLAR: ID bazlı BİRLEŞİM — yerel hiçbir kayıt kaybolmaz.
+        if (data.zReports?.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.Z_REPORTS, JSON.stringify(mergeById(rawLocal(STORAGE_KEYS.Z_REPORTS), data.zReports)));
+        }
+        if (data.completedOrders?.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(mergeById(rawLocal(STORAGE_KEYS.COMPLETED_ORDERS), data.completedOrders)));
+        }
 
         // Cari ve Finans modülleri
-        if (data.customers && data.customers.length > 0) dataService.saveCustomers(data.customers);
-        if (data.customerTransactions && data.customerTransactions.length > 0) localStorage.setItem('gtu_erp_customer_tx', JSON.stringify(data.customerTransactions));
-        if (data.suppliers && data.suppliers.length > 0) dataService.saveSuppliers(data.suppliers);
-        if (data.supplierTransactions && data.supplierTransactions.length > 0) localStorage.setItem('gtu_erp_supplier_tx', JSON.stringify(data.supplierTransactions));
-        if (data.expenses && data.expenses.length > 0) dataService.saveExpensesList(data.expenses);
-        if (data.companySettings) dataService.saveCompanySettings(data.companySettings);
+        if (data.customers?.length > 0 && localEmpty('gtu_erp_customers')) dataService.saveCustomers(data.customers);
+        if (data.customerTransactions?.length > 0) {
+          localStorage.setItem('gtu_erp_customer_transactions', JSON.stringify(mergeById(rawLocal('gtu_erp_customer_transactions'), data.customerTransactions)));
+        }
+        if (data.suppliers?.length > 0 && localEmpty('gtu_erp_suppliers')) dataService.saveSuppliers(data.suppliers);
+        if (data.supplierTransactions?.length > 0) {
+          localStorage.setItem('gtu_erp_supplier_transactions', JSON.stringify(mergeById(rawLocal('gtu_erp_supplier_transactions'), data.supplierTransactions)));
+        }
+        if (data.expenses?.length > 0) {
+          dataService.saveExpensesList(mergeById(rawLocal('gtu_erp_expenses'), data.expenses) as any);
+        }
+        if (data.companySettings && !localStorage.getItem('gtu_erp_company_settings')) dataService.saveCompanySettings(data.companySettings);
 
         this.notify();
         console.log('✅ [Merkezi MySQL] Tüm veriler phpMyAdmin veritabanından çekildi ve eşitlendi.');
@@ -1142,41 +875,61 @@ class RestaurantDataService {
       const res = await fetch(`${getApiSyncUrl()}?action=pull_pending_orders`);
       const data = await res.json();
       if (data.success && data.orders && data.orders.length > 0) {
+        const handledIds: string[] = [];
         data.orders.forEach((ord: any) => {
-          if (ord.type === 'BILL_REQUEST') {
-            this.setBillRequested(ord.tableId);
-            const tbl = this.getTables().find(t => t.id === ord.tableId);
-            if (tbl && tbl.order?.items && tbl.order.items.length > 0 && this.billPrintCallback) {
-              this.billPrintCallback(tbl, tbl.order.items);
+          let handled = false;
+          try {
+            const dedupId = normalizeIncomingId(ord);
+            if (ord.type !== 'ORDER' && ord.type !== undefined && this.processedIncomingOrderIds.has(dedupId)) {
+              handled = true; // daha önce işlendi, yalnızca onayı tekrarla
+            } else if (ord.type === 'BILL_REQUEST') {
+              this.setBillRequested(ord.tableId);
+              const tbl = this.getTables().find(t => t.id === ord.tableId);
+              if (tbl && tbl.order?.items && tbl.order.items.length > 0 && this.billPrintCallback) {
+                this.billPrintCallback(tbl, tbl.order.items);
+              }
+              this.processedIncomingOrderIds.add(dedupId);
+              handled = true;
+            } else if (ord.type === 'TRANSFER_TABLE') {
+              this.transferTable(ord.sourceTableId, ord.targetTableId);
+              this.processedIncomingOrderIds.add(dedupId);
+              handled = true;
+            } else {
+              handled = this.processIncomingOrder(ord);
             }
-          } else if (ord.type === 'TRANSFER_TABLE') {
-            this.transferTable(ord.sourceTableId, ord.targetTableId);
-          } else {
-            this.processIncomingOrder(ord);
+          } catch (err) {
+            console.error('Gelen sipariş işlenemedi, onaylanmayacak (tekrar denenecek):', err);
           }
+          if (handled && ord.id) handledIds.push(String(ord.id));
         });
+        // Yalnızca kalıcı olarak işlenen siparişler bulutta onaylanır; aksi halde sonraki turda tekrar gelir.
+        if (handledIds.length > 0) {
+          try {
+            await fetch(`${getApiSyncUrl()}?action=ack_orders`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids: handledIds }),
+            });
+          } catch (ackErr) {
+            // Onay gitmezse sipariş tekrar gelir; kalıcı tekrar engelleme çift işlemeyi önler.
+          }
+        }
       }
     } catch (e) {}
   }
 
-  public processIncomingOrder(incoming: any) {
-    if (!incoming || !incoming.tableId) return;
+  /** @returns true: sipariş kalıcı işlendi (ya da daha önce işlenmişti) ve onaylanabilir; false: işlenemedi. */
+  public processIncomingOrder(incoming: any): boolean {
+    if (!incoming || !incoming.tableId) return false;
 
-    const orderDedupId = incoming.id || incoming.orderId || `${incoming.tableId}-${incoming.totalAmount || ''}-${incoming.items?.length || 0}-${incoming.timestamp || ''}`;
-    if (orderDedupId && this.processedIncomingOrderIds.has(orderDedupId)) {
-      return;
-    }
-    if (orderDedupId) {
-      this.processedIncomingOrderIds.add(orderDedupId);
-      if (this.processedIncomingOrderIds.size > 200) {
-        const first = Array.from(this.processedIncomingOrderIds)[0];
-        this.processedIncomingOrderIds.delete(first);
-      }
+    const orderDedupId = normalizeIncomingId(incoming);
+    if (this.processedIncomingOrderIds.has(orderDedupId)) {
+      return true;
     }
 
     const tables = this.getTables();
     const table = tables.find(t => t.id === incoming.tableId);
-    if (!table) return;
+    if (!table) return false;
 
     const existingItems = table.order?.items || [];
     const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -1191,6 +944,8 @@ class RestaurantDataService {
 
     const mergedItems = [...existingItems, ...newItems];
     this.updateTableOrder(table.id, mergedItems, incoming.waiterName, table.customerInfo, incoming.orderNote);
+    // Adisyon yazıldıktan HEMEN sonra kalıcı olarak işaretle (yeniden başlatmada çift ekleme olmaz).
+    this.processedIncomingOrderIds.add(orderDedupId);
 
     // Garsonun mobilden girdiği yeni sipariş kalemlerini anında mutfak yazıcılarına bas
     if (newItems.length > 0 && this.kitchenPrintCallback) {
@@ -1198,6 +953,7 @@ class RestaurantDataService {
       const isAdditionalOrder = existingItems.length > 0;
       this.kitchenPrintCallback(currentTable, newItems, incoming.waiterName || 'Garson', incoming.orderNote, isAdditionalOrder);
     }
+    return true;
   }
 
   public getSections(): SectionConfig[] {
@@ -1297,23 +1053,38 @@ class RestaurantDataService {
     return sorted;
   }
 
+  /**
+   * Masa taşıma / birleştirme.
+   * - Hedef BOŞSA: adisyon hedefe taşınır.
+   * - Hedef DOLUYSA: kalemler hedef adisyona EKLENİR (birleştirme); hedefteki hiçbir kalem kaybolmaz.
+   * Kaynak masa her durumda boşaltılır. Hedef/kaynak geçersizse hiçbir şey değişmez.
+   */
   public transferTable(sourceTableId: string, targetTableId: string): boolean {
     const tables = this.getTables();
     const srcIndex = tables.findIndex(t => t.id === sourceTableId);
     const tgtIndex = tables.findIndex(t => t.id === targetTableId);
 
-    if (srcIndex === -1 || tgtIndex === -1 || !tables[srcIndex].order) return false;
+    if (srcIndex === -1 || tgtIndex === -1 || srcIndex === tgtIndex || !tables[srcIndex].order) return false;
 
-    tables[tgtIndex].status = 'OCCUPIED';
-    tables[tgtIndex].order = {
-      ...tables[srcIndex].order!,
-      items: [...(tables[srcIndex].order!.items || [])],
-    };
-    tables[tgtIndex].customerInfo = tables[srcIndex].customerInfo;
+    const src = tables[srcIndex];
+    const tgt = tables[tgtIndex];
+    const srcItems = [...(src.order!.items || [])];
 
-    tables[srcIndex].status = 'EMPTY';
-    tables[srcIndex].order = undefined;
-    tables[srcIndex].customerInfo = undefined;
+    if (tgt.order && (tgt.order.items?.length || 0) > 0) {
+      const merged = [...tgt.order.items, ...srcItems];
+      const total = merged.reduce((sum, it) => sum + (it.isGift ? 0 : (Number(it.price) || 0) * (Number(it.quantity) || 1)), 0);
+      tgt.order = { ...tgt.order, items: merged, totalAmount: total };
+      if (!tgt.customerInfo && src.customerInfo) tgt.customerInfo = src.customerInfo;
+      if (tgt.status === 'EMPTY') tgt.status = 'OCCUPIED';
+    } else {
+      tgt.status = src.status === 'EMPTY' ? 'OCCUPIED' : src.status;
+      tgt.order = { ...src.order!, items: srcItems };
+      tgt.customerInfo = src.customerInfo;
+    }
+
+    src.status = 'EMPTY';
+    src.order = undefined;
+    src.customerInfo = undefined;
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
@@ -1346,8 +1117,8 @@ class RestaurantDataService {
         tables[tableIndex].customerInfo = customerInfo;
         tables[tableIndex].status = 'OCCUPIED';
         tables[tableIndex].order = {
-          id: `ord-${Date.now()}`,
-          orderNumber: Math.floor(100 + Math.random() * 900),
+          id: `ord-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          orderNumber: this.nextOrderNumber(),
           totalAmount: 0,
           orderTime: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
           waiterName: waiterName,
@@ -1370,7 +1141,7 @@ class RestaurantDataService {
 
       tables[tableIndex].order = {
         id: existingOrder?.id || `ord-${Date.now()}`,
-        orderNumber: existingOrder?.orderNumber || Math.floor(100 + Math.random() * 900),
+        orderNumber: existingOrder?.orderNumber || this.nextOrderNumber(),
         totalAmount,
         orderTime: existingOrder?.orderTime || currentTime,
         waiterName: existingOrder?.waiterName || waiterName,
@@ -1403,7 +1174,7 @@ class RestaurantDataService {
 
     const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
     cancelLogs.push({
-      id: `cancel-${Date.now()}`,
+      id: `cancel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       tableName: table.name,
       productName: targetItem.productName,
       quantity: cancelQty,
@@ -1429,15 +1200,15 @@ class RestaurantDataService {
 
     if (table.order && table.order.items && table.order.items.length > 0) {
       const now = new Date();
-      const todayDate = now.toISOString().split('T')[0];
+      const todayDate = getBusinessDate(now);
       const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
       const orderAmount = Number(table.order.totalAmount) || table.order.items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
       const section = this.getSections().find(s => s.id === table.sectionId);
 
       const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
       completedOrders.push({
-        id: `arch-cancel-${Date.now()}`,
-        orderNumber: table.order.orderNumber || Math.floor(100 + Math.random() * 900),
+        id: `arch-cancel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        orderNumber: table.order.orderNumber || this.nextOrderNumber(),
         tableName: table.name,
         sectionName: section?.name || table.sectionId,
         waiterName: table.order.waiterName || cancelledBy,
@@ -1480,18 +1251,49 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []) {
+  /**
+   * Günlük artan adisyon numarası (iş günü başına 1'den başlar, çakışmaz).
+   * Eskiden 100–999 arası rastgele sayıydı; aynı gün içinde tekrar edebiliyordu.
+   */
+  public nextOrderNumber(): number {
+    const today = getBusinessDate();
+    let state: { date: string; n: number } = { date: today, n: 0 };
+    try {
+      const raw = JSON.parse(localStorage.getItem('gtu_order_counter') || 'null');
+      if (raw && raw.date === today && Number.isFinite(raw.n)) state = raw;
+    } catch {}
+    state.n += 1;
+    localStorage.setItem('gtu_order_counter', JSON.stringify(state));
+    return state.n;
+  }
+
+  /**
+   * Adisyonu kapatır. Ödemeler adisyon tutarını TAM karşılamıyorsa kapatmaz.
+   * Aynı masa için ikinci çağrı (çift tıklama) hiçbir şey yapmaz ve başarısız döner.
+   */
+  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []): { success: boolean; error?: string } {
     const tables = this.getTables();
     const table = tables.find((t) => t.id === tableId);
-    if (!table || !table.order) return;
+    if (!table || !table.order) return { success: false, error: 'Masada kapatılacak açık adisyon yok (zaten kapatılmış olabilir).' };
+
+    const expectedTotal = (table.order.items || []).reduce(
+      (sum, it) => sum + (it.isGift ? 0 : (Number(it.price) || 0) * (Number(it.quantity) || 1)),
+      0
+    );
+    if (payments.length > 0) {
+      const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      if (Math.abs(paid - expectedTotal) > 0.01) {
+        return { success: false, error: `Ödemeler toplamı (${paid.toFixed(2)} ₺) adisyon tutarına (${expectedTotal.toFixed(2)} ₺) eşit değil.` };
+      }
+    }
 
     const now = new Date();
-    const todayDate = now.toISOString().split('T')[0];
+    const todayDate = getBusinessDate(now);
     const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
     const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
     completedOrders.push({
-      id: `arch-${Date.now()}`,
+      id: `arch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       orderNumber: table.order.orderNumber,
       tableName: table.name,
       sectionName: table.sectionId,
@@ -1499,9 +1301,9 @@ class RestaurantDataService {
       orderTime: table.order.orderTime || timeStr,
       closedTime: `${todayDate} ${timeStr}`,
       date: todayDate,
-      totalAmount: table.order.totalAmount,
+      totalAmount: expectedTotal,
       items: table.order.items,
-      payments: payments.length > 0 ? payments : [{ id: `p-${Date.now()}`, type: method, amount: table.order.totalAmount, time: timeStr }],
+      payments: payments.length > 0 ? payments : [{ id: `p-${Date.now()}`, type: method, amount: expectedTotal, time: timeStr }],
     });
     localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(completedOrders));
 
@@ -1511,6 +1313,7 @@ class RestaurantDataService {
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
+    return { success: true };
   }
 
   public getAllCompletedOrders(): CompletedOrderArchive[] {
@@ -1531,201 +1334,42 @@ class RestaurantDataService {
     return all.filter(o => !o.zReportId);
   }
 
-  private generateSeedCompletedOrders(): CompletedOrderArchive[] {
-    return [];
-    /*
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const twoDaysAgo = new Date(Date.now() - 172800000).toISOString().split('T')[0];
-
-    return [
-      {
-        id: 'ord-seed-1',
-        orderNumber: 101,
-        tableName: 'Salon - Masa 1',
-        sectionName: 'Ana Salon',
-        waiterName: 'Ahmet Garson',
-        orderTime: `${today} 12:15`,
-        closedTime: `${today} 13:05`,
-        date: today,
-        totalAmount: 900,
-        items: [
-          { id: 'i1', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 2, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i2', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-          { id: 'i3', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 1, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p1', type: 'Kredi Kartı', amount: 900, time: '13:05' }],
-      },
-      {
-        id: 'ord-seed-2',
-        orderNumber: 102,
-        tableName: 'Salon - Masa 3',
-        sectionName: 'Ana Salon',
-        waiterName: 'Taha Usta',
-        orderTime: `${today} 12:40`,
-        closedTime: `${today} 13:30`,
-        date: today,
-        totalAmount: 1400,
-        items: [
-          { id: 'i4', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 3, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i5', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 4, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p2', type: 'Nakit', amount: 1400, time: '13:30' }],
-      },
-      {
-        id: 'ord-seed-3',
-        orderNumber: 103,
-        tableName: 'Bahçe - Masa 2',
-        sectionName: 'Bahçe',
-        waiterName: 'İbrahim',
-        orderTime: `${today} 13:10`,
-        closedTime: `${today} 14:00`,
-        date: today,
-        totalAmount: 650,
-        items: [
-          { id: 'i6', productId: 'p6', productName: 'Kuşbaşılı Kaşarlı Pide', price: 280, quantity: 2, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-          { id: 'i7', productId: 'p9', productName: 'Kutu Meşrubat / Şalgam', price: 45, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p3', type: 'Nakit', amount: 650, time: '14:00' }],
-      },
-      {
-        id: 'ord-seed-4',
-        orderNumber: 104,
-        tableName: 'Paket Servis - P1',
-        sectionName: 'Paket Servis',
-        waiterName: 'Ahmet Garson',
-        orderTime: `${today} 13:30`,
-        closedTime: `${today} 14:15`,
-        date: today,
-        totalAmount: 580,
-        items: [
-          { id: 'i8', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 1, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i9', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 2, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-          { id: 'i10', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 1, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p4', type: 'Kredi Kartı', amount: 580, time: '14:15' }],
-      },
-      {
-        id: 'ord-seed-5',
-        orderNumber: 105,
-        tableName: 'Bahçe - Masa 5',
-        sectionName: 'Bahçe',
-        waiterName: 'İbrahim',
-        orderTime: `${today} 14:00`,
-        closedTime: `${today} 14:50`,
-        date: today,
-        totalAmount: 1140,
-        items: [
-          { id: 'i11', productId: 'p4', productName: 'Ali Nazik Kebap', price: 390, quantity: 2, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i12', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p5', type: 'Sodexo', amount: 1140, time: '14:50' }],
-      },
-      {
-        id: 'ord-seed-6',
-        orderNumber: 106,
-        tableName: 'Salon - Masa 6',
-        sectionName: 'Ana Salon',
-        waiterName: 'Taha Usta',
-        orderTime: `${today} 14:30`,
-        closedTime: `${today} 15:20`,
-        date: today,
-        totalAmount: 1020,
-        items: [
-          { id: 'i13', productId: 'p3', productName: 'Kuzu Şiş Kebap', price: 380, quantity: 2, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i14', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 1, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-          { id: 'i15', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p6', type: 'Cari (Mehmet Kaya)', customerName: 'Mehmet Kaya', amount: 1020, time: '15:20' }],
-      },
-      // Dünkü Siparişler (Z-25'e ait)
-      {
-        id: 'ord-seed-y1',
-        orderNumber: 90,
-        tableName: 'Salon - Masa 2',
-        sectionName: 'Ana Salon',
-        waiterName: 'Ahmet Garson',
-        orderTime: `${yesterday} 18:00`,
-        closedTime: `${yesterday} 19:10`,
-        date: yesterday,
-        totalAmount: 2200,
-        items: [
-          { id: 'iy1', productId: 'p3', productName: 'Kuzu Şiş Kebap', price: 380, quantity: 4, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy2', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 3, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy3', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 4, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'py1', type: 'Kredi Kartı', amount: 2200, time: '19:10' }],
-        zReportId: 'z-seed-25',
-      },
-      {
-        id: 'ord-seed-y2',
-        orderNumber: 91,
-        tableName: 'Bahçe - Masa 1',
-        sectionName: 'Bahçe',
-        waiterName: 'İbrahim',
-        orderTime: `${yesterday} 19:30`,
-        closedTime: `${yesterday} 20:45`,
-        date: yesterday,
-        totalAmount: 1840,
-        items: [
-          { id: 'iy4', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 4, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy5', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 4, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy6', productId: 'p9', productName: 'Kutu Meşrubat / Şalgam', price: 45, quantity: 4, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'py2', type: 'Nakit', amount: 1840, time: '20:45' }],
-        zReportId: 'z-seed-25',
-      },
-      // 2 gün önceki sipariş (Z-24'e ait)
-      {
-        id: 'ord-seed-2d1',
-        orderNumber: 75,
-        tableName: 'Salon - Masa 4',
-        sectionName: 'Ana Salon',
-        waiterName: 'Taha Usta',
-        orderTime: `${twoDaysAgo} 13:00`,
-        closedTime: `${twoDaysAgo} 14:10`,
-        date: twoDaysAgo,
-        totalAmount: 1560,
-        items: [
-          { id: 'i2d1', productId: 'p2', productName: 'Urfa Kebap (Porsiyon)', price: 320, quantity: 3, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i2d2', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 4, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p2d1', type: 'Nakit', amount: 1560, time: '14:10' }],
-        zReportId: 'z-seed-24',
-      },
-    ];
-    */
-  }
-
   // =========================================================================
   // GİDERLER & TOPTANCILARI İÇEREN KAPSAMLI X VE Z RAPORU MOTORU
   // =========================================================================
   public getCurrentXReport() {
-    const orders = this.getCompletedOrdersCurrentSession();
-    const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+    // İptal edilen adisyonlar arşivde durur ama SATIŞ DEĞİLDİR: ciro, adet, ürün ve dağılımlara girmez.
+    const orders = this.getCompletedOrdersCurrentSession().filter((o) => o.status !== 'CANCELLED');
+    // Z ile kapatılmış iptal kayıtları arşivde kalır; X raporu yalnızca açık olanları sayar.
+    const allCancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+    const cancelLogs = allCancelLogs.filter((c: any) => !c.zReportId);
 
-    // Bugünün Tarihi
-    const todayStr = new Date().toISOString().split('T')[0];
+    // Bugünün (iş günü) Tarihi
+    const todayStr = getBusinessDate();
 
-    // İŞLETME GİDERLERİ (BUGÜNKÜLER)
+    // Daha önce bir Z raporuna girmiş gider/toptancı hareketleri (aynı gün ikinci Z'de çift sayılmasın)
+    const reported = this.getZReportedIds();
+
+    // İŞLETME GİDERLERİ: bugüne kadar girilmiş ve henüz hiçbir Z'de raporlanmamış olanlar
     const allExpenses = dataService.getExpenses() || [];
-    const todayExpenses = allExpenses.filter(e => e.date === todayStr);
-    const totalExpenses = todayExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    const cashExpenses = todayExpenses.filter(e => e.paymentMethod === 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    const bankExpenses = todayExpenses.filter(e => e.paymentMethod !== 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const todayExpenses = allExpenses.filter(e => e.date <= todayStr && !reported.expenses.has(e.id));
+    const totalExpenses = round2(todayExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
+    const cashExpenses = round2(todayExpenses.filter(e => e.paymentMethod === 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
+    const bankExpenses = round2(todayExpenses.filter(e => e.paymentMethod !== 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
 
-    // TOPTANCI FATURALARI VE ÖDEMELERİ (BUGÜNKÜLER)
+    // TOPTANCI FATURALARI VE ÖDEMELERİ (aynı kural)
     const allSupplierTxs = dataService.getSupplierTransactions() || [];
-    const todaySupplierTxs = allSupplierTxs.filter(t => t.date === todayStr);
-    const supplierInvoicesTotal = todaySupplierTxs.filter(t => t.type === 'INVOICE').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const todaySupplierTxs = allSupplierTxs.filter(t => t.date <= todayStr && !reported.supplierTxs.has(t.id));
+    const supplierInvoicesTotal = round2(todaySupplierTxs.filter(t => t.type === 'INVOICE').reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
     const todaySupplierPayments = todaySupplierTxs.filter(t => t.type === 'PAYMENT');
-    const supplierPaymentsTotal = todaySupplierPayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const supplierCashPayments = todaySupplierPayments.filter(t => t.paymentMethod === 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const supplierBankPayments = todaySupplierPayments.filter(t => t.paymentMethod !== 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const supplierPaymentsTotal = round2(todaySupplierPayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
+    const supplierCashPayments = round2(todaySupplierPayments.filter(t => t.paymentMethod === 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
+    const supplierBankPayments = round2(todaySupplierPayments.filter(t => t.paymentMethod !== 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
 
     let grossTotal = 0;
     let discountTotal = 0;
-    let giftTotal = 0;
+    let giftTotal = 0; // ikram edilen toplam değer (ödeme türü + ikram işaretli kalemler)
+    let giftPaymentTotal = 0; // yalnızca brüt ciro İÇİNDE kalan 'İkram (Tutar Düş)' ödemeleri
     const paymentBreakdown: { [type: string]: number } = {};
     const cariDetails: { [customerName: string]: number } = {};
     const productSales: { [prod: string]: { quantity: number; total: number } } = {};
@@ -1733,9 +1377,8 @@ class RestaurantDataService {
     const sectionBreakdown: { [sec: string]: number } = {};
 
     orders.forEach(ord => {
-      grossTotal += Number(ord.totalAmount) || 0;
-      sectionBreakdown[ord.sectionName || 'Diğer'] = (sectionBreakdown[ord.sectionName || 'Diğer'] || 0) + (Number(ord.totalAmount) || 0);
-      waiterBreakdown[ord.waiterName || 'Garson'] = (waiterBreakdown[ord.waiterName || 'Garson'] || 0) + (Number(ord.totalAmount) || 0);
+      const ordGross = Number(ord.totalAmount) || 0;
+      let ordReduction = 0; // bu adisyonda indirim + ikram ödemesi (tahsil edilmeyen kısım)
 
       (ord.payments || []).forEach(p => {
         const pType = p.type || 'Nakit';
@@ -1743,8 +1386,11 @@ class RestaurantDataService {
 
         if (pType.includes('İndirim') || pType.includes('İskonto')) {
           discountTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('İkram')) {
           giftTotal += pAmount;
+          giftPaymentTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('Cari')) {
           paymentBreakdown['Cari (Veresiye)'] = (paymentBreakdown['Cari (Veresiye)'] || 0) + pAmount;
           const custName = p.customerName || pType.replace('Cari (', '').replace(')', '').trim();
@@ -1754,31 +1400,52 @@ class RestaurantDataService {
         }
       });
 
+      grossTotal += ordGross;
+      // Dağılımlar (bölüm/garson) NET tutar üzerinden: toplamları net ciroya eşit olur.
+      const ordNet = ordGross - ordReduction;
+      sectionBreakdown[ord.sectionName || 'Diğer'] = (sectionBreakdown[ord.sectionName || 'Diğer'] || 0) + ordNet;
+      waiterBreakdown[ord.waiterName || 'Garson'] = (waiterBreakdown[ord.waiterName || 'Garson'] || 0) + ordNet;
+
       (ord.items || []).forEach(item => {
         if (!productSales[item.productName]) {
           productSales[item.productName] = { quantity: 0, total: 0 };
         }
-        productSales[item.productName].quantity += Number(item.quantity) || 1;
-        productSales[item.productName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+        const qty = Number(item.quantity) || 1;
+        productSales[item.productName].quantity += qty;
+        if (item.isGift) {
+          giftTotal += (Number(item.price) || 0) * qty; // ikram kalem: adet sayılır, ciroya girmez
+        } else {
+          productSales[item.productName].total += (Number(item.price) || 0) * qty;
+        }
       });
     });
+    Object.keys(sectionBreakdown).forEach((k) => { sectionBreakdown[k] = round2(sectionBreakdown[k]); });
+    Object.keys(waiterBreakdown).forEach((k) => { waiterBreakdown[k] = round2(waiterBreakdown[k]); });
+    Object.keys(productSales).forEach((k) => { productSales[k].total = round2(productSales[k].total); });
 
-    const cancelTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
-    const cashSales = paymentBreakdown['Nakit'] || 0;
-    
+    const cancelTotal = round2(cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0));
+    const cashSales = round2(paymentBreakdown['Nakit'] || 0);
+
     // KASADA KALAN NET NAKİT = (Nakit Satış) - (Kasadan Çıkan Nakit Giderler) - (Kasadan Toptancıya Ödenen Nakitler)
-    const netCashInRegister = cashSales - cashExpenses - supplierCashPayments;
+    const netCashInRegister = round2(cashSales - cashExpenses - supplierCashPayments);
 
-    const netTotal = grossTotal - discountTotal;
-    const vatRate = 10;
-    const vatBase = netTotal / 1.10;
-    const vatAmount = netTotal - vatBase;
+    grossTotal = round2(grossTotal);
+    discountTotal = round2(discountTotal);
+    giftTotal = round2(giftTotal);
+    giftPaymentTotal = round2(giftPaymentTotal);
+    Object.keys(paymentBreakdown).forEach((k) => { paymentBreakdown[k] = round2(paymentBreakdown[k]); });
+
+    // NET CİRO = brüt - indirim - ikram ödemesi = fiilen tahsil edilen + cariye yazılan (ödeme dağılımının toplamı)
+    const netTotal = round2(grossTotal - discountTotal - giftPaymentTotal);
+    const vatRate = 10; // Mevcut kapsamda ürün bazlı KDV yok; tek oran (yiyecek %10). Bkz. docs/known-limitations.
+    const vatBase = round2(netTotal / 1.10);
+    const vatAmount = round2(netTotal - vatBase);
 
     return {
       grossTotal,
       netTotal,
       totalOrders: orders.length,
-      avgOrderAmount: orders.length > 0 ? grossTotal / orders.length : 0,
+      avgOrderAmount: orders.length > 0 ? round2(netTotal / orders.length) : 0,
       paymentBreakdown,
       cariDetails,
       sectionBreakdown,
@@ -1816,13 +1483,13 @@ class RestaurantDataService {
     const nextZNo = zReports.length > 0 ? Math.max(...zReports.map(z => z.zNo)) + 1 : 1;
 
     const netCash = xData.netCashInRegister;
-    const openingFloat = countData?.openingCashFloat ?? 1000;
+    const openingFloat = countData?.openingCashFloat ?? 0; // girilmediyse varsayım yapılmaz
     const counted = countData?.countedCash ?? (netCash + openingFloat);
     const diff = countData?.cashDifference ?? (counted - (netCash + openingFloat));
     const transferred = countData?.transferredCash ?? openingFloat;
 
     const zReport: ZReport = {
-      id: `z-${Date.now()}`,
+      id: `z-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       zNo: nextZNo,
       openedAt: xData.orders[0]?.orderTime || '09:00',
       closedAt: new Date().toLocaleString('tr-TR'),
@@ -1863,9 +1530,42 @@ class RestaurantDataService {
     });
     localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(allCompleted));
 
-    localStorage.removeItem(STORAGE_KEYS.CANCEL_LOGS);
+    // İptal kayıtları SİLİNMEZ (denetim izi): bu Z'ye bağlanıp arşivde kalır.
+    try {
+      const logs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+      logs.forEach((c: any) => { if (!c.zReportId) c.zReportId = zReport.id; });
+      localStorage.setItem(STORAGE_KEYS.CANCEL_LOGS, JSON.stringify(logs));
+    } catch {}
+
+    // Bu Z'ye giren gider/toptancı hareketlerini işaretle (ikinci Z'de tekrar sayılmasın).
+    const alreadyReported = this.getZReportedIds();
+    const bizToday = getBusinessDate();
+    this.markZReported(
+      (dataService.getExpenses() || []).filter(e => e.date <= bizToday && !alreadyReported.expenses.has(e.id)).map(e => e.id),
+      (dataService.getSupplierTransactions() || []).filter(t => t.date <= bizToday && !alreadyReported.supplierTxs.has(t.id)).map(t => t.id)
+    );
+
+    // Z kapanışı sonrası otomatik dosya yedeği (arka planda; sonucu raporu engellemez)
+    try { void this.autoBackupHook?.('z-kapanis'); } catch {}
+
     this.notify();
     return zReport;
+  }
+
+  private getZReportedIds(): { expenses: Set<string>; supplierTxs: Set<string> } {
+    try {
+      const raw = JSON.parse(localStorage.getItem('gtu_z_reported_ids') || '{}');
+      return { expenses: new Set(raw.expenses || []), supplierTxs: new Set(raw.supplierTxs || []) };
+    } catch {
+      return { expenses: new Set(), supplierTxs: new Set() };
+    }
+  }
+
+  private markZReported(expenseIds: string[], supplierTxIds: string[]) {
+    const cur = this.getZReportedIds();
+    expenseIds.forEach((i) => cur.expenses.add(i));
+    supplierTxIds.forEach((i) => cur.supplierTxs.add(i));
+    localStorage.setItem('gtu_z_reported_ids', JSON.stringify({ expenses: [...cur.expenses], supplierTxs: [...cur.supplierTxs] }));
   }
 
   public getZReportsHistory(): ZReport[] {
@@ -1879,88 +1579,6 @@ class RestaurantDataService {
       }
     }
     return [];
-  }
-
-  private generateSeedZReports(): ZReport[] {
-    return [];
-    /*
-    const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('tr-TR');
-    const twoDaysAgo = new Date(Date.now() - 172800000).toLocaleDateString('tr-TR');
-
-    return [
-      {
-        id: 'z-seed-24',
-        zNo: 24,
-        openedAt: `${twoDaysAgo} 09:30`,
-        closedAt: `${twoDaysAgo} 23:45`,
-        closedBy: 'Taha Usta',
-        grossTotal: 19450,
-        netTotal: 18950,
-        totalOrders: 32,
-        paymentBreakdown: { 'Nakit': 8400, 'Kredi Kartı': 9150, 'Sodexo': 1400 },
-        cariDetails: {},
-        totalExpenses: 2100,
-        cashExpenses: 900,
-        bankExpenses: 1200,
-        supplierInvoicesTotal: 4500,
-        supplierPaymentsTotal: 2500,
-        supplierCashPayments: 1500,
-        supplierBankPayments: 1000,
-        netCashInRegister: 6000,
-        openingCashFloat: 1000,
-        countedCash: 7000,
-        cashDifference: 0,
-        transferredCash: 1000,
-        discountTotal: 500,
-        giftTotal: 240,
-        cancelTotal: 0,
-        productSales: {
-          'Adana Kebap (Porsiyon)': { quantity: 28, total: 8960 },
-          'Gaziantep Lahmacun': { quantity: 45, total: 4950 },
-          'Açık Yayık Ayranı': { quantity: 40, total: 1600 },
-          'Antep Fıstıklı Künefe': { quantity: 19, total: 3420 },
-        },
-        vatBreakdown: [{ rate: 10, baseAmount: 17227.27, vatAmount: 1722.73, total: 18950 }],
-        note: 'Normal gün sonu kapanışı, kasa tam denk.',
-      },
-      {
-        id: 'z-seed-25',
-        zNo: 25,
-        openedAt: `${yesterday} 09:15`,
-        closedAt: `${yesterday} 23:55`,
-        closedBy: 'Taha Usta',
-        grossTotal: 24680,
-        netTotal: 24100,
-        totalOrders: 38,
-        paymentBreakdown: { 'Nakit': 11200, 'Kredi Kartı': 10800, 'Sodexo': 1100, 'Cari (Veresiye)': 1000 },
-        cariDetails: { 'Ahmet Yıldız': 1000 },
-        totalExpenses: 2800,
-        cashExpenses: 1100,
-        bankExpenses: 1700,
-        supplierInvoicesTotal: 6200,
-        supplierPaymentsTotal: 3500,
-        supplierCashPayments: 2000,
-        supplierBankPayments: 1500,
-        netCashInRegister: 8100,
-        openingCashFloat: 1000,
-        countedCash: 9150,
-        cashDifference: 50,
-        transferredCash: 1000,
-        discountTotal: 580,
-        giftTotal: 320,
-        cancelTotal: 110,
-        productSales: {
-          'Adana Kebap (Porsiyon)': { quantity: 34, total: 10880 },
-          'Urfa Kebap (Porsiyon)': { quantity: 18, total: 5760 },
-          'Gaziantep Lahmacun': { quantity: 52, total: 5720 },
-          'Antep Fıstıklı Künefe': { quantity: 24, total: 4320 },
-          'Açık Yayık Ayranı': { quantity: 58, total: 2320 },
-        },
-        vatBreakdown: [{ rate: 10, baseAmount: 21909.09, vatAmount: 2190.91, total: 24100 }],
-        note: 'Hafta sonu yoğunluğu, +50 TL kasa fazlası.',
-      },
-    ];
-    */
   }
 
   public getFilteredReport(filters: ReportFilterOptions = {}): DetailedReportResult {
@@ -1978,7 +1596,7 @@ class RestaurantDataService {
       if (raw.includes('-')) {
         return raw.split('T')[0].split(' ')[0];
       }
-      return new Date().toISOString().split('T')[0];
+      return getBusinessDate();
     };
 
     const getOrderHour = (o: CompletedOrderArchive): number => {
@@ -2034,6 +1652,7 @@ class RestaurantDataService {
     let grossTotal = 0;
     let discountTotal = 0;
     let giftTotal = 0;
+    let giftPaymentTotal = 0; // brüt ciro içindeki 'İkram (Tutar Düş)' ödemeleri
     const paymentBreakdown: { [key: string]: number } = {};
     const cariDetails: { [customerName: string]: number } = {};
     const sectionBreakdown: { [key: string]: { count: number; total: number } } = {};
@@ -2065,68 +1684,77 @@ class RestaurantDataService {
       const ordAmt = Number(ord.totalAmount) || 0;
       grossTotal += ordAmt;
 
-      const secKey = ord.sectionName || 'Diğer';
-      if (!sectionBreakdown[secKey]) sectionBreakdown[secKey] = { count: 0, total: 0 };
-      sectionBreakdown[secKey].count += 1;
-      sectionBreakdown[secKey].total += ordAmt;
-
-      const waitKey = ord.waiterName || 'Garson';
-      if (!waiterBreakdown[waitKey]) waiterBreakdown[waitKey] = { count: 0, total: 0 };
-      waiterBreakdown[waitKey].count += 1;
-      waiterBreakdown[waitKey].total += ordAmt;
-
-      const hourKey = `${String(getOrderHour(ord)).padStart(2, '0')}:00`;
-      if (!hourlySales[hourKey]) hourlySales[hourKey] = { count: 0, total: 0 };
-      hourlySales[hourKey].count += 1;
-      hourlySales[hourKey].total += Number(ord.totalAmount) || 0;
-
+      // Bu adisyonun indirim + ikram ödemeleri (tahsil edilmeyen kısım) → net tutar
+      let ordReduction = 0;
       (ord.payments || []).forEach(p => {
         const pType = p.type || 'Nakit';
         const pAmount = Number(p.amount) || 0;
         if (pType.includes('İndirim') || pType.includes('İskonto')) {
           discountTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('İkram')) {
           giftTotal += pAmount;
+          giftPaymentTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('Cari')) {
-          paymentBreakdown['Cari'] = (paymentBreakdown['Cari'] || 0) + pAmount;
+          paymentBreakdown['Cari (Veresiye)'] = (paymentBreakdown['Cari (Veresiye)'] || 0) + pAmount;
           const custName = p.customerName || pType.replace('Cari (', '').replace(')', '').trim();
           cariDetails[custName] = (cariDetails[custName] || 0) + pAmount;
         } else {
           paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
         }
       });
+      const ordNet = ordAmt - ordReduction;
+
+      const secKey = ord.sectionName || 'Diğer';
+      if (!sectionBreakdown[secKey]) sectionBreakdown[secKey] = { count: 0, total: 0 };
+      sectionBreakdown[secKey].count += 1;
+      sectionBreakdown[secKey].total += ordNet;
+
+      const waitKey = ord.waiterName || 'Garson';
+      if (!waiterBreakdown[waitKey]) waiterBreakdown[waitKey] = { count: 0, total: 0 };
+      waiterBreakdown[waitKey].count += 1;
+      waiterBreakdown[waitKey].total += ordNet;
+
+      const hourKey = `${String(getOrderHour(ord)).padStart(2, '0')}:00`;
+      if (!hourlySales[hourKey]) hourlySales[hourKey] = { count: 0, total: 0 };
+      hourlySales[hourKey].count += 1;
+      hourlySales[hourKey].total += ordNet;
 
       (ord.items || []).forEach(item => {
         const catName = prodCategoryMap[item.productName] || 'Genel Menü';
-        
-        if (item.isGift) {
-          const itemVal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
-          giftTotal += itemVal;
-          giftLogs.push({
-            tableName: ord.tableName || 'Masa',
-            productName: item.productName,
-            quantity: Number(item.quantity) || 1,
-            amount: itemVal,
-            waiterName: ord.waiterName || 'Kasiyer',
-            orderNumber: ord.orderNumber,
-          });
-        }
+        const qty = Number(item.quantity) || 1;
+        const itemVal = (Number(item.price) || 0) * qty;
 
         if (!productSales[item.productName]) {
           productSales[item.productName] = { quantity: 0, total: 0, categoryName: catName };
         }
-        productSales[item.productName].quantity += Number(item.quantity) || 1;
-        productSales[item.productName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
-
         if (!categorySales[catName]) categorySales[catName] = { quantity: 0, total: 0 };
-        categorySales[catName].quantity += Number(item.quantity) || 1;
-        categorySales[catName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+        productSales[item.productName].quantity += qty;
+        categorySales[catName].quantity += qty;
+
+        if (item.isGift) {
+          // İkram kalem: adet sayılır, ciroya GİRMEZ (adisyon toplamında da yoktur)
+          giftTotal += itemVal;
+          giftLogs.push({
+            tableName: ord.tableName || 'Masa',
+            productName: item.productName,
+            quantity: qty,
+            amount: itemVal,
+            waiterName: ord.waiterName || 'Kasiyer',
+            orderNumber: ord.orderNumber,
+          });
+        } else {
+          productSales[item.productName].total += itemVal;
+          categorySales[catName].total += itemVal;
+        }
       });
     });
 
-    const netTotal = grossTotal - discountTotal;
+    // NET CİRO = brüt - indirim - ikram ödemesi (ödeme dağılımının toplamına eşittir)
+    const netTotal = grossTotal - discountTotal - giftPaymentTotal;
     const totalOrders = paidOrders.length;
-    const avgOrderAmount = totalOrders > 0 ? grossTotal / totalOrders : 0;
+    const avgOrderAmount = totalOrders > 0 ? netTotal / totalOrders : 0;
 
     const allExpenses = dataService.getExpenses() || [];
     const filteredExpenses = allExpenses.filter(e => {
@@ -2157,11 +1785,12 @@ class RestaurantDataService {
     });
     const cancelLogsTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
     const cancelledOrdersTotal = cancelledOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
-    const cancelTotal = cancelLogsTotal + cancelledOrdersTotal;
+    // Masa iptalinde de kalem iptal kayıtları yazıldığı için yalnızca bu kayıtlar toplanır (çift sayım olmaz).
+    const cancelTotal = cancelLogsTotal;
 
     const vatRate = 10;
-    const vatBase = netTotal / 1.10;
-    const vatAmount = netTotal - vatBase;
+    const vatBase = round2(netTotal / 1.10);
+    const vatAmount = round2(netTotal - vatBase);
 
     // Nakit Hasılat
     const cashSales = paymentBreakdown['Nakit'] || 0;
@@ -2170,29 +1799,34 @@ class RestaurantDataService {
     // Dönem Faaliyet Kârı = Net Ciro - İşletme Giderleri - Alış Faturaları
     const operatingProfit = netTotal - totalExpenses - supplierInvoicesTotal;
 
+    const r2 = round2;
+    const r2map = <T extends { total: number }>(m: { [k: string]: T }) => { Object.keys(m).forEach((k) => { m[k].total = r2(m[k].total); }); return m; };
+    Object.keys(paymentBreakdown).forEach((k) => { paymentBreakdown[k] = r2(paymentBreakdown[k]); });
+    Object.keys(cariDetails).forEach((k) => { cariDetails[k] = r2(cariDetails[k]); });
+
     return {
-      grossTotal,
-      netTotal,
-      discountTotal,
-      giftTotal,
-      cancelTotal,
+      grossTotal: r2(grossTotal),
+      netTotal: r2(netTotal),
+      discountTotal: r2(discountTotal),
+      giftTotal: r2(giftTotal),
+      cancelTotal: r2(cancelTotal),
       totalOrders,
-      avgOrderAmount,
+      avgOrderAmount: r2(avgOrderAmount),
       paymentBreakdown,
       cariDetails,
-      sectionBreakdown,
-      waiterBreakdown,
-      vatBreakdown: [{ rate: vatRate, baseAmount: vatBase, vatAmount, total: netTotal }],
-      productSales,
-      categorySales,
-      hourlySales,
-      totalExpenses,
-      cashExpenses,
-      supplierInvoicesTotal,
-      supplierPaymentsTotal,
-      supplierCashPayments,
-      netCashFlow,
-      operatingProfit,
+      sectionBreakdown: r2map(sectionBreakdown),
+      waiterBreakdown: r2map(waiterBreakdown),
+      vatBreakdown: [{ rate: vatRate, baseAmount: vatBase, vatAmount, total: r2(netTotal) }],
+      productSales: r2map(productSales),
+      categorySales: r2map(categorySales),
+      hourlySales: r2map(hourlySales),
+      totalExpenses: r2(totalExpenses),
+      cashExpenses: r2(cashExpenses),
+      supplierInvoicesTotal: r2(supplierInvoicesTotal),
+      supplierPaymentsTotal: r2(supplierPaymentsTotal),
+      supplierCashPayments: r2(supplierCashPayments),
+      netCashFlow: r2(netCashFlow),
+      operatingProfit: r2(operatingProfit),
       orders,
       cancelledOrders,
       cancelLogs,
@@ -2429,17 +2063,17 @@ class RestaurantDataService {
     let newLog: CallLogItem;
     if (typeof callOrPhone === 'string') {
       newLog = {
-        id: `call-${Date.now()}`,
+        id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         phone: callOrPhone,
         customerId: customerData?.id,
         customerName: customerData?.name || 'Kayıtlı Olmayan Numara',
         address: customerData?.address || '',
         time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-        date: new Date().toISOString().split('T')[0],
+        date: getBusinessDate(),
         isRegistered: !!customerData?.name,
       };
     } else {
-      newLog = { ...callOrPhone, id: `call-${Date.now()}` };
+      newLog = { ...callOrPhone, id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` };
     }
     const updated = [newLog, ...logs].slice(0, 50);
     localStorage.setItem(STORAGE_KEYS.CALL_LOGS, JSON.stringify(updated));
@@ -2627,8 +2261,7 @@ class RestaurantDataService {
       const data = await res.json();
       return { success: true, message: data.message || 'Para çekmecesine açılma darbesi gönderildi.' };
     } catch (e) {
-      // Çekmece sinyali simülasyonu
-      return { success: true, message: 'Para çekmecesi açılma sinyali (ESC p 0 25 250) yazıcı portuna iletildi.' };
+      return { success: false, message: 'Para çekmecesi açılamadı: yazıcı hizmetine ulaşılamadı.' };
     }
   }
 
@@ -2647,20 +2280,16 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public async setPlatformStoreStatus(platform: 'ALL' | 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI', isOpen: boolean): Promise<boolean> {
+  public async setPlatformStoreStatus(platform: 'ALL' | 'TRENDYOL' | 'YEMEKSEPETI', isOpen: boolean): Promise<boolean> {
     const current = this.getFoodPlatformsConfig();
     const updated: FoodPlatformsConfig = {
       ...current,
       trendyol: { ...current.trendyol },
-      getir: { ...current.getir },
       yemeksepeti: { ...current.yemeksepeti },
     };
 
     if (platform === 'ALL' || platform === 'TRENDYOL') {
       updated.trendyol.isOpen = isOpen;
-    }
-    if (platform === 'ALL' || platform === 'GETIR') {
-      updated.getir.isOpen = isOpen;
     }
     if (platform === 'ALL' || platform === 'YEMEKSEPETI') {
       updated.yemeksepeti.isOpen = isOpen;
@@ -2695,14 +2324,10 @@ class RestaurantDataService {
           const updated: FoodPlatformsConfig = {
             ...current,
             trendyol: { ...current.trendyol },
-            getir: { ...current.getir },
             yemeksepeti: { ...current.yemeksepeti },
           };
           if (data.platformStoreStatus.TRENDYOL) {
             updated.trendyol.isOpen = Boolean(data.platformStoreStatus.TRENDYOL.isOpen);
-          }
-          if (data.platformStoreStatus.GETIR) {
-            updated.getir.isOpen = Boolean(data.platformStoreStatus.GETIR.isOpen);
           }
           if (data.platformStoreStatus.YEMEKSEPETI) {
             updated.yemeksepeti.isOpen = Boolean(data.platformStoreStatus.YEMEKSEPETI.isOpen);

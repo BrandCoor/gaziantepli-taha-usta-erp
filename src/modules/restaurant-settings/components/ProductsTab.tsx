@@ -25,6 +25,7 @@ import {
   getProductFallbackImage
 } from '../../../services/restaurantDataService';
 import { notify } from '../../../services/notificationService';
+import { ProductVariant, sanitizeVariants, validateVariantRows, basePrice, hasVariants, priceLabel, VARIANT_PRESETS, MAX_VARIANTS } from '../../../utils/variants';
 
 interface ProductsTabProps {
   products: ProductConfig[];
@@ -46,6 +47,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Seçenek satırları (düzenleme sırasında fiyat metin olarak tutulur)
+  const [variantRows, setVariantRows] = useState<Array<{ id?: string; name: string; price: string }>>([]);
   const [form, setForm] = useState({
     name: '',
     categoryId: categories[0]?.id || '',
@@ -66,6 +69,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
 
   const openNewProductModal = () => {
     setEditingId(null);
+    setVariantRows([]);
     setForm({
       name: '',
       categoryId: categories[0]?.id || '',
@@ -82,6 +86,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
 
   const openEditProductModal = (prod: ProductConfig) => {
     setEditingId(prod.id);
+    setVariantRows((prod.variants || []).map((v) => ({ id: v.id, name: v.name, price: String(v.price) })));
     setForm({
       name: prod.name,
       categoryId: prod.categoryId,
@@ -144,6 +149,11 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return notify.error('Eksik Bilgi', 'Ürün adını giriniz.');
+    const variantErr = validateVariantRows(variantRows);
+    if (variantErr) return notify.error('Seçenekleri Kontrol Edin', variantErr);
+    const variants: ProductVariant[] = sanitizeVariants(variantRows);
+    const finalPrice = variants.length > 0 ? basePrice(variants, form.price) : Number(form.price);
+    if (!(finalPrice > 0)) return notify.error('Eksik Bilgi', 'Satış fiyatı veya en az bir seçenek fiyatı giriniz.');
 
     const finalImage = form.imageUrl.trim() || getProductFallbackImage(form.name, form.categoryId);
 
@@ -151,7 +161,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
       restaurantDataService.updateProduct(editingId, {
         name: form.name,
         categoryId: form.categoryId,
-        price: Number(form.price),
+        price: finalPrice,
+        variants: variants.length > 0 ? variants : undefined,
         costPrice: Number(form.costPrice),
         preparationMin: Number(form.prepTimeMinutes),
         prepTimeMinutes: Number(form.prepTimeMinutes),
@@ -165,7 +176,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
       restaurantDataService.addProduct({
         name: form.name,
         categoryId: form.categoryId,
-        price: Number(form.price),
+        price: finalPrice,
+        variants: variants.length > 0 ? variants : undefined,
         costPrice: Number(form.costPrice),
         preparationMin: Number(form.prepTimeMinutes),
         prepTimeMinutes: Number(form.prepTimeMinutes),
@@ -349,6 +361,12 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                     </td>
 
                     <td className="p-4 font-mono font-black text-white">
+                      {hasVariants(prod) ? (
+                        <button type="button" onClick={() => openEditProductModal(prod)} title="Seçenekleri düzenle" className="text-left cursor-pointer">
+                          <div className="text-amber-300 text-xs">₺{priceLabel(prod)}</div>
+                          <div className="text-[10px] text-[#A0A0AA] font-sans font-bold">{prod.variants!.length} seçenek: {prod.variants!.map((v) => v.name).join(' · ')}</div>
+                        </button>
+                      ) : (
                       <div className="flex items-center gap-1.5">
                         <span className="text-amber-400">₺</span>
                         <input
@@ -358,6 +376,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                           className="w-20 p-1 bg-[#141416] border border-[#383844] rounded-lg text-xs font-mono font-black text-amber-300 text-right focus:outline-none focus:border-[#F5C877]"
                         />
                       </div>
+                      )}
                     </td>
 
                     <td className="p-4 font-mono text-[#A0A0AA]">
@@ -369,7 +388,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                         marginPercent >= 50 ? 'text-emerald-400' : 'text-amber-400'
                       }`}>
                         <TrendingUp className="w-3 h-3" />
-                        %{marginPercent}
+                        {hasVariants(prod) ? '—' : `%${marginPercent}`}
                       </span>
                     </td>
 
@@ -478,11 +497,13 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                     type="number"
                     min="0"
                     step="0.5"
-                    required
-                    value={form.price}
+                    required={variantRows.every((r) => !r.name.trim())}
+                    disabled={variantRows.some((r) => r.name.trim())}
+                    value={variantRows.some((r) => r.name.trim()) ? basePrice(sanitizeVariants(variantRows), form.price) : form.price}
                     onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
-                    className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-black text-amber-300 focus:outline-none"
+                    className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-black text-amber-300 focus:outline-none disabled:opacity-60"
                   />
+                  {variantRows.some((r) => r.name.trim()) && <div className="text-[10px] text-[#A0A0AA] mt-1">Seçenekler tanımlı: bu alan en düşük seçenek fiyatını gösterir.</div>}
                 </div>
 
                 <div>
@@ -495,6 +516,46 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                     onChange={(e) => setForm({ ...form, costPrice: Number(e.target.value) })}
                     className="w-full mt-1 p-2.5 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-bold text-[#C4C4CC] focus:outline-none"
                   />
+                </div>
+              </div>
+
+              {/* BOYUT / PORSİYON SEÇENEKLERİ */}
+              <div className="p-3 rounded-2xl bg-[#18181C] border border-[#2C2C34] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-black text-white">Boyut / Porsiyon Seçenekleri</div>
+                    <div className="text-[10px] text-[#A0A0AA]">Aynı üründe farklı fiyatlar: örn. 1 Porsiyon 280 ₺, 1,5 Porsiyon 400 ₺ — veya 330 ml 25 ₺, 1 Litre 60 ₺. Boş bırakırsanız ürün tek fiyatlıdır.</div>
+                  </div>
+                </div>
+                {variantRows.map((row, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={row.name}
+                      placeholder="Seçenek adı (örn. 1 Litre)"
+                      maxLength={40}
+                      onChange={(e) => setVariantRows((rows) => rows.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r)))}
+                      className="flex-1 p-2 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs text-white focus:outline-none"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={row.price}
+                      placeholder="₺"
+                      onChange={(e) => setVariantRows((rows) => rows.map((r, i) => (i === idx ? { ...r, price: e.target.value } : r)))}
+                      className="w-24 p-2 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-mono font-black text-amber-300 focus:outline-none"
+                    />
+                    <button type="button" onClick={() => setVariantRows((rows) => rows.filter((_, i) => i !== idx))} className="w-8 h-8 rounded-xl bg-rose-950/60 text-rose-300 border border-rose-800/40 cursor-pointer" title="Seçeneği sil">✕</button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {variantRows.length < MAX_VARIANTS && (
+                    <button type="button" onClick={() => setVariantRows((rows) => [...rows, { name: '', price: '' }])} className="px-3 py-1.5 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] rounded-xl text-[11px] font-black cursor-pointer">+ Seçenek ekle</button>
+                  )}
+                  {VARIANT_PRESETS.filter((p) => !variantRows.some((r) => r.name.trim().toLocaleLowerCase('tr-TR') === p.toLocaleLowerCase('tr-TR'))).slice(0, 6).map((p) => (
+                    <button key={p} type="button" onClick={() => setVariantRows((rows) => [...rows.filter((r) => r.name.trim() || r.price), { name: p, price: '' }])} className="px-2 py-1 bg-[#141416] border border-[#383844] text-[#C4C4CC] rounded-lg text-[10px] font-bold cursor-pointer">{p}</button>
+                  ))}
                 </div>
               </div>
 
@@ -565,26 +626,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                       </div>
                     </div>
 
-                    {/* Hızlı Antep Yemek Görselleri Hazır Şablonları */}
-                    <div className="space-y-1">
-                      <div className="text-[10px] text-[#A0A0AA] font-bold flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-[#F5C877]" />
-                        <span>Hızlı Hazır Antep Fotoğrafı Seç:</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
-                        {FOOD_IMAGE_PRESETS.map((preset, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setForm({ ...form, imageUrl: preset.url })}
-                            className="px-2 py-0.5 rounded-lg bg-[#141416] hover:bg-[#282830] text-[10px] text-[#C4C4CC] hover:text-white border border-[#2C2C34] transition-colors"
-                          >
-                            {preset.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                                      </div>
                 </div>
               </div>
 

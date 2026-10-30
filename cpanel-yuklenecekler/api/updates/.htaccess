@@ -1,0 +1,13 @@
+# Kasa güncelleme dağıtım klasörü (herkese açık, salt okunur): latest.yml, update-policy.json, kurulum dosyası.
+# Gizli bilgi KOYMAYIN. Dosyalar tools/update-tools.cjs ile üretilir (docs/updates.md).
+Options -Indexes
+<IfModule mod_headers.c>
+  # Denetim dosyaları asla önbelleğe alınmasın (yeni sürüm hemen görünsün)
+  <FilesMatch "\.(yml|json|txt)$">
+    Header set Cache-Control "no-store, max-age=0"
+  </FilesMatch>
+</IfModule>
+<IfModule mod_mime.c>
+  AddType application/octet-stream .exe .blockmap
+  AddType text/yaml .yml
+</IfModule>

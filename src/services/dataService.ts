@@ -1,3 +1,4 @@
+import { getBusinessDate, formatLocalDate } from '../utils/businessDate';
 // Gaziantepli Taha Usta - ERP, Cari, Personel & Toptancı Servisi (Bakiye Güvenlik Kilitli)
 
 export interface CustomerTransaction {
@@ -116,6 +117,15 @@ export interface Expense {
   createdAt: string;
 }
 
+/** Rollere göre varsayılan izinler (en az yetki ilkesi). İptal/ikram/indirim yalnızca 'POS_CANCEL' izniyle yapılır. */
+export const ROLE_PERMISSIONS: Record<string, { label: string; permissions: string[] }> = {
+  ADMIN: { label: 'Yönetici (Tam Yetkili)', permissions: ['ALL'] },
+  CASHIER: { label: 'Kasiyer', permissions: ['POS_USE', 'POS_PAYMENT', 'CUSTOMERS_VIEW', 'CUSTOMERS_TRANSACTION'] },
+  ACCOUNTANT: { label: 'Muhasebe / Cari Sorumlusu', permissions: ['CUSTOMERS_VIEW', 'CUSTOMERS_MANAGE', 'CUSTOMERS_TRANSACTION', 'REPORTS_VIEW', 'EXPENSES_MANAGE'] },
+  HR: { label: 'İnsan Kaynakları Sorumlusu', permissions: ['EMPLOYEES_VIEW', 'EMPLOYEES_MANAGE', 'EMPLOYEES_PAYMENT', 'REPORTS_VIEW'] },
+  VIEWER: { label: 'Sadece Görüntüleme (İzleyici)', permissions: ['CUSTOMERS_VIEW', 'EMPLOYEES_VIEW', 'REPORTS_VIEW'] },
+};
+
 export type RoleType = 'ADMIN' | 'CASHIER' | 'WAITER' | 'ACCOUNTANT' | 'HR' | 'VIEWER';
 export type Permission = 'ALL' | 'CUSTOMERS_VIEW' | 'CUSTOMERS_MANAGE' | 'CUSTOMERS_TRANSACTION' | 'EMPLOYEES_VIEW' | 'EMPLOYEES_MANAGE' | 'EMPLOYEES_PAYMENT' | 'REPORTS_VIEW' | string;
 
@@ -177,54 +187,6 @@ class DataService {
   private listeners: Set<() => void> = new Set();
 
   constructor() {
-    this.purgeDemoData();
-  }
-
-  private purgeDemoData() {
-    try {
-      const demoSupIds = ['sup-1', 'sup-2', 'sup-3'];
-      const demoCustIds = ['cust-1', 'cust-2'];
-      const demoEmpIds = ['emp-1', 'emp-2', 'emp-3', 'emp-4', 'emp-5'];
-
-      const rawCust = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-      if (rawCust) {
-        const custs: Customer[] = JSON.parse(rawCust);
-        const filtered = custs.filter(c => !demoCustIds.includes(c.id));
-        if (filtered.length !== custs.length) {
-          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(filtered));
-        }
-      }
-
-      const rawSup = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-      if (rawSup) {
-        const sups: Supplier[] = JSON.parse(rawSup);
-        const filtered = sups.filter(s => !demoSupIds.includes(s.id));
-        if (filtered.length !== sups.length) {
-          localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(filtered));
-        }
-      }
-
-      const rawEmp = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
-      if (rawEmp) {
-        const emps: Employee[] = JSON.parse(rawEmp);
-        const filtered = emps.filter(e => !demoEmpIds.includes(e.id));
-        if (filtered.length !== emps.length) {
-          localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(filtered));
-        }
-      }
-
-      // Purge demo payments
-      const rawPay = localStorage.getItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS);
-      if (rawPay) {
-        const pays: EmployeePayment[] = JSON.parse(rawPay);
-        const filtered = pays.filter(p => !demoEmpIds.includes(p.employeeId));
-        if (filtered.length !== pays.length) {
-          localStorage.setItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS, JSON.stringify(filtered));
-        }
-      }
-    } catch (e) {
-      console.warn('Demo purge error:', e);
-    }
   }
 
   public subscribe(listener: () => void): () => void {
@@ -257,7 +219,7 @@ class DataService {
     const customers = this.getCustomers();
     const newCust: Customer = {
       ...c,
-      id: `cust-${Date.now()}`,
+      id: `cust-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       balance: Number(c.balance) || 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -422,7 +384,7 @@ class DataService {
     const suppliers = this.getSuppliers();
     const newSup: Supplier = {
       ...s,
-      id: `sup-${Date.now()}`,
+      id: `sup-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       balance: Number(s.balance) || 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -580,7 +542,7 @@ class DataService {
     const expenses = this.getExpenses();
     const newExp: Expense = {
       ...exp,
-      id: `exp-${Date.now()}`,
+      id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       createdAt: new Date().toISOString(),
     };
     expenses.push(newExp);
@@ -636,7 +598,7 @@ class DataService {
     const employees = this.getEmployees();
     const newEmp: Employee = {
       ...emp,
-      id: `emp-${Date.now()}`,
+      id: `emp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       balance: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -842,7 +804,7 @@ class DataService {
           type: 'SALARY_ACCRUAL',
           amount: emp.salary,
           paymentMethod: 'BANK',
-          date: date || new Date().toISOString().split('T')[0],
+          date: date || getBusinessDate(),
           description: desc,
         });
         count++;
@@ -882,8 +844,8 @@ class DataService {
     const diffToMonday = curr.getDate() - dayOfWeekIdx + (dayOfWeekIdx === 0 ? -6 : 1);
     const mondayDate = new Date(curr.setDate(diffToMonday));
     const sundayDate = new Date(curr.setDate(diffToMonday + 6));
-    const mondayStr = mondayDate.toISOString().split('T')[0];
-    const sundayStr = sundayDate.toISOString().split('T')[0];
+    const mondayStr = formatLocalDate(mondayDate);
+    const sundayStr = formatLocalDate(sundayDate);
     const weekRangeLabel = `${mondayDate.getDate()} ${mondayDate.toLocaleString('tr-TR', { month: 'short' })} - ${sundayDate.getDate()} ${sundayDate.toLocaleString('tr-TR', { month: 'short' })}`;
 
     const company = this.getCompanySettings();
@@ -990,7 +952,7 @@ class DataService {
     const emp = employees.find(e => e.id === item.employeeId);
     if (!emp) return false;
 
-    const dateToUse = accrualDate || new Date().toISOString().split('T')[0];
+    const dateToUse = accrualDate || getBusinessDate();
     let description = '';
 
     if (item.salaryType === 'DAILY') {
@@ -1032,13 +994,12 @@ class DataService {
         console.error(e);
       }
     }
-    const defaultUsers: User[] = [
-      { id: 'u-1', username: 'admin', fullName: 'Taha Usta', password: '1', role: 'ADMIN', roleName: 'Yönetici (Tam Yetkili)', permissions: ['ALL'], isActive: true },
-      { id: 'u-2', username: 'kasa', fullName: 'Kasa Görevlisi', password: '123', role: 'CASHIER', roleName: 'Kasa Terminali', permissions: ['CUSTOMERS_VIEW', 'CUSTOMERS_TRANSACTION'], isActive: true },
-      { id: 'u-3', username: 'garson', fullName: 'Garson Terminali', password: '123', role: 'WAITER', roleName: 'Garson', permissions: [], isActive: true },
-    ];
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(defaultUsers));
-    return defaultUsers;
+    // Varsayılan (herkesin bildiği) kullanıcı/parola YOKTUR. Kullanıcı yoksa ilk kurulum ekranı yönetici oluşturur.
+    return [];
+  }
+
+  public hasUsers(): boolean {
+    return this.getUsers().length > 0;
   }
 
   public getCurrentUser(): User {
@@ -1046,7 +1007,7 @@ class DataService {
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
-    return this.getUsers()[0];
+    return this.getUsers()[0] || { id: 'none', username: '', fullName: 'Oturum yok', role: 'VIEWER', permissions: [], isActive: false };
   }
 
   public setCurrentUser(user: User): void {
@@ -1067,7 +1028,7 @@ class DataService {
         users.push(savedUser);
       }
     } else {
-      savedUser = { ...user, id: `u-${Date.now()}` } as User;
+      savedUser = { ...user, id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` } as User;
       users.push(savedUser);
     }
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
@@ -1078,14 +1039,27 @@ class DataService {
   public deleteUser(userId: string): boolean {
     const users = this.getUsers();
     if (users.length <= 1) return false;
+    const target = users.find(u => u.id === userId);
+    // Son aktif yönetici silinemez: sistem yönetilemez hale gelirdi.
+    if (target && target.role === 'ADMIN' && users.filter(u => u.role === 'ADMIN' && u.isActive !== false).length <= 1) return false;
     const updated = users.filter(u => u.id !== userId);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
     this.notify();
     return true;
   }
 
+  /** Geçerli kullanıcının yetkisi var mı? ADMIN / 'ALL' her şeye sahiptir. */
   public hasPermission(perm: string): boolean {
-    return true;
+    const u = this.getCurrentUser();
+    if (!u || u.isActive === false || u.id === 'none') return false;
+    if (u.role === 'ADMIN') return true;
+    const perms = u.permissions || [];
+    return perms.includes('ALL') || perms.includes(perm);
+  }
+
+  /** Kullanıcı kaydında parola alanı hash olarak saklanır; ekranlara/yedeğe düz metin gitmez. */
+  public getCurrentUserName(): string {
+    return this.getCurrentUser().fullName || 'Kasiyer';
   }
 
   public getCompanySettings(): CompanySettings {

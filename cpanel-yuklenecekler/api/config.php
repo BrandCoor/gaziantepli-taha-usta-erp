@@ -1,22 +1,51 @@
 <?php
+// Üretimde hata ayrıntıları istemciye gösterilmez (tüm API uçları bu dosyayı yükler); yalnızca sunucu loguna yazılır.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
 /**
  * GAZİANTEPLİ TAHA USTA ERP - phpMyAdmin / MySQL Veritabanı Yapılandırması
  * -----------------------------------------------------------------------
  * Bu dosyayı cPanel / Hosting veritabanı bilgilerinizle düzenleyiniz.
  */
 
-// 1. VERİTABANI BAĞLANTI BİLGİLERİ (cPanel -> MySQL Veritabanları)
-define('DB_HOST', 'localhost');                  // Hosting sunucusu
-define('DB_PORT', '3306');                       // MySQL varsayılan port
-define('DB_NAME', 'ngsiteyo_tahausta_pos');      // cPanel Veritabanı Adı
-define('DB_USER', 'ngsiteyo_tahausta_user');     // cPanel Veritabanı Kullanıcısı
-define('DB_PASS', 'Tahausta2727');               // Veritabanı Şifresi
+// 1. VERİTABANI BAĞLANTI BİLGİLERİ
+// Gerçek değerler bu dosyada TUTULMAZ. Öncelik sırası:
+//   1) api/config.local.php (Git'e eklenmez; şablon: config.local.example.php)
+//   2) Ortam değişkenleri: TAHA_DB_HOST, TAHA_DB_PORT, TAHA_DB_NAME, TAHA_DB_USER, TAHA_DB_PASS
+$__local = [];
+$__localFile = __DIR__ . '/config.local.php';
+if (is_file($__localFile)) {
+    $__tmp = require $__localFile;
+    if (is_array($__tmp)) { $__local = $__tmp; }
+}
+$__cfg = function ($key, $envName, $default = '') use ($__local) {
+    if (isset($__local[$key]) && $__local[$key] !== '') return $__local[$key];
+    $env = getenv($envName);
+    return ($env !== false && $env !== '') ? $env : $default;
+};
+define('DB_HOST', $__cfg('DB_HOST', 'TAHA_DB_HOST', 'localhost'));
+define('DB_PORT', $__cfg('DB_PORT', 'TAHA_DB_PORT', '3306'));
+define('DB_NAME', $__cfg('DB_NAME', 'TAHA_DB_NAME'));
+define('DB_USER', $__cfg('DB_USER', 'TAHA_DB_USER'));
+define('DB_PASS', $__cfg('DB_PASS', 'TAHA_DB_PASS'));
+// Oturum imzalama sırrı ve kasa API anahtarı (en az 32 / 24 karakter; rastgele üretin).
+define('APP_SECRET', $__cfg('APP_SECRET', 'TAHA_APP_SECRET'));
+define('KASA_API_KEY', $__cfg('KASA_API_KEY', 'TAHA_KASA_KEY'));
+// Garson sayfasının tam adresi (ör. https://garson.ornek.com). Eşleştirme QR'ı bu adrese gider. Boşsa API ile aynı alan adı varsayılır.
+define('GARSON_URL', $__cfg('GARSON_URL', 'TAHA_GARSON_URL'));
 define('DB_CHARSET', 'utf8mb4');
 
+require_once __DIR__ . '/version.php';
+// Desteklenen en eski istemci sürümleri (varsayılan: version.php; acil durumda config.local.php ile yükseltilebilir).
+define('MIN_KASA_VERSION', $__cfg('MIN_KASA_VERSION', 'TAHA_MIN_KASA', GTU_MIN_KASA));
+define('MIN_GARSON_VERSION', $__cfg('MIN_GARSON_VERSION', 'TAHA_MIN_GARSON', GTU_MIN_GARSON));
+
 // PATRON PANELİ ŞİFRESİ
-define('DEFAULT_BOSS_PASSWORD', getenv('TAHA_BOSS_PASSWORD') ?: '');
+define('DEFAULT_BOSS_PASSWORD', $__cfg('BOSS_PASSWORD', 'TAHA_BOSS_PASSWORD'));
 
 // 3. PDO VERİTABANI BAĞLANTI FONKSİYONU
+date_default_timezone_set('Europe/Istanbul');
+
 function getDbConnection() {
     static $pdo = null;
     if ($pdo !== null) {
@@ -34,7 +63,7 @@ function getDbConnection() {
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
-            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET . ", time_zone = '+03:00'"
         ];
         $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         return $pdo;
@@ -591,8 +620,7 @@ function ensureDatabaseTables($pdo) {
         try {
             $pdo->exec("INSERT INTO `online_platforms` (`platform_code`, `display_name`, `is_enabled`, `store_status`) VALUES
                 ('YEMEKSEPETI', 'Yemeksepeti', 0, 'CLOSED'),
-                ('TRENDYOL', 'Trendyol Yemek', 0, 'CLOSED'),
-                ('GETIR', 'GetirYemek', 0, 'CLOSED')
+                ('TRENDYOL', 'Trendyol Go Yemek', 0, 'CLOSED')
                 ON DUPLICATE KEY UPDATE `display_name` = VALUES(`display_name`)");
         } catch (Exception $ignore) {}
 
@@ -628,9 +656,173 @@ function ensureDatabaseTables($pdo) {
             $pdo->exec("ALTER TABLE `personeller` ADD COLUMN `pairing_expires_at` DATETIME NULL");
         } catch (Exception $ignore) {}
 
+        runSchemaMigrations($pdo);
         return true;
     } catch (Exception $e) {
         error_log("Tablo kontrol hatası: " . $e->getMessage());
         return false;
     }
+}
+
+/** Göç öncesi veri yedeği (SQL, gzip). Başarısızsa göç UYGULANMAZ. Dosya web'den erişilemez (.htaccess). */
+function gtuBackupBeforeMigration($pdo, $from, $to) {
+    $dir = __DIR__ . '/_yedek';
+    if (!is_dir($dir) && !@mkdir($dir, 0750, true)) { throw new Exception('Yedek klasörü oluşturulamadı: _yedek'); }
+    @file_put_contents($dir . '/.htaccess', "Require all denied\nDeny from all\n");
+    @file_put_contents($dir . '/index.html', '');
+    $file = $dir . '/pre-migration-v' . $from . '-to-v' . $to . '-' . date('Ymd-His') . '.sql.gz';
+    $gz = @gzopen($file, 'wb9');
+    if (!$gz) { throw new Exception('Yedek dosyası yazılamadı'); }
+    gzwrite($gz, "-- Göç öncesi yedek v{$from} → v{$to} (" . date('c') . ")\nSET FOREIGN_KEY_CHECKS=0;\n");
+    $skip = ['rate_limits', 'online_webhook_log'];
+    $tables = $pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_NUM);
+    foreach ($tables as $t) {
+        $name = $t[0];
+        if (in_array($name, $skip, true)) continue;
+        $create = $pdo->query("SHOW CREATE TABLE `{$name}`")->fetch(PDO::FETCH_NUM);
+        gzwrite($gz, "\nDROP TABLE IF EXISTS `{$name}`;\n" . $create[1] . ";\n");
+        $offset = 0;
+        while (true) {
+            $rows = $pdo->query("SELECT * FROM `{$name}` LIMIT 500 OFFSET {$offset}")->fetchAll(PDO::FETCH_ASSOC);
+            if (!$rows) break;
+            foreach ($rows as $r) {
+                $vals = array_map(function ($v) use ($pdo) { return $v === null ? 'NULL' : $pdo->quote((string)$v); }, array_values($r));
+                gzwrite($gz, "INSERT INTO `{$name}` (`" . implode('`,`', array_keys($r)) . "`) VALUES (" . implode(',', $vals) . ");\n");
+            }
+            $offset += 500;
+        }
+    }
+    gzwrite($gz, "\nSET FOREIGN_KEY_CHECKS=1;\n-- SON\n");
+    gzclose($gz);
+    if (!is_file($file) || filesize($file) < 40) { throw new Exception('Yedek doğrulanamadı'); }
+    $all = glob($dir . '/pre-migration-*.sql.gz') ?: [];
+    sort($all);
+    foreach (array_slice($all, 0, max(0, count($all) - 5)) as $old) { @unlink($old); }
+    return $file;
+}
+
+/**
+ * Sürüm numaralı şema göçü. Her sürüm yalnızca BİR KEZ çalışır; sürüm `ayarlar.schema_version` içinde tutulur.
+ * Yalnızca ekleme yapılır (sütun/tablo); veri silen göç yoktur.
+ *
+ * Güvenceler: (1) eşzamanlı çalışmaya karşı kilit, (2) mevcut veri varsa göçten ÖNCE SQL yedeği (alınamazsa göç yok),
+ * (3) "zaten var" dışındaki her hata göçü DURDURUR ve sürüm numarası ARTIRILMAZ (yarım göç kayıt altına alınır).
+ */
+function runSchemaMigrations($pdo) {
+    $migrations = gtuSchemaMigrations();
+    $latest = max(array_keys($migrations));
+    try {
+        $cur = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn();
+    } catch (Exception $e) { $cur = 0; }
+    if ($cur >= $latest) return;
+
+    $locked = false;
+    try {
+        $locked = (bool)$pdo->query("SELECT GET_LOCK('gtu_schema_migrate', 20)")->fetchColumn();
+        if (!$locked) { error_log('[migrasyon] kilit alınamadı, bu istekte atlandı'); return; }
+        // kilidi beklerken başka istek bitirmiş olabilir
+        $cur = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn();
+        if ($cur >= $latest) return;
+
+        if ($cur > 0) { gtuBackupBeforeMigration($pdo, $cur, $latest); }
+
+        foreach ($migrations as $ver => $queries) {
+            if ($ver <= $cur) continue;
+            foreach ($queries as $q) {
+                try { $pdo->exec($q); }
+                catch (PDOException $e) {
+                    $errno = isset($e->errorInfo[1]) ? (int)$e->errorInfo[1] : 0;
+                    if (in_array($errno, [1060, 1061, 1050], true)) continue; // sütun/dizin/tablo zaten var → güvenli tekrar
+                    throw new Exception("Göç v{$ver} başarısız (hata {$errno}): " . $e->getMessage());
+                }
+            }
+            $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('schema_version', ?, 'Şema sürümü') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([(string)$ver]);
+            $cur = $ver;
+        }
+        $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('api_version', ?, 'Son çalışan API sürümü') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([GTU_API_VERSION]);
+        $pdo->exec("DELETE FROM `ayarlar` WHERE `anahtar` = 'schema_last_error'");
+    } catch (Exception $e) {
+        error_log('[migrasyon] ' . $e->getMessage());
+        try {
+            $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('schema_last_error', ?, 'Son göç hatası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([substr($e->getMessage(), 0, 250)]);
+        } catch (Exception $ignore) {}
+    } finally {
+        if ($locked) { try { $pdo->query("SELECT RELEASE_LOCK('gtu_schema_migrate')"); } catch (Exception $ignore) {} }
+    }
+}
+
+/** Ürün seçenekleri (varyantlar): [{id,name,price}]. Geçersiz kayıtlar atılır; en fazla 12. */
+function gtuParseVariants($json) {
+    if (!is_string($json) || $json === '') return [];
+    $arr = json_decode($json, true);
+    if (!is_array($arr)) return [];
+    $out = [];
+    foreach ($arr as $v) {
+        $id = isset($v['id']) ? trim((string)$v['id']) : '';
+        $name = isset($v['name']) ? trim((string)$v['name']) : '';
+        $price = isset($v['price']) ? round((float)$v['price'], 2) : 0;
+        if ($id === '' || $name === '' || $price <= 0) continue;
+        $out[] = ['id' => $id, 'name' => $name, 'price' => $price];
+    }
+    return array_slice($out, 0, 12);
+}
+/** Kasadan gelen seçenek listesini saklanacak JSON'a çevirir (boşsa NULL). */
+function gtuEncodeVariants($arr) {
+    if (!is_array($arr)) return null;
+    $clean = gtuParseVariants(json_encode($arr, JSON_UNESCAPED_UNICODE));
+    return count($clean) > 0 ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null;
+}
+
+function gtuSchemaVersion() { return max(array_keys(gtuSchemaMigrations())); }
+
+function gtuSchemaMigrations() {
+    return [
+        1 => [
+            "ALTER TABLE `cihazlar` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL",
+            "ALTER TABLE `cihazlar` ADD COLUMN `son_gorulme` DATETIME NULL DEFAULT NULL",
+            "ALTER TABLE `personeller` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL",
+            "ALTER TABLE `personeller` ADD COLUMN `pairing_code_hash` VARCHAR(64) NULL DEFAULT NULL",
+            "CREATE TABLE IF NOT EXISTS `rate_limits` (`k` VARCHAR(190) NOT NULL, `hits` INT NOT NULL DEFAULT 0, `window_start` INT NOT NULL, PRIMARY KEY (`k`)) ENGINE=InnoDB",
+        ],
+        // 2: Online platform entegrasyonu — eksik sütunlar (önceki sürümde kodda kullanılıyor ama tabloda yoktu) + tanı günlüğü
+        2 => [
+            "ALTER TABLE `online_platforms` ADD COLUMN `delivery_model` VARCHAR(30) NOT NULL DEFAULT 'RESTAURANT_COURIER'",
+            "ALTER TABLE `online_platforms` ADD COLUMN `last_webhook_at` DATETIME NULL",
+            "ALTER TABLE `online_platforms` ADD COLUMN `token_cache` TEXT NULL",
+            "ALTER TABLE `online_platforms` ADD COLUMN `token_expires_at` DATETIME NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `raw_json` LONGTEXT NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `callback_urls_json` TEXT NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `delivery_model` VARCHAR(30) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `assigned_courier_id` VARCHAR(60) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `assigned_courier_name` VARCHAR(100) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_courier_name` VARCHAR(100) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_courier_phone` VARCHAR(30) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `handover_code` VARCHAR(30) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_sync_status` VARCHAR(20) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_sync_message` VARCHAR(255) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_sync_at` DATETIME NULL",
+            "CREATE TABLE IF NOT EXISTS `online_webhook_log` (
+                `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `platform` VARCHAR(20) NOT NULL,
+                `source` VARCHAR(10) NOT NULL,
+                `result` VARCHAR(12) NOT NULL,
+                `http_code` INT NOT NULL DEFAULT 0,
+                `reason` VARCHAR(255) NULL,
+                `header_names` TEXT NULL,
+                `body_sample` MEDIUMTEXT NULL,
+                `order_ref` VARCHAR(100) NULL,
+                INDEX `idx_owl_created` (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        ],
+        // 3: Ürün seçenekleri (boyut/porsiyon; her birinin kendi sabit fiyatı) — JSON, yalnızca ekleme
+        3 => [
+            "ALTER TABLE `urunler` ADD COLUMN `varyantlar` TEXT NULL",
+        ],
+        // 4: Online sipariş kaynağı (Trendyol'dan gelen GetirYemek siparişleri ayırt edilir) + görünen sipariş kodu
+        4 => [
+            "ALTER TABLE `online_orders` ADD COLUMN `source_app` VARCHAR(20) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `display_code` VARCHAR(40) NULL",
+        ],
+    ];
 }
