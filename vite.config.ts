@@ -55,6 +55,8 @@ export default defineConfig({
                       'ws',
                       'express',
                       'cors',
+                      'node:sqlite',
+                      'url',
                     ],
                   },
                 },

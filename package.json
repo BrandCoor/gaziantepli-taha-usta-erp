@@ -22,11 +22,13 @@
     "productName": "Gaziantepli Taha Usta",
     "copyright": "Copyright © 2026 RYMedya",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "package.json"
     ],
     "win": {
       "target": [
@@ -36,17 +38,24 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "GaziantepliTahaUsta-Kurulum-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Gaziantepli Taha Usta",
       "uninstallDisplayName": "Gaziantepli Taha Usta Yonetim Sistemi",
-      "runAfterFinish": true
-    }
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "asar": true
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

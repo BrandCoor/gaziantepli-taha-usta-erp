@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { fullBackupService, BackupItem, AppInfo } from '../../../services/fullBackupService';
 import { notify } from '../../../services/notificationService';
+import { getDurableStatus, onDurableStatus } from '../../../services/durableStorage';
 
 const fmtSize = (b: number) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const fmtDate = (t: number) => new Date(t).toLocaleString('tr-TR');
@@ -20,6 +21,9 @@ export const FullBackupPanel: React.FC = () => {
   const [secondary, setSecondary] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const available = fullBackupService.isAvailable();
+  const [, forceTick] = useState(0);
+  useEffect(() => { const off = onDurableStatus(() => forceTick((n) => n + 1)); return () => { off(); }; }, []);
+  const storage = getDurableStatus();
 
   const refresh = useCallback(async () => {
     if (!available) return;
@@ -93,6 +97,13 @@ export const FullBackupPanel: React.FC = () => {
           Tüm adisyonlar, Z raporları, cari/toptancı hareketleri, ürünler, personel ve ayarlar yedeklenir. Otomatik yedek: uygulama açılışından 30 sn sonra ve her 6 saatte bir; ayrıca her Z kapanışında.
           Yedek dosyaları kişisel veri ve parola içerir; yalnızca güvendiğiniz kişilerle paylaşın.
         </p>
+      </div>
+
+      <div className={`p-3 rounded-xl border text-[11px] font-bold ${storage.mode === 'sqlite' && storage.healthy ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200' : 'bg-rose-500/10 border-rose-500/40 text-rose-200'}`}>
+        {storage.mode === 'sqlite' && storage.healthy
+          ? `✔ Kalıcı veri deposu: SQLite (çökmeye dayanıklı). ${storage.path || ''}`
+          : `⚠ Kalıcı veri deposu AKTİF DEĞİL — veri yalnızca geçici tarayıcı deposunda. ${storage.lastError || ''} Elektrik kesintisinde son işlemler kaybolabilir; sık yedek alın.`}
+        {storage.imported ? ` (Eski veriden ${storage.imported} kayıt içe aktarıldı.)` : ''}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-2 text-[11px]">

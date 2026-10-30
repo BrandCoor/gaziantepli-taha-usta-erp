@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { isPrivateOrLoopbackIp } from './netGuard';
 import { BackupStore } from './backupStore';
 import { FileLogger } from './logger';
+import { KvStore } from './kvStore';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -85,6 +86,38 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// ===================== KALICI DEPO (SQLite) =====================
+// localStorage yazmaları Chromium tarafından gecikmeli diske yazılır; çökmede kaybolur. Asıl kaynak bu SQLite deposudur.
+let kv: KvStore | null = null;
+const kvOrThrow = (): KvStore => {
+  if (!kv) throw new Error('Kalıcı depo açık değil');
+  return kv;
+};
+secureHandle('kv-load-all', async () => {
+  try { return { success: true, entries: kvOrThrow().getAll() }; } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+secureHandle('kv-set', async (_e, { key, value }) => {
+  try { kvOrThrow().set(String(key), String(value)); return { success: true }; } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+secureHandle('kv-remove', async (_e, { key }) => {
+  try { kvOrThrow().remove(String(key)); return { success: true }; } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+secureHandle('kv-clear', async () => {
+  try { kvOrThrow().clear(); return { success: true }; } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+secureHandle('kv-import', async (_e, { entries }) => {
+  try {
+    const store = kvOrThrow();
+    if (store.count() > 0) return { success: false, error: 'Depo boş değil; içe aktarma reddedildi' }; // mevcut veri asla ezilmez
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(entries || {})) clean[String(k)] = String(v);
+    return { success: true, count: store.setMany(clean) };
+  } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+secureHandle('kv-info', async () => {
+  try { return { success: true, ...kvOrThrow().info() }; } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
 
 // ===================== YEDEKLEME =====================
 // Veri konumu: Electron `userData` (güncelleme/yeniden kurulumda silinmez). Yedekler ayrı klasörde tutulur.
@@ -291,6 +324,12 @@ app.whenReady().then(() => {
   if (!gotLock) return;
   log().info(`Kasa başlatıldı (sürüm ${app.getVersion()})`);
   applyBackupDirs();
+  try {
+    kv = new KvStore(path.join(app.getPath('userData'), 'data', 'kasa.db'));
+    log().info(`Kalıcı depo açıldı: ${kv.info().path} (${kv.count()} kayıt)`);
+  } catch (e) {
+    log().error('Kalıcı depo açılamadı (uygulama yalnızca localStorage ile devam edecek)', e);
+  }
   startLocalServer(4545);
   createWindow();
 
@@ -300,6 +339,8 @@ app.whenReady().then(() => {
     }
   });
 });
+
+app.on('before-quit', () => { try { kv?.close(); kv = null; } catch {} });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
