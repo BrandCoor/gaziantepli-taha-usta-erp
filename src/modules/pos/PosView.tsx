@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { getBusinessDate } from '../../utils/businessDate';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   UtensilsCrossed, 
   Users, 
@@ -123,6 +124,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [targetTransferTableId, setTargetTransferTableId] = useState('');
+  const finalizingRef = useRef(false);
   const [transferSectionFilter, setTransferSectionFilter] = useState<string>('all');
   const [productCardViewMode, setProductCardViewMode] = useState<'PHOTO' | 'COMPACT'>('PHOTO');
 
@@ -468,7 +470,7 @@ Adres: ${selectedTable.customerInfo.address}
       setTransferModalOpen(false);
       setSelectedTable(null);
     } else {
-      notify.error('Hata', 'Masa taşıma işlemi başarısız oldu.');
+      notify.error('Masa Taşınamadı', 'Kaynak veya hedef masa geçersiz. İşlem yapılmadı, adisyonlar korundu.');
     }
   };
 
@@ -633,6 +635,19 @@ Adres: ${selectedTable.customerInfo.address}
       return;
     }
 
+    // Çift tıklama koruması: işlem bitene kadar ikinci çağrı yok sayılır.
+    if (finalizingRef.current) return;
+    finalizingRef.current = true;
+
+    // 1) Önce adisyon kapatılır ve doğrulanır. Başarısızsa cari borç YAZILMAZ.
+    const closed = restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı', paymentEntries);
+    if (!closed.success) {
+      finalizingRef.current = false;
+      notify.error('Hesap Kapatılamadı', closed.error || 'Bilinmeyen hata. Hiçbir kayıt yapılmadı.');
+      return;
+    }
+
+    // 2) Adisyon kapandıktan SONRA cari (veresiye) borçları yazılır.
     const cariPayments = paymentEntries.filter(p => Boolean(p.customerId));
     cariPayments.forEach(cp => {
       if (cp.customerId) {
@@ -640,13 +655,11 @@ Adres: ${selectedTable.customerInfo.address}
           type: 'DEBT',
           amount: cp.amount,
           paymentMethod: 'CASH',
-          date: new Date().toISOString().split('T')[0],
+          date: getBusinessDate(),
           description: `${selectedTable.name} (#${selectedTable.order?.orderNumber || 101}) Adisyon Hesabı (Veresiye)`
         });
       }
     });
-
-    restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı', paymentEntries);
     setCustomers(dataService.getCustomers());
 
     if (printReceipt) {
@@ -656,6 +669,7 @@ Adres: ${selectedTable.customerInfo.address}
       notify.success('Hesap Kapatıldı', `${selectedTable.name} masası başarıyla kapatıldı.`);
     }
 
+    finalizingRef.current = false;
     setCheckoutModalOpen(false);
     setSelectedTable(null);
   };

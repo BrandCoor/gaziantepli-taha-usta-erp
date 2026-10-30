@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../utils/businessDate';
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
@@ -36,7 +37,7 @@ export const EmployeePaymentModal: React.FC<EmployeePaymentModalProps> = ({
   const [type, setType] = useState<'ADVANCE' | 'SALARY_PAYMENT' | 'BONUS' | 'DEDUCTION' | 'SALARY_ACCRUAL'>('ADVANCE');
   const [amount, setAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK'>('CASH');
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(getBusinessDate());
   const [description, setDescription] = useState<string>('');
   const [recordExpense, setRecordExpense] = useState<boolean>(true);
 
@@ -48,7 +49,7 @@ export const EmployeePaymentModal: React.FC<EmployeePaymentModalProps> = ({
         setEmployeeId(employees[0].id);
       }
       if (initialType) setType(initialType);
-      setDate(new Date().toISOString().split('T')[0]);
+      setDate(getBusinessDate());
     }
   }, [isOpen, initialEmployeeId, initialType, employees]);
 

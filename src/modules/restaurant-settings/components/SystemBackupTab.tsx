@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../../utils/businessDate';
 import React, { useState, useEffect } from 'react';
 import { 
   HardDrive, 
@@ -130,7 +131,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = getBusinessDate();
     a.href = url;
     a.download = `taha_usta_pos_yedek_${dateStr}.json`;
     document.body.appendChild(a);

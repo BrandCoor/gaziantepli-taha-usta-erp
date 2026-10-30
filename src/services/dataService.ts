@@ -1,3 +1,4 @@
+import { getBusinessDate, formatLocalDate } from '../utils/businessDate';
 // Gaziantepli Taha Usta - ERP, Cari, Personel & Toptancı Servisi (Bakiye Güvenlik Kilitli)
 
 export interface CustomerTransaction {
@@ -842,7 +843,7 @@ class DataService {
           type: 'SALARY_ACCRUAL',
           amount: emp.salary,
           paymentMethod: 'BANK',
-          date: date || new Date().toISOString().split('T')[0],
+          date: date || getBusinessDate(),
           description: desc,
         });
         count++;
@@ -882,8 +883,8 @@ class DataService {
     const diffToMonday = curr.getDate() - dayOfWeekIdx + (dayOfWeekIdx === 0 ? -6 : 1);
     const mondayDate = new Date(curr.setDate(diffToMonday));
     const sundayDate = new Date(curr.setDate(diffToMonday + 6));
-    const mondayStr = mondayDate.toISOString().split('T')[0];
-    const sundayStr = sundayDate.toISOString().split('T')[0];
+    const mondayStr = formatLocalDate(mondayDate);
+    const sundayStr = formatLocalDate(sundayDate);
     const weekRangeLabel = `${mondayDate.getDate()} ${mondayDate.toLocaleString('tr-TR', { month: 'short' })} - ${sundayDate.getDate()} ${sundayDate.toLocaleString('tr-TR', { month: 'short' })}`;
 
     const company = this.getCompanySettings();
@@ -990,7 +991,7 @@ class DataService {
     const emp = employees.find(e => e.id === item.employeeId);
     if (!emp) return false;
 
-    const dateToUse = accrualDate || new Date().toISOString().split('T')[0];
+    const dateToUse = accrualDate || getBusinessDate();
     let description = '';
 
     if (item.salaryType === 'DAILY') {

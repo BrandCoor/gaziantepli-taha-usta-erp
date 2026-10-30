@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../utils/businessDate';
 import React, { useMemo, useState } from 'react';
 import { 
   X, 
@@ -93,7 +94,7 @@ export const EmployeeStatementModal: React.FC<EmployeeStatementModalProps> = ({
   const openEditModal = (p: EmployeePayment) => {
     setEditingPayment(p);
     setEditAmount(String(p.amount || 0));
-    setEditDate(p.date ? p.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+    setEditDate(p.date ? p.date.split('T')[0] : getBusinessDate());
     setEditType(p.type);
     setEditPaymentMethod(p.paymentMethod === 'BANK' ? 'BANK' : 'CASH');
     setEditDescription(p.description || '');

@@ -1,4 +1,5 @@
 // Gaziantepli Taha Usta - Restoran Veri Servisi (Gider, Toptancı & Net Kasa Destekli Z Raporu)
+import { getBusinessDate, formatLocalDate } from '../utils/businessDate';
 import { ProcessedIdStore, normalizeIncomingId } from './incomingOrderDedup';
 import { dataService } from './dataService';
 import { realtimeSyncService } from './realtimeSyncService';
@@ -752,6 +753,9 @@ export const DEFAULT_HARDWARE_SETTINGS: HardwareSettingsConfig = {
 
 type ChangeListener = () => void;
 
+/** Para tutarlarını kuruşa yuvarlar (float birikimini engeller). */
+const round2 = (n: number): number => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
 class RestaurantDataService {
   private listeners: Set<ChangeListener> = new Set();
   private pendingActivePosTableId: string | null = null;
@@ -1321,23 +1325,38 @@ class RestaurantDataService {
     return sorted;
   }
 
+  /**
+   * Masa taşıma / birleştirme.
+   * - Hedef BOŞSA: adisyon hedefe taşınır.
+   * - Hedef DOLUYSA: kalemler hedef adisyona EKLENİR (birleştirme); hedefteki hiçbir kalem kaybolmaz.
+   * Kaynak masa her durumda boşaltılır. Hedef/kaynak geçersizse hiçbir şey değişmez.
+   */
   public transferTable(sourceTableId: string, targetTableId: string): boolean {
     const tables = this.getTables();
     const srcIndex = tables.findIndex(t => t.id === sourceTableId);
     const tgtIndex = tables.findIndex(t => t.id === targetTableId);
 
-    if (srcIndex === -1 || tgtIndex === -1 || !tables[srcIndex].order) return false;
+    if (srcIndex === -1 || tgtIndex === -1 || srcIndex === tgtIndex || !tables[srcIndex].order) return false;
 
-    tables[tgtIndex].status = 'OCCUPIED';
-    tables[tgtIndex].order = {
-      ...tables[srcIndex].order!,
-      items: [...(tables[srcIndex].order!.items || [])],
-    };
-    tables[tgtIndex].customerInfo = tables[srcIndex].customerInfo;
+    const src = tables[srcIndex];
+    const tgt = tables[tgtIndex];
+    const srcItems = [...(src.order!.items || [])];
 
-    tables[srcIndex].status = 'EMPTY';
-    tables[srcIndex].order = undefined;
-    tables[srcIndex].customerInfo = undefined;
+    if (tgt.order && (tgt.order.items?.length || 0) > 0) {
+      const merged = [...tgt.order.items, ...srcItems];
+      const total = merged.reduce((sum, it) => sum + (it.isGift ? 0 : (Number(it.price) || 0) * (Number(it.quantity) || 1)), 0);
+      tgt.order = { ...tgt.order, items: merged, totalAmount: total };
+      if (!tgt.customerInfo && src.customerInfo) tgt.customerInfo = src.customerInfo;
+      if (tgt.status === 'EMPTY') tgt.status = 'OCCUPIED';
+    } else {
+      tgt.status = src.status === 'EMPTY' ? 'OCCUPIED' : src.status;
+      tgt.order = { ...src.order!, items: srcItems };
+      tgt.customerInfo = src.customerInfo;
+    }
+
+    src.status = 'EMPTY';
+    src.order = undefined;
+    src.customerInfo = undefined;
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
@@ -1453,7 +1472,7 @@ class RestaurantDataService {
 
     if (table.order && table.order.items && table.order.items.length > 0) {
       const now = new Date();
-      const todayDate = now.toISOString().split('T')[0];
+      const todayDate = formatLocalDate(now);
       const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
       const orderAmount = Number(table.order.totalAmount) || table.order.items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
       const section = this.getSections().find(s => s.id === table.sectionId);
@@ -1504,13 +1523,28 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []) {
+  /**
+   * Adisyonu kapatır. Ödemeler adisyon tutarını TAM karşılamıyorsa kapatmaz.
+   * Aynı masa için ikinci çağrı (çift tıklama) hiçbir şey yapmaz ve başarısız döner.
+   */
+  public completeTablePayment(tableId: string, method: string, payments: PaymentRecord[] = []): { success: boolean; error?: string } {
     const tables = this.getTables();
     const table = tables.find((t) => t.id === tableId);
-    if (!table || !table.order) return;
+    if (!table || !table.order) return { success: false, error: 'Masada kapatılacak açık adisyon yok (zaten kapatılmış olabilir).' };
+
+    const expectedTotal = (table.order.items || []).reduce(
+      (sum, it) => sum + (it.isGift ? 0 : (Number(it.price) || 0) * (Number(it.quantity) || 1)),
+      0
+    );
+    if (payments.length > 0) {
+      const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      if (Math.abs(paid - expectedTotal) > 0.01) {
+        return { success: false, error: `Ödemeler toplamı (${paid.toFixed(2)} ₺) adisyon tutarına (${expectedTotal.toFixed(2)} ₺) eşit değil.` };
+      }
+    }
 
     const now = new Date();
-    const todayDate = now.toISOString().split('T')[0];
+    const todayDate = formatLocalDate(now);
     const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
     const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
@@ -1523,9 +1557,9 @@ class RestaurantDataService {
       orderTime: table.order.orderTime || timeStr,
       closedTime: `${todayDate} ${timeStr}`,
       date: todayDate,
-      totalAmount: table.order.totalAmount,
+      totalAmount: expectedTotal,
       items: table.order.items,
-      payments: payments.length > 0 ? payments : [{ id: `p-${Date.now()}`, type: method, amount: table.order.totalAmount, time: timeStr }],
+      payments: payments.length > 0 ? payments : [{ id: `p-${Date.now()}`, type: method, amount: expectedTotal, time: timeStr }],
     });
     localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(completedOrders));
 
@@ -1535,6 +1569,7 @@ class RestaurantDataService {
 
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(tables));
     this.notify();
+    return { success: true };
   }
 
   public getAllCompletedOrders(): CompletedOrderArchive[] {
@@ -1558,9 +1593,9 @@ class RestaurantDataService {
   private generateSeedCompletedOrders(): CompletedOrderArchive[] {
     return [];
     /*
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const twoDaysAgo = new Date(Date.now() - 172800000).toISOString().split('T')[0];
+    const today = getBusinessDate();
+    const yesterday = formatLocalDate(new Date(Date.now() - 86400000));
+    const twoDaysAgo = formatLocalDate(new Date(Date.now() - 172800000));
 
     return [
       {
@@ -1726,26 +1761,31 @@ class RestaurantDataService {
   // =========================================================================
   public getCurrentXReport() {
     const orders = this.getCompletedOrdersCurrentSession();
-    const cancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+    // Z ile kapatılmış iptal kayıtları arşivde kalır; X raporu yalnızca açık olanları sayar.
+    const allCancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+    const cancelLogs = allCancelLogs.filter((c: any) => !c.zReportId);
 
-    // Bugünün Tarihi
-    const todayStr = new Date().toISOString().split('T')[0];
+    // Bugünün (iş günü) Tarihi
+    const todayStr = getBusinessDate();
 
-    // İŞLETME GİDERLERİ (BUGÜNKÜLER)
+    // Daha önce bir Z raporuna girmiş gider/toptancı hareketleri (aynı gün ikinci Z'de çift sayılmasın)
+    const reported = this.getZReportedIds();
+
+    // İŞLETME GİDERLERİ: bugüne kadar girilmiş ve henüz hiçbir Z'de raporlanmamış olanlar
     const allExpenses = dataService.getExpenses() || [];
-    const todayExpenses = allExpenses.filter(e => e.date === todayStr);
-    const totalExpenses = todayExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    const cashExpenses = todayExpenses.filter(e => e.paymentMethod === 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    const bankExpenses = todayExpenses.filter(e => e.paymentMethod !== 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const todayExpenses = allExpenses.filter(e => e.date <= todayStr && !reported.expenses.has(e.id));
+    const totalExpenses = round2(todayExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
+    const cashExpenses = round2(todayExpenses.filter(e => e.paymentMethod === 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
+    const bankExpenses = round2(todayExpenses.filter(e => e.paymentMethod !== 'CASH').reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
 
-    // TOPTANCI FATURALARI VE ÖDEMELERİ (BUGÜNKÜLER)
+    // TOPTANCI FATURALARI VE ÖDEMELERİ (aynı kural)
     const allSupplierTxs = dataService.getSupplierTransactions() || [];
-    const todaySupplierTxs = allSupplierTxs.filter(t => t.date === todayStr);
-    const supplierInvoicesTotal = todaySupplierTxs.filter(t => t.type === 'INVOICE').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const todaySupplierTxs = allSupplierTxs.filter(t => t.date <= todayStr && !reported.supplierTxs.has(t.id));
+    const supplierInvoicesTotal = round2(todaySupplierTxs.filter(t => t.type === 'INVOICE').reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
     const todaySupplierPayments = todaySupplierTxs.filter(t => t.type === 'PAYMENT');
-    const supplierPaymentsTotal = todaySupplierPayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const supplierCashPayments = todaySupplierPayments.filter(t => t.paymentMethod === 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const supplierBankPayments = todaySupplierPayments.filter(t => t.paymentMethod !== 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const supplierPaymentsTotal = round2(todaySupplierPayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
+    const supplierCashPayments = round2(todaySupplierPayments.filter(t => t.paymentMethod === 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
+    const supplierBankPayments = round2(todaySupplierPayments.filter(t => t.paymentMethod !== 'CASH').reduce((sum, t) => sum + (Number(t.amount) || 0), 0));
 
     let grossTotal = 0;
     let discountTotal = 0;
@@ -1787,16 +1827,21 @@ class RestaurantDataService {
       });
     });
 
-    const cancelTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
-    const cashSales = paymentBreakdown['Nakit'] || 0;
-    
-    // KASADA KALAN NET NAKİT = (Nakit Satış) - (Kasadan Çıkan Nakit Giderler) - (Kasadan Toptancıya Ödenen Nakitler)
-    const netCashInRegister = cashSales - cashExpenses - supplierCashPayments;
+    const cancelTotal = round2(cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0));
+    const cashSales = round2(paymentBreakdown['Nakit'] || 0);
 
-    const netTotal = grossTotal - discountTotal;
-    const vatRate = 10;
-    const vatBase = netTotal / 1.10;
-    const vatAmount = netTotal - vatBase;
+    // KASADA KALAN NET NAKİT = (Nakit Satış) - (Kasadan Çıkan Nakit Giderler) - (Kasadan Toptancıya Ödenen Nakitler)
+    const netCashInRegister = round2(cashSales - cashExpenses - supplierCashPayments);
+
+    grossTotal = round2(grossTotal);
+    discountTotal = round2(discountTotal);
+    giftTotal = round2(giftTotal);
+    Object.keys(paymentBreakdown).forEach((k) => { paymentBreakdown[k] = round2(paymentBreakdown[k]); });
+
+    const netTotal = round2(grossTotal - discountTotal);
+    const vatRate = 10; // Mevcut kapsamda ürün bazlı KDV yok; tek oran (yiyecek %10). Bkz. docs/known-limitations.
+    const vatBase = round2(netTotal / 1.10);
+    const vatAmount = round2(netTotal - vatBase);
 
     return {
       grossTotal,
@@ -1846,7 +1891,7 @@ class RestaurantDataService {
     const transferred = countData?.transferredCash ?? openingFloat;
 
     const zReport: ZReport = {
-      id: `z-${Date.now()}`,
+      id: `z-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       zNo: nextZNo,
       openedAt: xData.orders[0]?.orderTime || '09:00',
       closedAt: new Date().toLocaleString('tr-TR'),
@@ -1887,9 +1932,39 @@ class RestaurantDataService {
     });
     localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(allCompleted));
 
-    localStorage.removeItem(STORAGE_KEYS.CANCEL_LOGS);
+    // İptal kayıtları SİLİNMEZ (denetim izi): bu Z'ye bağlanıp arşivde kalır.
+    try {
+      const logs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
+      logs.forEach((c: any) => { if (!c.zReportId) c.zReportId = zReport.id; });
+      localStorage.setItem(STORAGE_KEYS.CANCEL_LOGS, JSON.stringify(logs));
+    } catch {}
+
+    // Bu Z'ye giren gider/toptancı hareketlerini işaretle (ikinci Z'de tekrar sayılmasın).
+    const alreadyReported = this.getZReportedIds();
+    const bizToday = getBusinessDate();
+    this.markZReported(
+      (dataService.getExpenses() || []).filter(e => e.date <= bizToday && !alreadyReported.expenses.has(e.id)).map(e => e.id),
+      (dataService.getSupplierTransactions() || []).filter(t => t.date <= bizToday && !alreadyReported.supplierTxs.has(t.id)).map(t => t.id)
+    );
+
     this.notify();
     return zReport;
+  }
+
+  private getZReportedIds(): { expenses: Set<string>; supplierTxs: Set<string> } {
+    try {
+      const raw = JSON.parse(localStorage.getItem('gtu_z_reported_ids') || '{}');
+      return { expenses: new Set(raw.expenses || []), supplierTxs: new Set(raw.supplierTxs || []) };
+    } catch {
+      return { expenses: new Set(), supplierTxs: new Set() };
+    }
+  }
+
+  private markZReported(expenseIds: string[], supplierTxIds: string[]) {
+    const cur = this.getZReportedIds();
+    expenseIds.forEach((i) => cur.expenses.add(i));
+    supplierTxIds.forEach((i) => cur.supplierTxs.add(i));
+    localStorage.setItem('gtu_z_reported_ids', JSON.stringify({ expenses: [...cur.expenses], supplierTxs: [...cur.supplierTxs] }));
   }
 
   public getZReportsHistory(): ZReport[] {
@@ -2002,7 +2077,7 @@ class RestaurantDataService {
       if (raw.includes('-')) {
         return raw.split('T')[0].split(' ')[0];
       }
-      return new Date().toISOString().split('T')[0];
+      return getBusinessDate();
     };
 
     const getOrderHour = (o: CompletedOrderArchive): number => {
@@ -2459,7 +2534,7 @@ class RestaurantDataService {
         customerName: customerData?.name || 'Kayıtlı Olmayan Numara',
         address: customerData?.address || '',
         time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-        date: new Date().toISOString().split('T')[0],
+        date: getBusinessDate(),
         isRegistered: !!customerData?.name,
       };
     } else {

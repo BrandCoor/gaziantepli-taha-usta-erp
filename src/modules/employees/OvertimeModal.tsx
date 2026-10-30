@@ -1,3 +1,4 @@
+import { getBusinessDate } from '../../utils/businessDate';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
@@ -34,7 +35,7 @@ export const OvertimeModal: React.FC<OvertimeModalProps> = ({
   onSuccess,
 }) => {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(getBusinessDate());
   
   // 1. Normal Çalışma Saati (Düzenlenebilir!)
   const [normalDailyHours, setNormalDailyHours] = useState<number>(8);
@@ -64,7 +65,7 @@ export const OvertimeModal: React.FC<OvertimeModalProps> = ({
       } else if (employees.length > 0 && !selectedEmployeeId) {
         setSelectedEmployeeId(employees[0].id);
       }
-      setDate(new Date().toISOString().split('T')[0]);
+      setDate(getBusinessDate());
     }
   }, [isOpen, initialEmployeeId, employees]);
 
