@@ -59,6 +59,12 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
     },
+    "extraResources": [
+      {
+        "from": "build/update-config.json",
+        "to": "update-config.json"
+      }
+    ],
     "asar": true
   },
   "dependencies": {

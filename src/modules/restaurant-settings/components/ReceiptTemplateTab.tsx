@@ -15,6 +15,7 @@ import {
 import { ReceiptSettingsConfig, restaurantDataService } from '../../../services/restaurantDataService';
 import { printerService } from '../../../services/printerService';
 import { notify } from '../../../services/notificationService';
+import { isElectronApp, ipcInvoke } from '../../../services/electronBridge';
 
 interface ReceiptTemplateTabProps {
   settings: ReceiptSettingsConfig;
@@ -44,6 +45,21 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
   });
 
   const [copied, setCopied] = useState(false);
+  const [previewImg, setPreviewImg] = useState<string | null>(null);
+
+  /** Yazıcıya gidecek görüntünün birebir önizlemesi (gerçek yazı tipi, örnek ürünlerle). */
+  const handleRealPreview = async () => {
+    if (!isElectronApp()) { notify.info('Önizleme', 'Gerçek fiş önizlemesi yalnızca masaüstü uygulamasında çalışır.'); return; }
+    const r = await ipcInvoke('receipt-preview', {
+      jobType: 'BILL',
+      data: {
+        settings: form, tableName: 'Salon / Masa 4', waiterName: 'Garson', orderTime: new Date().toLocaleString('tr-TR'), orderNumber: 17, paperWidth: form.paperWidth || 80,
+        items: [{ name: 'Adana Kebap', quantity: 2, price: 280, totalPrice: 560, note: 'Acılı' }, { name: 'Ayran', quantity: 2, price: 40, totalPrice: 80 }],
+        subtotal: 640, totalAmount: 640,
+      },
+    });
+    if (r?.success) setPreviewImg(r.image); else notify.error('Önizleme Alınamadı', r?.error || 'Bilinmeyen hata');
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,6 +120,14 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRealPreview}
+            className="px-4 py-2.5 bg-[#141416] hover:bg-slate-800 text-[#FAF7F2] border border-[#383844] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shadow-md"
+          >
+            <span>Gerçek Fiş Önizleme</span>
+          </button>
+
           <button
             type="button"
             onClick={handleTestThermalPrint}
@@ -560,6 +584,14 @@ export const ReceiptTemplateTab: React.FC<ReceiptTemplateTabProps> = ({ settings
         </div>
 
       </div>
+      {previewImg && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPreviewImg(null)}>
+          <div className="bg-white rounded-2xl p-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImg} alt="Fiş önizleme" style={{ width: (form.paperWidth || 80) === 58 ? 384 : 576, maxWidth: '100%', imageRendering: 'pixelated' }} />
+            <button type="button" onClick={() => setPreviewImg(null)} className="mt-3 w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer">Kapat</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

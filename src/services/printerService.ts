@@ -523,7 +523,7 @@ class PrinterService {
     }
 
     // Yazıcıya özgü baskı parametreleri (kâğıt genişliği, kesici, sesli uyarı) fiş verisine eklenir.
-    data = { ...data, paperWidth: printer.paperWidth, autoCut: printer.autoCut, beep: !!printer.beepOnPrint };
+    data = { ...data, paperWidth: printer.paperWidth, autoCut: printer.autoCut, beep: !!printer.beepOnPrint, printMode: printer.printMode || 'GRAPHIC' };
 
     let printSuccess = false;
     let resultMessage = '';

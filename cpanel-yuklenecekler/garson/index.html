@@ -18,6 +18,36 @@
   <script src="./zxing-browser.min.js"></script>
   <style>
     body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    /* ---- DUYARLI DÜZEN (telefon, tablet, yatay, masaüstü) ---- */
+    /* Mobil tarayıcıda araç çubuğu değişse de ekranı doğru doldur (100vh yerine dinamik yükseklik) */
+    body { min-height: 100vh; min-height: 100dvh; }
+    #mainApp { height: 100vh; height: 100dvh; }
+    #orderModal, #cartDrawer, #existingOrderModal, #transferTableModal { height: 100vh; height: 100dvh; }
+    /* Izgaralar: kısa ekranda kartlar ezilmesin; içerik kadar yükseklik, kaydırma kapsayıcıda */
+    #productsList, #tablesGrid { grid-auto-rows: max-content; align-content: start; }
+    @media (min-width: 900px)  { #productsList { grid-template-columns: repeat(4, minmax(0, 1fr)); } #tablesGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+    @media (min-width: 1280px) { #productsList { grid-template-columns: repeat(5, minmax(0, 1fr)); } #tablesGrid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+    /* Üst başlık ve istatistik satırı dar ekranda sığmazsa alt satıra geçer; metin taşmaz */
+    #appHeaderTitle { min-width: 0; }
+    #appHeaderTitle h2, #appHeaderTitle p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #statsBar { flex-wrap: wrap; row-gap: 6px; column-gap: 12px; }
+    #statsBar > div { min-width: 0; }
+    /* PIN ekranı: kaydırılabilir; kısa YATAY ekranda iki sütun (bilgi solda, tuş takımı sağda) */
+    #pinScreen, #pairingScreen { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    @media (orientation: landscape) and (max-height: 520px) {
+      #pinScreen { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr; column-gap: 24px; align-items: center; max-width: 760px; padding-top: 8px; padding-bottom: 8px; }
+      #pinScreen > :nth-child(1) { grid-column: 1; grid-row: 1; margin-top: 0; }
+      #pinScreen > :nth-child(2) { grid-column: 1; grid-row: 2; margin: 4px 0; }
+      #pinScreen > :nth-child(3) { grid-column: 2; grid-row: 1 / span 2; margin-bottom: 0; }
+      #pinScreen > :nth-child(3) button { height: 46px; font-size: 1.25rem; }
+    }
+    /* Geniş ekranda tek sütun gibi uzayan pencereler ortalanır, satırlar aşırı uzamaz */
+    @media (min-width: 768px) {
+      #cartDrawer { align-items: center; }
+      #cartDrawer > * { width: 100%; max-width: 760px; }
+    }
+    /* Çentik / alt çubuk güvenli alanı */
+    #mainApp, #orderModal, #cartDrawer { padding-bottom: env(safe-area-inset-bottom); }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     @keyframes slideUp {
@@ -161,11 +191,11 @@
   <div id="mainApp" class="hidden flex-1 flex-col h-screen overflow-hidden">
     <!-- Header -->
     <header class="bg-[#121214] border-b border-[#2C2C34] px-4 py-2.5 flex items-center justify-between flex-shrink-0">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-xs shadow-sm">
+      <div id="appHeaderTitle" class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5C877] to-[#D4A351] text-[#141416] flex items-center justify-center font-black text-xs shadow-sm flex-shrink-0">
           <i class="fa-solid fa-utensils"></i>
         </div>
-        <div>
+        <div class="min-w-0">
           <h2 class="text-xs font-black text-white uppercase tracking-tight">Gaziantepli Taha Usta</h2>
           <p id="activeWaiterName" class="text-[10px] text-[#F5C877] font-bold">Garson</p>
         </div>
@@ -187,7 +217,7 @@
     </header>
 
     <!-- Durum İstatistik Çubuğu -->
-    <div class="bg-[#18181C] border-b border-[#2C2C34] px-3 py-2 flex items-center justify-between text-xs flex-shrink-0">
+    <div id="statsBar" class="bg-[#18181C] border-b border-[#2C2C34] px-3 py-2 flex items-center justify-between text-xs flex-shrink-0">
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1">
           <span class="text-[#8E8E98]">Masalar:</span>

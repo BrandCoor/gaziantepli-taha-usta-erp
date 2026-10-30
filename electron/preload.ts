@@ -5,7 +5,7 @@ const INVOKE_CHANNELS = new Set([
   'get-system-usb-printers', 'print-network-ticket', 'print-usb-receipt', 'print-hardware-test',
   'app-info', 'backup-save', 'backup-list', 'backup-read', 'backup-open-folder', 'backup-choose-secondary', 'backup-clear-secondary', 'log-tail', 'log-renderer-error',
   'kv-load-all', 'kv-set', 'kv-remove', 'kv-clear', 'kv-import', 'kv-info',
-  'update-status', 'update-check', 'update-install', 'update-set-feed',
+  'update-status', 'update-check', 'update-install', 'update-set-feed', 'receipt-preview',
 ]);
 const SEND_CHANNELS = new Set(['window-minimize', 'window-toggle-fullscreen', 'window-close']);
 

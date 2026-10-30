@@ -15,7 +15,7 @@ import {
   listSystemPrinters,
   scanLocalNetworkPrinters
 } from './printer';
-import { buildTicketBuffer } from './receiptBuilder';
+import { buildPrintBuffer } from './receiptPrint';
 import { gCallerIdDriver, CallerIdEvent } from './callerid/gcallerid';
 
 import { isAllowedOrigin, isAllowedHost, isPrivateOrLoopbackIp } from './netGuard';
@@ -122,13 +122,13 @@ app.get('/api/printers/auto-scan', async (req, res) => {
 app.post('/api/printers/test-print', async (req, res) => {
   try {
     const { ip, port, name } = req.body;
-    const testBuffer = generateKitchenReceipt({
-      ticketTitle: 'YAZICI BAGLANTI TESTI',
+    const testBuffer = (await buildPrintBuffer('KITCHEN', {
+      ticketTitle: 'YAZICI BAĞLANTI TESTİ',
       tableName: 'TEST MASASI',
       waiterName: 'Kasa Terminali',
       orderTime: new Date().toLocaleTimeString('tr-TR'),
-      items: [{ name: `${name || 'Afanda 892E'}`, quantity: 1, note: 'Baglanti Kusursuz' }],
-    });
+      items: [{ name: `${name || 'Yazıcı'}`, quantity: 1, note: 'Türkçe karakter testi: ÇĞİÖŞÜ çğıöşü' }],
+    })).buffer;
 
     const success = await sendToNetworkPrinter(ip, port || 9100, testBuffer);
     res.json({ success });
@@ -145,7 +145,7 @@ app.post('/api/printers/print-ticket', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Yazıcı bilgisi eksik' });
     }
 
-    const buffer = buildTicketBuffer(jobType, { ...data, paperWidth: data?.paperWidth ?? printer.paperWidth });
+    const buffer = (await buildPrintBuffer(jobType, { ...data, paperWidth: data?.paperWidth ?? printer.paperWidth, autoCut: data?.autoCut ?? printer.autoCut, printMode: data?.printMode ?? printer.printMode })).buffer;
 
     if (printer.type === 'NETWORK' && printer.ipAddress) {
       const success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -178,7 +178,7 @@ app.post('/api/printers/test-hardware', async (req, res) => {
   try {
     const { printer } = req.body;
     const targetName = printer?.driverName || printer?.usbName || printer?.name || 'Afanda 892E';
-    const buffer = generateHardwareTestReceipt(targetName);
+    const buffer = (await buildPrintBuffer('HARDWARE_TEST', { printerName: targetName, paperWidth: printer?.paperWidth, printMode: printer?.printMode, autoCut: true })).buffer;
 
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       const ok = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -199,7 +199,7 @@ app.post('/api/printers/test-hardware', async (req, res) => {
 app.post('/api/printers/print-kitchen', async (req, res) => {
   try {
     const { printer, ticket } = req.body;
-    const buffer = generateKitchenReceipt(ticket);
+    const buffer = (await buildPrintBuffer('KITCHEN', { ...ticket, paperWidth: ticket?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -217,7 +217,7 @@ app.post('/api/printers/print-kitchen', async (req, res) => {
 app.post('/api/printers/print-bill', async (req, res) => {
   try {
     const { printer, bill } = req.body;
-    const buffer = generateBillReceipt(bill);
+    const buffer = (await buildPrintBuffer('BILL', { ...bill, paperWidth: bill?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -235,7 +235,7 @@ app.post('/api/printers/print-bill', async (req, res) => {
 app.post('/api/printers/print-cancel', async (req, res) => {
   try {
     const { printer, cancelData } = req.body;
-    const buffer = generateCancelReceipt(cancelData);
+    const buffer = (await buildPrintBuffer('CANCEL', { ...cancelData, paperWidth: cancelData?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);
@@ -253,7 +253,7 @@ app.post('/api/printers/print-cancel', async (req, res) => {
 app.post('/api/printers/print-courier', async (req, res) => {
   try {
     const { printer, courierData } = req.body;
-    const buffer = generateCourierReceipt(courierData);
+    const buffer = (await buildPrintBuffer('COURIER', { ...courierData, paperWidth: courierData?.paperWidth ?? printer?.paperWidth, printMode: printer?.printMode })).buffer;
     let success = false;
     if (printer?.type === 'NETWORK' && printer?.ipAddress) {
       success = await sendToNetworkPrinter(printer.ipAddress, printer.port || 9100, buffer);

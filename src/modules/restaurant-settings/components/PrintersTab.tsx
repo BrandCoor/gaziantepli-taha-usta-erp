@@ -1039,15 +1039,14 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-[#C4C4CC]">Karakter Kodlama</label>
+                  <label className="text-[11px] font-bold text-[#C4C4CC]">Baskı Biçimi</label>
                   <select
-                    value={form.codePage}
-                    onChange={(e) => setForm({ ...form, codePage: e.target.value as any })}
+                    value={form.printMode || 'GRAPHIC'}
+                    onChange={(e) => setForm({ ...form, printMode: e.target.value as any })}
                     className="w-full mt-1 p-2 bg-[#1C1C20] border border-[#383844] rounded-xl text-xs font-bold text-white"
                   >
-                    <option value="CP857">CP857 (Türkçe)</option>
-                    <option value="UTF8">UTF-8</option>
-                    <option value="WIN1254">Windows-1254</option>
+                    <option value="GRAPHIC">Okunaklı yazı tipi, tam Türkçe (önerilir)</option>
+                    <option value="TEXT">Yazıcının kendi yazı tipi (hızlı, Türkçe karakter yok)</option>
                   </select>
                 </div>
 

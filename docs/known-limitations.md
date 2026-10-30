@@ -37,6 +37,8 @@ Dürüst liste: aşağıdakiler **yapılmadı veya eksik**.
 **Git geçmişindeki eski sırların iptali sizin yapmanız gereken manuel işlemdir** ([security.md › 1](security.md)).
 
 ## Yazdırma
+- **Fişler varsayılan olarak GRAFİK basılır** (Segoe UI/Arial ile görüntü olarak; Türkçe karakterler tam). Gerçek yazıcıda ilk fişte boyut/koyuluk denenmelidir; gerekirse yazıcı ayarından "Yazıcının kendi yazı tipi" (metin) seçilir (Türkçe karakter yok, daha hızlı). Grafik üretilemezse otomatik metin baskısına düşülür. Gerçek fiziksel yazıcıyla **denenmedi** (yalnızca görüntü önizlemesi ve sahte ağ yazıcısı).
+- USB/Windows sürücülü yazıcılarda ham (RAW) grafik desteği sürücüye bağlıdır; çalışmazsa metin moduna alın.
 - Windows spooler yolunda yazıcının **gerçekten çevrimiçi** olduğu işletim sisteminden okunamıyor (Electron 45 `status` alanını kaldırdı); durum "hazır (doğrulanmadı)" gösterilir. Ağ yazıcısında (TCP 9100) bağlantı hatası gerçektir.
 - Otomatik yeniden denemede, yazıcı fişi basıp bağlantı hatası bildirirse **çift fiş** olabilir (nadir; kuyruk ekranında "kopya" ve deneme sayısı görünür).
 

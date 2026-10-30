@@ -14,6 +14,11 @@ Biçim: [Keep a Changelog](https://keepachangelog.com/tr/). Sürümleme: package
 - Webhook yedeği olarak **periyodik sorgulama** (Getir), ayarlarda webhook adresleri + gizli anahtar üretici.
 - **Demo/test kalıntıları kaldırıldı:** sahte test siparişi, sahte bağlantı testi, demo menü/salon/garson, kullanılmayan tohum veri üreticileri; para çekmecesi hata durumunda artık başarı yalanı söylemez.
 
+### Fiş yazı tipi ve garson ekranı
+- **Fişler gerçek yazı tipiyle (Segoe UI) görüntü olarak basılır:** okunaklı, **tam Türkçe karakter** (İ, Ş, Ğ, Ü, Ö, Ç). Yazıcı ayarında "Baskı Biçimi" ile eski metin moduna dönülebilir. Ayarlar › Fiş Şablonu'nda "Gerçek Fiş Önizleme".
+- **Garson ekranı duyarlı:** telefon (dikey/yatay), tablet ve masaüstünde kullanılabilir; dar ekranda taşma yok, kısa yatay ekranda ürün kartları ezilmez, PIN ekranı yatayda iki sütun, geniş ekranda daha çok sütun.
+- Güncelleme kaynağı varsayılanı `https://api.rymedya.com.tr/updates/` kurulum paketine gömüldü.
+
 ### Otomatik güncelleme sistemi (1.1.0)
 - **Kasa:** `electron-updater` ile arka planda denetim/indirme (açılışta + 4 saatte bir), SHA-512 doğrulama, bozuk paket reddi, artan aralıkla yeniden deneme, açık adisyon/ödeme varken kurulum engeli, kurulum öncesi veri anlık görüntüsü + dosya yedeği, sessiz kurulum ve otomatik yeniden açılış, kritik güncelleme politikası. Güncelleme adresi merkezi ayardan (varsayılan `<API>/updates/`).
 - **Sunucu:** `version` ucu, istemci sürüm kapısı (426 CLIENT_TOO_OLD), göç öncesi SQL yedeği + kilit + hatada durma (sürüm artmaz, `schema_last_error`), `--update` dağıtım paketi (`config.local.php` içermez).

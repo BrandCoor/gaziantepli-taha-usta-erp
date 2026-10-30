@@ -66,9 +66,8 @@ node tools/make-deploy-package.cjs --update --out "C:\...\YUKLEME_PAKETI" --api 
 ```
 **Yükleme sırası (önemli):** ① sunucu (`1-api-guncelleme.zip`) → ② garson/menü/patron zip'leri → ③ en son `guncelleme` klasörünün içeriğini `updates/` klasörüne. Böylece kasalar yeni sürümü görmeden sunucu hazır olur. `latest.yml` **en son** yüklenmelidir (yüklenene kadar kimse yeni sürümü görmez).
 
-### Kod imzalama (EKSİK — sizden gerekli)
-Şu an kurulum dosyası **imzasız**. Sonuçları: (1) Windows SmartScreen "bilinmeyen yayıncı" uyarısı verir, (2) güncelleme bütünlüğü yalnızca **SHA-512 + HTTPS** ile korunur; yayın sunucunuza (cPanel hesabınıza) sızılırsa saldırgan hem dosyayı hem özeti değiştirebilir. **Hesap güvenliğini (2 adımlı doğrulama, güçlü parola) bu yüzden önemsiyoruz.**
-İmza için gerekli (ben uyduramam): bir **EV/OV kod imzalama sertifikası** (.pfx) ve parolası. Elinizde olunca: `CSC_LINK=<pfx yolu>` ve `CSC_KEY_PASSWORD=<parola>` ortam değişkenleriyle `npm run electron:build` çalıştırılır (**asla Git'e girmez**); `package.json › build.win` içine `publisherName` eklenir; electron-updater bundan sonra yeni paketin imzasını da denetler. Bu adım yapılana kadar imza doğrulaması **çalışmaz** ve belgelerde "doğrulandı" denmez.
+### Kod imzalama (isteğe bağlı; şu an yok)
+Kurulum dosyası **imzasız**: güncelleme yine de çalışır ve SHA-512 + HTTPS ile korunur; yalnızca Windows ilk kurulumda "bilinmeyen yayıncı" uyarısı verir. İmzanın ne olduğu, gerekli olup olmadığı ve nasıl alınacağı: **[code-signing.md](code-signing.md)**. Güvenlik tavsiyesi: yayın yeri hesabınızı (cPanel) iki adımlı doğrulamayla koruyun.
 
 ### Hata kaydı
 Tüm güncelleme olayları kasa günlüğüne yazılır (`userData\logs`, ayarlardaki günlük görüntüleyici): bulundu, indirildi, reddedildi, yeniden deneme, kurulum, anlık görüntü. Parola/anahtar günlüğe girmez.
@@ -135,6 +134,6 @@ Gerçek işletme verisi **kullanılmadı**; ayrı `--user-data-dir`, ayrı test 
 **Test EDİLEMEYENLER (açıkça):** imzalı yayında Windows imza doğrulaması (sertifika yok); gerçek `https://api.rymedya.com.tr/updates/` üzerinden indirme (sunucuya erişimim yok); hosting yükleme sınırları; iOS/Android arka plan davranışı; Windows SmartScreen/antivirüs tepkileri; çok kasalı kurulum (desteklenmiyor).
 
 ## 7. Sizden gerekenler
-1. **Güncelleme yayın yeri:** `api.rymedya.com.tr` içinde `updates` klasörü (varsayılan) **ya da** GitHub Releases — hangisini istediğinizi söyleyin.
-2. **Kod imzalama sertifikası** (.pfx + parola) — alınana kadar imzasız çalışır.
-3. İlk gerçek güncellemede sunucu yedeğini (cPanel) siz alıp yüklemeyi birlikte yapalım.
+1. **Yayın yeri (kararlaştırıldı):** `https://api.rymedya.com.tr/updates/`. Kurulum paketine gömülüdür (`resources/update-config.json`); ayrıca ayar girmenize gerek yok.
+2. cPanel › Dosya Yöneticisi › `api.rymedya.com.tr` belge kökü › `updates` klasörüne her yayında `guncelleme` klasörünün içeriğini yükleyin (ilk kurulumda `YUKLEME_PAKETI/updates-yukle` içindekiler).
+3. Kod imzalama isteğe bağlı ([code-signing.md](code-signing.md)).

@@ -281,6 +281,8 @@ export interface PrinterConfig {
   cutType?: 'FULL' | 'PARTIAL';
   beepOnPrint: boolean;
   codePage?: 'CP857' | 'UTF8' | 'WIN1254' | 'PC857';
+  /** GRAPHIC (varsayılan): gerçek yazı tipiyle görüntü olarak basılır, Türkçe karakterler tam. TEXT: yazıcının kendi yazı tipi (hızlı; Türkçe karakterler ASCII'ye çevrilir). */
+  printMode?: 'GRAPHIC' | 'TEXT';
   copies?: number;
   isBillPrinter: boolean;
   isKitchen: boolean;

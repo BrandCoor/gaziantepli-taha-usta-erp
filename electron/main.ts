@@ -19,7 +19,7 @@ import {
   sendToNetworkPrinter,
   sendToWindowsSpooler
 } from './printer';
-import { buildTicketBuffer } from './receiptBuilder';
+import { buildPrintBuffer, renderPreview } from './receiptPrint';
 import { initUpdater, updaterApi } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
@@ -172,6 +172,11 @@ secureHandle('backup-clear-secondary', async () => {
   return { success: true };
 });
 
+// FİŞ ÖNİZLEME: yazıcıya gidecek görüntünün birebir PNG'si (grafik baskı)
+secureHandle('receipt-preview', async (_e, { jobType, data }) => {
+  try { return { success: true, image: await renderPreview(String(jobType || 'KITCHEN'), data || {}) }; } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
+});
+
 // WINDOWS İŞLETİM SİSTEMİNE BAĞLI USB / SPOOLER YAZICILARI GETİR
 secureHandle('get-system-usb-printers', async () => {
   if (mainWindow) {
@@ -198,7 +203,8 @@ secureHandle('print-network-ticket', async (event, { ip, port, ticketType, data 
   try {
     const bad = validNetTarget(ip, port);
     if (bad) return { success: false, error: bad };
-    const buffer = buildTicketBuffer(ticketType, data);
+    const built = await buildPrintBuffer(ticketType, data, (m) => log().warn(m));
+    const buffer = built.buffer;
     const success = await sendToNetworkPrinter(ip, port || 9100, buffer);
     return { success };
   } catch (err: any) {
@@ -210,7 +216,8 @@ secureHandle('print-network-ticket', async (event, { ip, port, ticketType, data 
 secureHandle('print-usb-receipt', async (event, { printerName, rawText, buffer, html, ticketType, data }) => {
   try {
     if (ticketType) {
-      const spoolRes = await sendToWindowsSpooler(printerName, buildTicketBuffer(ticketType, data));
+      const built = await buildPrintBuffer(ticketType, data, (m) => log().warn(m));
+      const spoolRes = await sendToWindowsSpooler(printerName, built.buffer);
       return { success: spoolRes.success, error: spoolRes.error };
     }
     if (buffer) {
@@ -268,13 +275,13 @@ secureHandle('print-usb-receipt', async (event, { printerName, rawText, buffer, 
 });
 
 // DONANIM TEST YAZDIRMASI (Afanda 892E & Win32 Spooler)
-secureHandle('print-hardware-test', async (event, { printerName, type, ip, port }) => {
+secureHandle('print-hardware-test', async (event, { printerName, type, ip, port, paperWidth }) => {
   try {
     if (type === 'NETWORK') {
       const bad = validNetTarget(ip, port);
       if (bad) return { success: false, error: bad };
     }
-    const testBuf = generateHardwareTestReceipt(printerName);
+    const testBuf = (await buildPrintBuffer('HARDWARE_TEST', { printerName, paperWidth, autoCut: true }, (m) => log().warn(m))).buffer;
     if (type === 'NETWORK' && ip) {
       const ok = await sendToNetworkPrinter(ip, port || 9100, testBuf);
       return { success: ok };
