@@ -90,7 +90,7 @@ const DEFAULT_PLATFORMS: Record<OnlinePlatformCode, OnlinePlatformInfo> = {
   YEMEKSEPETI: {
     code: 'YEMEKSEPETI',
     name: 'Yemeksepeti',
-    isEnabled: true,
+    isEnabled: false,
     storeStatus: 'OPEN',
     deliveryModel: 'RESTAURANT_COURIER',
     credentials: {
@@ -111,7 +111,7 @@ const DEFAULT_PLATFORMS: Record<OnlinePlatformCode, OnlinePlatformInfo> = {
   TRENDYOL: {
     code: 'TRENDYOL',
     name: 'Trendyol Yemek',
-    isEnabled: true,
+    isEnabled: false,
     storeStatus: 'OPEN',
     deliveryModel: 'PLATFORM_COURIER',
     credentials: {
@@ -131,7 +131,7 @@ const DEFAULT_PLATFORMS: Record<OnlinePlatformCode, OnlinePlatformInfo> = {
   GETIR: {
     code: 'GETIR',
     name: 'GetirYemek',
-    isEnabled: true,
+    isEnabled: false,
     storeStatus: 'OPEN',
     deliveryModel: 'PLATFORM_COURIER',
     credentials: {

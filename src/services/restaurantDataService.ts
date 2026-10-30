@@ -1,4 +1,5 @@
 // Gaziantepli Taha Usta - Restoran Veri Servisi (Gider, Toptancı & Net Kasa Destekli Z Raporu)
+import { mergeById, safeParseArray } from './syncMerge';
 import { getBusinessDate, formatLocalDate } from '../utils/businessDate';
 import { ProcessedIdStore, normalizeIncomingId } from './incomingOrderDedup';
 import { dataService } from './dataService';
@@ -460,32 +461,32 @@ const STORAGE_KEYS = {
 
 export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
   trendyol: {
-    enabled: true,
+    enabled: false,
     isOpen: true,
-    supplierId: '770463',
-    apiKey: 'Es32CcLQUCJs51lAPgJ8',
-    secretKey: 'xbuy0pocdpcUOfGd8kNS9',
-    email: 'mehmettahagumus@icloud.com',
+    supplierId: '',
+    apiKey: '',
+    secretKey: '',
+    email: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
   },
   getir: {
-    enabled: true,
+    enabled: false,
     isOpen: true,
     restaurantName: 'Gaziantepli Taha Usta (Eğitim Mah.)',
-    secretKey: '85309848fd36282068984f02259f91c2873d2bc6',
-    restaurantId: 'GETIR-27-01',
+    secretKey: '',
+    restaurantId: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
   },
   yemeksepeti: {
-    enabled: true,
+    enabled: false,
     isOpen: true,
-    username: 'mehmettahagumus@icloud.com',
-    password: 'Gaziantepli27taha',
-    restaurantId: 'YS-TAHA-27',
+    username: '',
+    password: '',
+    restaurantId: '',
     autoPrintReceipt: true,
     preparationTimeMinutes: 25,
     deliveryModel: 'RESTAURANT',
@@ -763,6 +764,8 @@ class RestaurantDataService {
   private billPrintCallback?: (table: TableState, items: OrderItemState[]) => void;
   private isProcessingRemoteSync = false;
   private processedIncomingOrderIds = new ProcessedIdStore(localStorage);
+  /** Tam yedek servisi tarafından atanır (döngüsel içe aktarmayı önler). */
+  public autoBackupHook?: (label: string) => Promise<unknown>;
 
   public onKitchenOrderPrint(cb: (table: TableState, items: OrderItemState[], waiterName: string, orderNote?: string, isAdditionalOrder?: boolean) => void) {
     this.kitchenPrintCallback = cb;
@@ -1057,30 +1060,52 @@ class RestaurantDataService {
       if (!res.ok) return false;
       const data = await res.json();
       if (data && data.success) {
-        if (data.sections && data.sections.length > 0) {
+        // Güvenlik: uygulama öncesi yerel verinin anlık kopyası (dosya yedeği, mümkünse)
+        try { await this.autoBackupHook?.('bulut-cekme-oncesi'); } catch {}
+
+        const rawLocal = (key: string) => safeParseArray(localStorage.getItem(key));
+        const localEmpty = (key: string) => rawLocal(key).length === 0;
+
+        // ANA VERİ: yalnızca yerel liste BOŞSA bulutan alınır (kasa asıl kaynaktır).
+        if (data.sections?.length > 0 && localEmpty(STORAGE_KEYS.SECTIONS)) {
           localStorage.setItem(STORAGE_KEYS.SECTIONS, JSON.stringify(data.sections));
         }
-        if (data.categories && data.categories.length > 0) this.saveCategories(data.categories);
-        if (data.products && data.products.length > 0) this.saveProducts(data.products);
-        if (data.employees && data.employees.length > 0) this.saveWaiters(data.employees);
-        if (data.tables && data.tables.length > 0) {
-          const sections = (data.sections && data.sections.length > 0) ? data.sections : this.getSections();
-          const sorted = sortTablesNaturally(data.tables, sections);
-          localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(sorted));
-        } else if (data.sections && data.sections.length > 0) {
-          this.syncTablesWithSections(data.sections);
+        if (data.categories?.length > 0 && localEmpty(STORAGE_KEYS.CATEGORIES)) this.saveCategories(data.categories);
+        if (data.products?.length > 0 && localEmpty(STORAGE_KEYS.PRODUCTS)) this.saveProducts(data.products);
+        if (data.employees?.length > 0 && localEmpty(STORAGE_KEYS.WAITERS)) this.saveWaiters(data.employees);
+        if (data.printers?.length > 0 && localEmpty(STORAGE_KEYS.PRINTERS)) this.savePrinters(data.printers);
+
+        // MASALAR (açık adisyonlar dahil): yerelde hiç masa yoksa bulutan alınır; aksi halde yerel korunur.
+        if (localEmpty(STORAGE_KEYS.TABLES)) {
+          if (data.tables?.length > 0) {
+            const sections = (data.sections?.length > 0) ? data.sections : this.getSections();
+            localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(sortTablesNaturally(data.tables, sections)));
+          } else if (data.sections?.length > 0) {
+            this.syncTablesWithSections(data.sections);
+          }
         }
-        if (data.printers && data.printers.length > 0) this.savePrinters(data.printers);
-        if (data.zReports && data.zReports.length > 0) localStorage.setItem(STORAGE_KEYS.Z_REPORTS, JSON.stringify(data.zReports));
-        if (data.completedOrders && data.completedOrders.length > 0) localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(data.completedOrders));
+
+        // GEÇMİŞ KAYITLAR: ID bazlı BİRLEŞİM — yerel hiçbir kayıt kaybolmaz.
+        if (data.zReports?.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.Z_REPORTS, JSON.stringify(mergeById(rawLocal(STORAGE_KEYS.Z_REPORTS), data.zReports)));
+        }
+        if (data.completedOrders?.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(mergeById(rawLocal(STORAGE_KEYS.COMPLETED_ORDERS), data.completedOrders)));
+        }
 
         // Cari ve Finans modülleri
-        if (data.customers && data.customers.length > 0) dataService.saveCustomers(data.customers);
-        if (data.customerTransactions && data.customerTransactions.length > 0) localStorage.setItem('gtu_erp_customer_tx', JSON.stringify(data.customerTransactions));
-        if (data.suppliers && data.suppliers.length > 0) dataService.saveSuppliers(data.suppliers);
-        if (data.supplierTransactions && data.supplierTransactions.length > 0) localStorage.setItem('gtu_erp_supplier_tx', JSON.stringify(data.supplierTransactions));
-        if (data.expenses && data.expenses.length > 0) dataService.saveExpensesList(data.expenses);
-        if (data.companySettings) dataService.saveCompanySettings(data.companySettings);
+        if (data.customers?.length > 0 && localEmpty('gtu_erp_customers')) dataService.saveCustomers(data.customers);
+        if (data.customerTransactions?.length > 0) {
+          localStorage.setItem('gtu_erp_customer_transactions', JSON.stringify(mergeById(rawLocal('gtu_erp_customer_transactions'), data.customerTransactions)));
+        }
+        if (data.suppliers?.length > 0 && localEmpty('gtu_erp_suppliers')) dataService.saveSuppliers(data.suppliers);
+        if (data.supplierTransactions?.length > 0) {
+          localStorage.setItem('gtu_erp_supplier_transactions', JSON.stringify(mergeById(rawLocal('gtu_erp_supplier_transactions'), data.supplierTransactions)));
+        }
+        if (data.expenses?.length > 0) {
+          dataService.saveExpensesList(mergeById(rawLocal('gtu_erp_expenses'), data.expenses) as any);
+        }
+        if (data.companySettings && !localStorage.getItem('gtu_erp_company_settings')) dataService.saveCompanySettings(data.companySettings);
 
         this.notify();
         console.log('✅ [Merkezi MySQL] Tüm veriler phpMyAdmin veritabanından çekildi ve eşitlendi.');
