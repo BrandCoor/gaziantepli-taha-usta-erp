@@ -16,6 +16,7 @@ import { LoginView } from './modules/auth/LoginView';
 import { WaiterView, WaiterLoginView, WaiterPairingView, deviceService } from './modules/waiter';
 import { GlobalModal } from './components/common/GlobalModal';
 import { CallerIdPopup } from './components/common/CallerIdPopup';
+import { PrintQueueIndicator } from './components/common/PrintQueueIndicator';
 import { dataService } from './services/dataService';
 import { printerService } from './services/printerService';
 import { isApiSyncConfigured } from './services/restaurantDataService';
@@ -206,6 +207,7 @@ export default function App() {
         setTargetPosTableId(tableId);
         setActiveTab('pos');
       }} />
+      <PrintQueueIndicator />
     </div>
   );
 }

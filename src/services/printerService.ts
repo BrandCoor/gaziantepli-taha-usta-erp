@@ -1,3 +1,4 @@
+import { PrintQueue, PrintJob } from './printQueue';
 import {
   restaurantDataService,
   PrinterConfig,
@@ -182,6 +183,30 @@ export function determineStationForProduct(
 }
 
 class PrinterService {
+  /** Kalıcı yazdırma kuyruğu (localStorage). */
+  public readonly queue: PrintQueue = new PrintQueue(
+    typeof localStorage !== 'undefined' ? localStorage : { getItem: () => null, setItem: () => {} },
+    async (job: PrintJob) => {
+      const printer = job.printer || restaurantDataService.getPrinters().find((p) => p.id === job.printerId);
+      if (!printer) return { success: false, message: 'Yazıcı tanımı bulunamadı' };
+      return this.deliverToHardware(printer, job.jobType as any, job.data);
+    }
+  );
+  private queueTimer: any = null;
+
+  /** Arka plan: bekleyen fişleri periyodik dener. Uygulama açılışında bir kez çağrılır. */
+  public startQueueWorker(): void {
+    if (this.queueTimer || typeof window === 'undefined') return;
+    this.queueTimer = setInterval(() => { this.queue.processDue().catch(() => {}); }, 5000);
+    this.queue.processDue().catch(() => {});
+  }
+
+  /** Kullanıcı açıkça isterse fişi tarayıcı yazdırma penceresiyle basar (donanım doğrulaması yoktur). */
+  public printJobViaBrowser(jobId: string): void {
+    const job = this.queue.list().find((j) => j.id === jobId);
+    if (job) this.printViaHiddenFrame(job.jobType, job.data, job.printer);
+  }
+
   /**
    * Türkçe karakterleri ESC/POS ve termal yazıcılar için ASCII uyumlu metne çevirir
    */
@@ -466,6 +491,31 @@ class PrinterService {
   public async dispatchPrintJob(
     printer: PrinterConfig,
     jobType: 'KITCHEN' | 'BILL' | 'CANCEL' | 'Z_REPORT',
+    data: any,
+    opts?: { transient?: boolean }
+  ): Promise<{ success: boolean; message: string; queued?: boolean; jobId?: string }> {
+    // Geçici (donanım testi) işler kuyruğa alınmaz, doğrudan denenir.
+    if (opts?.transient) {
+      return this.deliverToHardware(printer, jobType, data);
+    }
+    // Her fiş ÖNCE kalıcı kuyruğa yazılır; sipariş kaydı ile fiziksel basım ayrı olaylardır.
+    const job = this.queue.enqueue({ printerId: printer.id, printerName: printer.name, printer, jobType, data });
+    const done = await this.queue.process(job.id);
+    if (done?.status === 'PRINTED') {
+      return { success: true, message: `[${printer.name}] fişi yazdırıldı.`, jobId: job.id };
+    }
+    return {
+      success: false,
+      queued: done?.status === 'PENDING',
+      jobId: job.id,
+      message: `[${printer.name}] yazıcısına şu an ulaşılamadı${done?.lastError ? ` (${done.lastError})` : ''}. Fiş kuyruğa alındı, otomatik tekrar denenecek.`,
+    };
+  }
+
+  /** Gerçek donanım kanallarına tek deneme yapar. Tarayıcı çerçevesi "başarılı" SAYILMAZ. */
+  private async deliverToHardware(
+    printer: PrinterConfig,
+    jobType: 'KITCHEN' | 'BILL' | 'CANCEL' | 'Z_REPORT',
     data: any
   ): Promise<{ success: boolean; message: string }> {
     // 1. Yazıcı sesli uyarı veriyorsa çal
@@ -528,15 +578,10 @@ class PrinterService {
       }
     }
 
-    // C) Browser İçi Termal Çerçevesi Fallback
-    if (!printSuccess) {
-      try {
-        this.printViaHiddenFrame(jobType, data, printer);
-        printSuccess = true;
-        resultMessage = `[${printer.name}] fiş dökümü kuyruğa alındı.`;
-      } catch (e) {
-        resultMessage = `[${printer.name}] yazıcısına ulaşılamadı.`;
-      }
+    // (Tarayıcı çerçevesi artık otomatik yedek DEĞİL: yazdırıldığını doğrulayamaz. Kullanıcı kuyruk
+    // ekranından açıkça "Tarayıcıdan yazdır" seçerse printJobViaBrowser kullanılır.)
+    if (!printSuccess && !resultMessage) {
+      resultMessage = `[${printer.name}] yazıcısına ulaşılamadı.`;
     }
 
     // D) Otomatik Yedek (Failover) Yazıcı Desteği
@@ -545,7 +590,7 @@ class PrinterService {
       const backupPrinter = allPrinters.find(p => p.id === printer.failoverPrinterId);
       if (backupPrinter && backupPrinter.id !== printer.id) {
         console.warn(`⚠️ [${printer.name}] çevrimdışı, otomatik yedek yazıcıya ([${backupPrinter.name}]) aktarılıyor...`);
-        return this.dispatchPrintJob(backupPrinter, jobType, data);
+        return this.deliverToHardware(backupPrinter, jobType, data);
       }
     }
 
@@ -1236,7 +1281,7 @@ class PrinterService {
     waiterName: string = 'Garson',
     orderNote?: string,
     isAdditionalOrder?: boolean
-  ): Promise<{ success: boolean; dispatchedCount: number; details: string[] }> {
+  ): Promise<{ success: boolean; dispatchedCount: number; queuedCount?: number; failedDetails?: string[]; details: string[] }> {
     if (!items || items.length === 0) {
       return { success: false, dispatchedCount: 0, details: ['Yazdırılacak ürün yok'] };
     }
@@ -1359,6 +1404,8 @@ class PrinterService {
     }
 
     let dispatchedCount = 0;
+    let queuedCount = 0;
+    const failedDetails: string[] = [];
     const details: string[] = [];
     const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     const orderNumber = table.order?.orderNumber || 841;
@@ -1414,14 +1461,19 @@ class PrinterService {
       if (result.success) {
         dispatchedCount++;
         details.push(`${group.targetPrinter.name} (${group.items.length} kalem)`);
+      } else {
+        queuedCount++;
+        failedDetails.push(`${group.targetPrinter.name}: ${result.message}`);
       }
     }
 
     restaurantDataService.playAudioAlert('kitchen');
 
     return {
-      success: dispatchedCount > 0,
+      success: dispatchedCount > 0 && queuedCount === 0,
       dispatchedCount,
+      queuedCount,
+      failedDetails,
       details,
     };
   }
@@ -1566,7 +1618,7 @@ class PrinterService {
       vatAmount,
     };
 
-    return await this.dispatchPrintJob(billPrinter, 'BILL', testBillData);
+    return await this.dispatchPrintJob(billPrinter, 'BILL', testBillData, { transient: true });
   }
 
   /**
@@ -1614,7 +1666,7 @@ class PrinterService {
       items: [{ name: 'Donanım & Test Çıktısı', quantity: 1, note: 'Tamamlandı' }],
       orderNote: 'Yazıcı ve kağıt kesici devrede.'
     };
-    return await this.dispatchPrintJob(printer, 'KITCHEN', testTicket);
+    return await this.dispatchPrintJob(printer, 'KITCHEN', testTicket, { transient: true });
   }
 
   /**

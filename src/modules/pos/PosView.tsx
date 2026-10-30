@@ -413,17 +413,26 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       isAdditionalOrder
     );
 
-    if (selectedTable.customerInfo) {
+    // Sipariş KAYDI ile fişin FİZİKSEL basımı ayrıdır: sipariş her durumda kaydedildi,
+    // basım sonucu aşağıda dürüstçe bildirilir.
+    const queued = (printResult as any).queuedCount || 0;
+    const customerLine = selectedTable.customerInfo
+      ? `Müşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})
+Adres: ${selectedTable.customerInfo.address}
+`
+      : '';
+    if (printResult.success) {
       notify.success(
-        '🛵 Paket Siparişi Mutfağa İletildi',
-        `Müşteri: ${selectedTable.customerInfo.name} (${selectedTable.customerInfo.phone})\nAdres: ${selectedTable.customerInfo.address}\n${printResult.success ? 'Yazıcılara fiş basıldı (' + printResult.details.join(', ') + ')' : 'Mutfak fişi gönderildi.'}`
+        selectedTable.customerInfo ? '🛵 Paket Siparişi Mutfağa İletildi' : 'Mutfak Fişleri Basıldı',
+        `${customerLine}${selectedTable.name} siparişi ilgili istasyon yazıcılarına iletildi: ${printResult.details.join(', ')}`
       );
     } else {
-      notify.success(
-        'Mutfak Fişleri Basıldı',
-        printResult.success
-          ? `${selectedTable.name} siparişi ilgili istasyon yazıcılarına iletildi: ${printResult.details.join(', ')}`
-          : `${selectedTable.name} siparişi mutfağa iletildi.`
+      notify.warning(
+        queued > 0 ? 'Sipariş Kaydedildi — Fiş BASILAMADI' : 'Sipariş Kaydedildi — Yazıcı Yok',
+        `${customerLine}${selectedTable.name} siparişi kaydedildi ancak mutfak fişi şu an basılamadı. ` +
+        (queued > 0
+          ? `Fiş yazdırma kuyruğuna alındı ve otomatik tekrar denenecek (sağ alttaki Yazdırma Kuyruğu'ndan izleyebilirsiniz). ${((printResult as any).failedDetails || []).join(' | ')}`
+          : `Ayarlar > Yazıcılar bölümünden yazıcı tanımlayın. ${printResult.details.join(', ')}`)
       );
     }
 
