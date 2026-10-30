@@ -136,8 +136,10 @@ secureHandle('get-system-usb-printers', async () => {
       return list.map(p => ({
         name: p.name,
         displayName: p.displayName || p.name,
-        isDefault: p.isDefault,
-        status: p.status === 0 ? 'ONLINE' : 'READY',
+        // Electron 45: isDefault/status alanları kaldırıldı; ayrıntı platforma özgü `options` içindedir.
+        // Gerçek çevrimiçi durumu işletim sisteminden okunamadığı için 'READY' (durum doğrulanmadı) döndürülür.
+        isDefault: String((p.options as Record<string, string> | undefined)?.['is-default'] ?? '').toLowerCase() === 'true',
+        status: 'READY',
         type: 'USB'
       }));
     } catch (e) {
