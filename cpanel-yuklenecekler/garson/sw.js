@@ -7,7 +7,8 @@
  *    kullanıcıya "bağlantı yok" gösterir.
  *  - HTML için önce ağ denenir (yeni sürüm hemen gelir), ağ yoksa önbellek kullanılır.
  */
-const VERSION = 'garson-v3';
+// SÜRÜM: index.html içindeki GARSON_VERSION ve version.json ile aynı tutulur (tools/bump-version.cjs).
+const VERSION = 'garson-v1.1.0';
 const SHELL = [
   './',
   './index.html',
@@ -24,8 +25,14 @@ const SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(VERSION).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())
+    // skipWaiting ÇAĞRILMAZ: yeni sürüm "bekler"; sayfa uygun olduğunda SKIP_WAITING mesajı gönderir
+    // (açık sepet/gönderim varken eski ve yeni dosyalar karışmasın).
+    caches.open(VERSION).then((cache) => cache.addAll(SHELL))
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -40,6 +47,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.includes('/api/')) return; // API: her zaman ağ, önbellek yok
+  if (url.pathname.endsWith('/version.json')) return; // sürüm dosyası: asla önbellek
 
   if (req.mode === 'navigate') {
     event.respondWith(
@@ -54,16 +62,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Statik dosyalar: önbellek önce, arkada tazele
+  // Statik dosyalar: ÖNCE AĞ (her zaman güncel dosya → eski/yeni karışmaz), ağ yoksa önbellek.
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone()));
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone()));
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });

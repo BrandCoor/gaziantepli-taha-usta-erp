@@ -46,7 +46,7 @@ const getJson = (u) => new Promise((ok, no) => http.get(u, (r) => { let b = ''; 
   const swReady = await ev(`Promise.race([navigator.serviceWorker.ready.then(r=>r.active && r.active.state), new Promise(r=>setTimeout(()=>r('zaman aşımı'),6000))])`);
   check('servis çalışanı kayıtlı ve aktif', swReady === 'activated', String(swReady));
   const cached = await ev(`caches.keys().then(async ks=>{let n=0;for(const k of ks){n+=(await (await caches.open(k)).keys()).length}return ks.join(',')+' / '+n+' dosya'})`);
-  check('uygulama kabuğu önbellekte', /garson-v\d+ \/ \d+ dosya/.test(cached) && parseInt(cached.split('/ ')[1]) >= 8, cached);
+  check('uygulama kabuğu önbellekte', /garson-v[\d.]+ \/ \d+ dosya/.test(cached) && parseInt(cached.split('/ ')[1]) >= 8, cached);
   const apiCached = await ev(`caches.keys().then(async ks=>{for(const k of ks){for(const r of await (await caches.open(k)).keys()){if(r.url.includes('/api/'))return true}}return false})`);
   check('API istekleri ASLA önbelleğe alınmaz', apiCached === false);
 

@@ -24,6 +24,7 @@ import {
 import { restaurantDataService, getApiSyncUrl, setApiSyncUrl } from '../../../services/restaurantDataService';
 import { getKasaApiKey, setKasaApiKey, getQrMenuUrl, setQrMenuUrl } from '../../../services/cloudAuth';
 import { notify } from '../../../services/notificationService';
+import { UpdateSettingsCard } from './UpdateSettingsCard';
 
 interface SystemBackupTabProps {
   onRefresh: () => void;
@@ -211,6 +212,7 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
   return (
     <div className="space-y-6">
       <FullBackupPanel />
+      <UpdateSettingsCard />
 
       {/* ÜST BİLGİ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">

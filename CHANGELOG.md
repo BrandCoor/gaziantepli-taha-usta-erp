@@ -14,6 +14,13 @@ Biçim: [Keep a Changelog](https://keepachangelog.com/tr/). Sürümleme: package
 - Webhook yedeği olarak **periyodik sorgulama** (Getir), ayarlarda webhook adresleri + gizli anahtar üretici.
 - **Demo/test kalıntıları kaldırıldı:** sahte test siparişi, sahte bağlantı testi, demo menü/salon/garson, kullanılmayan tohum veri üreticileri; para çekmecesi hata durumunda artık başarı yalanı söylemez.
 
+### Otomatik güncelleme sistemi (1.1.0)
+- **Kasa:** `electron-updater` ile arka planda denetim/indirme (açılışta + 4 saatte bir), SHA-512 doğrulama, bozuk paket reddi, artan aralıkla yeniden deneme, açık adisyon/ödeme varken kurulum engeli, kurulum öncesi veri anlık görüntüsü + dosya yedeği, sessiz kurulum ve otomatik yeniden açılış, kritik güncelleme politikası. Güncelleme adresi merkezi ayardan (varsayılan `<API>/updates/`).
+- **Sunucu:** `version` ucu, istemci sürüm kapısı (426 CLIENT_TOO_OLD), göç öncesi SQL yedeği + kilit + hatada durma (sürüm artmaz, `schema_last_error`), `--update` dağıtım paketi (`config.local.php` içermez).
+- **Garson PWA:** bekleyen sürüm + "Güncelle" şeridi, sepet/gönderim varken uygulanmaz, eski/yeni dosya karışmaz, oturum yenilemede korunur.
+- **Veri:** daha yeni şemalı yerel veri eski sürümle açılmaz (DATA_NEWER).
+- Araçlar: `tools/update-tools.cjs` (yayın üretimi + doğrulama), `tools/bump-version.cjs`, `tools/dev/e2e-updater.cjs`, `tools/dev/pwa-update-check.cjs`. Ayrıntı: [docs/updates.md](docs/updates.md), [docs/versioning.md](docs/versioning.md).
+
 ### Mali analiz düzeltmeleri
 - **İptal edilen adisyonlar X/Z raporunda ciro, adet ve ürün satışı olarak sayılıyordu** → artık satış sayılmaz; iptal tutarı kalem kayıtlarından bir kez toplanır (filtreli raporda iptal çift sayılıyordu).
 - **Net ciro** artık brüt − indirim − *ikram ödemesi*; ödeme dağılımının toplamına eşit (eskiden ikram ödemesi net ciroda kalıyordu).

@@ -1,6 +1,6 @@
 {
   "name": "gaziantepli-taha-usta",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Gaziantepli Taha Usta - Cari ve Personel Yonetim Sistemi",
   "main": "dist-electron/main.js",
   "author": "RYMedya",
@@ -14,7 +14,11 @@
     "build:web": "node tools/build-web-assets.cjs",
     "dev:testapi": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/dev/start-test-api.ps1",
     "test:e2e": "node tools/dev/e2e-garson.cjs",
-    "test:pwa": "node tools/dev/pwa-check.cjs http://127.0.0.1:8080/garson/"
+    "test:pwa": "node tools/dev/pwa-check.cjs http://127.0.0.1:8080/garson/",
+    "test:pwa-update": "node tools/dev/pwa-update-check.cjs",
+    "test:updater": "node tools/dev/e2e-updater.cjs",
+    "release:bump": "node tools/bump-version.cjs",
+    "release:publish": "node tools/update-tools.cjs"
   },
   "build": {
     "npmRebuild": false,
@@ -61,6 +65,7 @@
     "@zxing/browser": "^0.2.1",
     "cors": "^2.8.6",
     "decimal.js": "^10.4.3",
+    "electron-updater": "^6.8.11",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "lucide-react": "^0.468.0",

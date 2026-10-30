@@ -1,3 +1,4 @@
+import { setPaymentBusy } from '../../services/busyState';
 // POS_CANCEL: kalem iptali / masa iptali / ikram. Varsayılan yalnızca yönetici (bkz. ROLE_PERMISSIONS).
 import { getBusinessDate } from '../../utils/businessDate';
 import React, { useRef, useState, useEffect } from 'react';
@@ -121,6 +122,8 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
   const [selectedPayItemIndices, setSelectedPayItemIndices] = useState<number[]>([]);
 
   const [cariModalOpen, setCariModalOpen] = useState(false);
+  // Ödeme penceresi açıkken güncelleme kurulumu yapılmaz (bkz. updateService).
+  useEffect(() => { setPaymentBusy(checkoutModalOpen || cariModalOpen); return () => setPaymentBusy(false); }, [checkoutModalOpen, cariModalOpen]);
   const [cariSearchQuery, setCariSearchQuery] = useState('');
 
   const [transferModalOpen, setTransferModalOpen] = useState(false);

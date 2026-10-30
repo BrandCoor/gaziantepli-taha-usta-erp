@@ -28,7 +28,11 @@ const cspPlugin = () => ({
   },
 });
 
+import { readFileSync } from 'node:fs';
+const pkgVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version as string;
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
   plugins: [
     cspPlugin(),
     react(),
@@ -57,6 +61,7 @@ export default defineConfig({
                       'cors',
                       'node:sqlite',
                       'url',
+                      'electron-updater',
                     ],
                   },
                 },

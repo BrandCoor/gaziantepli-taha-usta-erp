@@ -44,6 +44,11 @@
   <!-- TOAST BİLDİRİM KAPSAYICISI (Alert Yerine)  -->
   <!-- ========================================== -->
   <div id="connBanner" class="hidden fixed top-0 left-0 right-0 z-[110] bg-rose-700 text-white text-center text-xs font-black py-1.5 px-3"></div>
+  <!-- Yeni sürüm bildirimi: sayfa kendiliğinden yenilenmez; sepet/gönderim varken uygulanmaz -->
+  <div id="updateBar" class="hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-[110] w-11/12 max-w-sm p-3 rounded-2xl bg-[#F5C877] text-[#141416] text-xs font-bold shadow-2xl items-center gap-2">
+    <span id="updateBarText" class="flex-1">Yeni sürüm hazır.</span>
+    <button id="updateBarBtn" type="button" class="px-3 py-1.5 rounded-xl bg-[#141416] text-[#F5C877] font-black">Güncelle</button>
+  </div>
   <div id="toastContainer" class="fixed top-3 left-1/2 -translate-x-1/2 z-[100] w-11/12 max-w-sm pointer-events-none flex flex-col gap-2"></div>
 
   <!-- ========================================== -->
@@ -404,9 +409,11 @@
     })();
 
     let workingApiUrl = API_ENDPOINTS[0] || '../api/index.php';
+    // Bu sayfanın sürümü (sw.js ve version.json ile AYNI olmalı; sunucu çok eski sürümü 426 ile reddeder).
+    const GARSON_VERSION = '1.1.0';
 
     async function apiFetch(action, options = {}) {
-      const headers = { 'X-Device-UUID': deviceUuid, ...(options.headers || {}) };
+      const headers = { 'X-Device-UUID': deviceUuid, 'X-Client-Type': 'garson', 'X-Client-Version': GARSON_VERSION, ...(options.headers || {}) };
       // Kalıcı cihaz anahtarı: eşleşme sonrası sunucunun verdiği, iptal edilebilir kimlik.
       if (typeof deviceToken === 'string' && deviceToken) {
         headers['X-Device-Token'] = deviceToken;
@@ -442,6 +449,10 @@
             continue;
           }
           workingApiUrl = base;
+          if (res.status === 426) {
+            // Sürüm uyumsuz: işlem YAPILMADI (sepet yerinde). Kullanıcıya açık uyarı + yenileme.
+            cloned.json().then(j => showUpdateBar((j && j.error) || 'Bu uygulama sürümü sunucu ile uyumsuz. Güncelleyin.', true)).catch(() => showUpdateBar('Bu uygulama sürümü sunucu ile uyumsuz. Güncelleyin.', true));
+          }
           if (res.status === 401 && action !== 'verify_waiter_pin' && action !== 'pair_with_code') {
             handleSessionExpired();
           }
@@ -1251,8 +1262,58 @@
     updateConnBanner();
 
     // ---- PWA: servis çalışanı (ana ekrana ekleme + çevrimdışı kabuk) ----
+    // ---- PWA güncelleme yönetimi ----
+    // Yeni sürüm arka planda indirilir ("bekleyen" servis çalışanı); garson "Güncelle" der ya da
+    // uygun olduğunda uygulanır. Sepet doluyken / sipariş gönderilirken sayfa ASLA kendiliğinden yenilenmez.
+    let swReg = null;
+    const hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+    function isBusyForReload() {
+      const btn = document.getElementById('btnFinalKitchenSend');
+      return (typeof cart !== 'undefined' && cart.length > 0) || !!(btn && btn.disabled);
+    }
+    function showUpdateBar(text, force) {
+      const bar = document.getElementById('updateBar');
+      document.getElementById('updateBarText').innerText = text;
+      bar.classList.remove('hidden'); bar.classList.add('flex');
+      document.getElementById('updateBarBtn').onclick = applyUpdate;
+      if (force) bar.style.background = '#fb7185';
+    }
+    function applyUpdate() {
+      if (isBusyForReload()) { showToast('Sepette ürün veya gönderilen sipariş var. Siparişi tamamlayıp tekrar deneyin.', 'info'); return; }
+      if (swReg && swReg.waiting) swReg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      else location.reload();
+    }
+    function markUpdateReady() { showUpdateBar('Yeni sürüm hazır. Uygun olduğunda "Güncelle"ye dokunun.'); }
+    async function checkVersionFile() {
+      try {
+        const r = await fetch('./version.json', { cache: 'no-store' });
+        const j = await r.json();
+        if (j && j.version && j.version !== GARSON_VERSION) {
+          if (swReg) swReg.update().catch(() => {});
+          if (!(swReg && swReg.waiting)) markUpdateReady(); // servis çalışanı yoksa (iOS vb.) sayfa yenilemesi yeterli
+        }
+      } catch (e) { /* çevrimdışı: sessizce geç */ }
+    }
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || window.__reloadingForUpdate) return; // ilk kurulumda yenileme yok
+        window.__reloadingForUpdate = true;
+        location.reload();
+      });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          swReg = reg;
+          if (reg.waiting && hadController) markUpdateReady();
+          reg.addEventListener('updatefound', () => {
+            const nw = reg.installing;
+            if (nw) nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) markUpdateReady(); });
+          });
+          // Tarayıcı/işletim sistemi arka planda güncelleme denetimini kısıtlayabilir; bu yüzden açıkça da denetlenir.
+          setInterval(() => { reg.update().catch(() => {}); checkVersionFile(); }, 30 * 60 * 1000);
+          document.addEventListener('visibilitychange', () => { if (!document.hidden) { reg.update().catch(() => {}); checkVersionFile(); } });
+          checkVersionFile();
+        }).catch(() => {});
+      });
     }
 
     async function fetchLiveState(isManual = false) {

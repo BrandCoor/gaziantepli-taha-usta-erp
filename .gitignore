@@ -24,3 +24,6 @@ opencode.json
 prompt.txt
 .claude/
 .github/prompts/
+
+# Sunucu: göç öncesi veri yedekleri (asla Git/paket içine girmez)
+cpanel-yuklenecekler/api/_yedek/

@@ -15,6 +15,7 @@
 
 const SEC_POLICIES = [
     'health' => 'public',
+    'version' => 'public',
     'qr_menu' => 'public',
     'qr_table_state' => 'public',
     'qr_send' => 'public',
@@ -140,7 +141,26 @@ function sec_client_ip() { return $_SERVER['REMOTE_ADDR'] ?? 'unknown'; }
  * Eylem için yetkiyi zorunlu kılar. Bilinmeyen eylem = 'kasa' (kapalı kapı).
  * Dönüş: ['who' => 'kasa'|'boss'|'device'|'public', 'identity' => ?array]
  */
+/**
+ * İstemci sürüm kapısı: X-Client-Type (kasa|garson) + X-Client-Version gönderen istemci desteklenen en eski sürümden
+ * eskiyse 426 döner (istemci "gönderildi" saymaz; sepet/adisyon yerinde kalır). Başlık yoksa eski istemci kabul edilir.
+ */
+function sec_client_version_gate($action) {
+    if (in_array($action, ['health', 'version', 'test_db', 'platform_webhook', 'online_webhook', 'qr_menu', 'qr_table_state', 'qr_send'], true)) return;
+    $type = strtolower(sec_header('X-Client-Type'));
+    $ver = sec_header('X-Client-Version');
+    if ($ver === '' || !in_array($type, ['kasa', 'garson'], true)) return;
+    $min = $type === 'kasa' ? MIN_KASA_VERSION : MIN_GARSON_VERSION;
+    if (gtu_ver_cmp($ver, $min) < 0) {
+        sec_json_exit(426, [
+            'success' => false, 'code' => 'CLIENT_TOO_OLD', 'minVersion' => $min, 'apiVersion' => GTU_API_VERSION,
+            'error' => ($type === 'kasa' ? 'Kasa' : 'Garson') . " uygulaması sürümü ({$ver}) sunucunun desteklediği en eski sürümden ({$min}) eski. İşlem yapılmadı; uygulamayı güncelleyin.",
+        ]);
+    }
+}
+
 function sec_enforce($action, $pdo) {
+    sec_client_version_gate($action);
     $policy = SEC_POLICIES[$action] ?? 'kasa';
     $ctx = ['who' => 'public', 'identity' => null];
 

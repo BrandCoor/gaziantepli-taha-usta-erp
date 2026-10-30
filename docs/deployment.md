@@ -73,3 +73,7 @@ npm run build
 npx electron-builder --win --x64     # release\GaziantepliTahaUsta-Kurulum-<sürüm>.exe
 ```
 Sürüm numarası `package.json › version` alanındadır.
+
+## Güncelleme (sürüm yayınlama)
+Kasa, sunucu ve garson sürümlerinin yayınlanması, geri dönüşü ve uyumluluğu için: [updates.md](updates.md) ve [versioning.md](versioning.md).
+Özet: `node tools/make-deploy-package.cjs --update ...` → `sunucu-guncelleme/` klasöründeki zip'ler `config.local.php` İÇERMEZ; mevcut ayarlarınız korunur.

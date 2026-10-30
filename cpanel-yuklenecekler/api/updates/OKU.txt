@@ -1,0 +1,3 @@
+Bu klasore tools/update-tools.cjs ciktisi olan "guncelleme" klasorunun ICERIGI yuklenir:
+  latest.yml, update-policy.json, SHA512SUMS.txt, GaziantepliTahaUsta-Kurulum-<surum>.exe (+ .blockmap)
+Ayrinti: docs/updates.md

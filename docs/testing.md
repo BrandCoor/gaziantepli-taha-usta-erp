@@ -71,3 +71,12 @@ Aşağıdakiler **kodda hazırdır ama bu ortamda doğrulanamadı**; kurulum gü
 | 7 | Çok garson **yük** (15 masa, 5 cihaz) ve gerçek mobil ağ gecikmesi | Cihaz/ağ yok | Yoğun saat öncesi prova |
 | 8 | Windows güvenlik duvarı/antivirüs davranışı, kod imzası olmadan SmartScreen | Hedef bilgisayar yok | Kurulum günü |
 | 9 | Z raporunun **muhasebe/mali müşavir** ile mutabakatı; %10 tek KDV oranının işletmeye uygunluğu | İş kuralı onayı gerekir | Bir gün sonu elle hesapla ile karşılaştırın |
+
+## Güncelleme sistemi testleri
+| Test | Komut | Kapsam |
+|---|---|---|
+| Birim | `npx vitest run tests/updateLogic.test.ts tests/updateTools.test.ts` | karar mantığı, yeniden deneme, bozuk paket, kurulum engeli, yayın aracı |
+| Sunucu | `TEST_API_URL=... npx vitest run tests/versioning.integration.test.ts` | version ucu, 426 kapısı, göç yedeği, idempotent göç, göç hatası |
+| Paketleme | `npx vitest run tests/deployPackage.test.ts` | güncelleme zip'inde `config.local.php` yok |
+| Garson PWA | `npm run test:pwa-update` | gerçek tarayıcı: bekleyen sürüm, bildirim, sepet doluyken uygulanmaz, önbellek, oturum |
+| Windows uçtan uca | `npm run test:updater` | gerçek kurulu uygulama: bozuk paket reddi, indirme, kurulum engeli, sessiz kurulum, veri korunumu (ön koşullar betik başında) |

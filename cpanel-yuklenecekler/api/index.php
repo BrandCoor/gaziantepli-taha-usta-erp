@@ -13,7 +13,7 @@ error_reporting(E_ALL);
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID, X-Device-Token, X-Kasa-Key, X-Session, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Device-UUID, X-Device-Token, X-Kasa-Key, X-Session, X-Requested-With, X-Client-Type, X-Client-Version');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
 
@@ -40,6 +40,19 @@ if (empty($action) && isset($inputData['action'])) {
 }
 
 require_once __DIR__ . '/security.php';
+// Sürüm bilgisi (herkese açık, gizli bilgi yok): istemciler uyumluluğu buradan denetler.
+if ($action === 'version') {
+    $schemaDb = null; $lastErr = null;
+    if ($pdo) {
+        try { $schemaDb = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn(); } catch (Exception $e) {}
+        try { $lastErr = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_last_error'")->fetchColumn() ?: null; } catch (Exception $e) {}
+    }
+    echo json_encode([
+        'success' => true, 'apiVersion' => GTU_API_VERSION, 'schemaVersion' => $schemaDb, 'schemaExpected' => gtuSchemaVersion(),
+        'minKasaVersion' => MIN_KASA_VERSION, 'minGarsonVersion' => MIN_GARSON_VERSION, 'migrationError' => $lastErr !== null,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 if (!$useMysql && $action !== 'health' && $action !== 'test_db') {
     sec_json_exit(503, ['success' => false, 'error' => 'Veritabanı yapılandırılmamış.', 'code' => 'DB_UNAVAILABLE']);
 }

@@ -10,6 +10,13 @@ Dürüst liste: aşağıdakiler **yapılmadı veya eksik**.
 - Getir uçları (giriş, aktif/onaysız sipariş, onay/hazırla/teslim/iptal) kamuya açık bilgilere göre yazıldı; payload alanları tolerant çözülür, farklıysa tanı ekranındaki ham gövdeden düzeltilmelidir.
 - **Trendyol Go Yemek ve Yemeksepeti** için sipariş okuma/onay/ret/teslim uç adresleri doğrulanamadı; ayarlardaki "gelişmiş adres" alanları doldurulana kadar bu eylemler platforma OTOMATİK iletilmez (ekranda "elle" görünür). Sipariş almak için platformun webhook'u adresimize kaydetmesi gerekir (hesap yöneticisi/partner paneli).
 
+## Güncelleme sistemi
+- **Kod imzalama sertifikası yok:** kurulum/güncelleme paketleri imzasız; bütünlük yalnızca SHA-512 + HTTPS ile korunur (yayın sunucusu ele geçirilirse saldırgan paketi değiştirebilir). Windows SmartScreen uyarı verir. Sertifika alınınca bkz. [updates.md › Kod imzalama](updates.md).
+- Sunucu (PHP) güncellemesi **otomatik değildir** (hosting erişimim yok): zip yükleme + doğrulama adımları belgelidir.
+- Kritik güvenlik güncellemesi **açık adisyon varken kurulmaz** (veri güvenliği tercihi); adisyonlar kapanmazsa gecikir.
+- Otomatik geri sürüme dönüş yoktur (güncelleyici düşürmeyi bilerek reddeder); geri dönüş = önceki kurulum dosyasını elle kurmak + gerekirse anlık görüntüyü geri yüklemek.
+- Test edilemeyenler: gerçek hosting üzerinden indirme, imza doğrulama, iOS/Android arka plan davranışı, kurulum sırasında elektrik kesintisi.
+
 ## Mimari
 - **Veri modeli hâlâ anahtar-değer (JSON) tabanlı.** Dayanıklılık SQLite ile çözüldü; ancak adisyon satırı, ödeme, stok hareketi gibi kayıtlar **ilişkisel tablolara bölünmedi** (SQL ile raporlama, kısıtlar, satır düzeyi denetim yok). Yeni özellikler (stok, çoklu şube) bunu gerektirecek; geçiş için doğrulamalı göç aracı gerekir.
 - **Kasa tek istasyon varsayar.** İkinci bir kasa bilgisayarı aynı veriyi paylaşamaz (tek örnek kilidi iki pencereyi engeller; ağ üzerinden çoklu kasa yok).

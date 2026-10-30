@@ -35,6 +35,11 @@ define('KASA_API_KEY', $__cfg('KASA_API_KEY', 'TAHA_KASA_KEY'));
 define('GARSON_URL', $__cfg('GARSON_URL', 'TAHA_GARSON_URL'));
 define('DB_CHARSET', 'utf8mb4');
 
+require_once __DIR__ . '/version.php';
+// Desteklenen en eski istemci sürümleri (varsayılan: version.php; acil durumda config.local.php ile yükseltilebilir).
+define('MIN_KASA_VERSION', $__cfg('MIN_KASA_VERSION', 'TAHA_MIN_KASA', GTU_MIN_KASA));
+define('MIN_GARSON_VERSION', $__cfg('MIN_GARSON_VERSION', 'TAHA_MIN_GARSON', GTU_MIN_GARSON));
+
 // PATRON PANELİ ŞİFRESİ
 define('DEFAULT_BOSS_PASSWORD', $__cfg('BOSS_PASSWORD', 'TAHA_BOSS_PASSWORD'));
 
@@ -660,12 +665,97 @@ function ensureDatabaseTables($pdo) {
     }
 }
 
+/** Göç öncesi veri yedeği (SQL, gzip). Başarısızsa göç UYGULANMAZ. Dosya web'den erişilemez (.htaccess). */
+function gtuBackupBeforeMigration($pdo, $from, $to) {
+    $dir = __DIR__ . '/_yedek';
+    if (!is_dir($dir) && !@mkdir($dir, 0750, true)) { throw new Exception('Yedek klasörü oluşturulamadı: _yedek'); }
+    @file_put_contents($dir . '/.htaccess', "Require all denied\nDeny from all\n");
+    @file_put_contents($dir . '/index.html', '');
+    $file = $dir . '/pre-migration-v' . $from . '-to-v' . $to . '-' . date('Ymd-His') . '.sql.gz';
+    $gz = @gzopen($file, 'wb9');
+    if (!$gz) { throw new Exception('Yedek dosyası yazılamadı'); }
+    gzwrite($gz, "-- Göç öncesi yedek v{$from} → v{$to} (" . date('c') . ")\nSET FOREIGN_KEY_CHECKS=0;\n");
+    $skip = ['rate_limits', 'online_webhook_log'];
+    $tables = $pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_NUM);
+    foreach ($tables as $t) {
+        $name = $t[0];
+        if (in_array($name, $skip, true)) continue;
+        $create = $pdo->query("SHOW CREATE TABLE `{$name}`")->fetch(PDO::FETCH_NUM);
+        gzwrite($gz, "\nDROP TABLE IF EXISTS `{$name}`;\n" . $create[1] . ";\n");
+        $offset = 0;
+        while (true) {
+            $rows = $pdo->query("SELECT * FROM `{$name}` LIMIT 500 OFFSET {$offset}")->fetchAll(PDO::FETCH_ASSOC);
+            if (!$rows) break;
+            foreach ($rows as $r) {
+                $vals = array_map(function ($v) use ($pdo) { return $v === null ? 'NULL' : $pdo->quote((string)$v); }, array_values($r));
+                gzwrite($gz, "INSERT INTO `{$name}` (`" . implode('`,`', array_keys($r)) . "`) VALUES (" . implode(',', $vals) . ");\n");
+            }
+            $offset += 500;
+        }
+    }
+    gzwrite($gz, "\nSET FOREIGN_KEY_CHECKS=1;\n-- SON\n");
+    gzclose($gz);
+    if (!is_file($file) || filesize($file) < 40) { throw new Exception('Yedek doğrulanamadı'); }
+    $all = glob($dir . '/pre-migration-*.sql.gz') ?: [];
+    sort($all);
+    foreach (array_slice($all, 0, max(0, count($all) - 5)) as $old) { @unlink($old); }
+    return $file;
+}
+
 /**
  * Sürüm numaralı şema göçü. Her sürüm yalnızca BİR KEZ çalışır; sürüm `ayarlar.schema_version` içinde tutulur.
  * Yalnızca ekleme yapılır (sütun/tablo); veri silen göç yoktur.
+ *
+ * Güvenceler: (1) eşzamanlı çalışmaya karşı kilit, (2) mevcut veri varsa göçten ÖNCE SQL yedeği (alınamazsa göç yok),
+ * (3) "zaten var" dışındaki her hata göçü DURDURUR ve sürüm numarası ARTIRILMAZ (yarım göç kayıt altına alınır).
  */
 function runSchemaMigrations($pdo) {
-    $migrations = [
+    $migrations = gtuSchemaMigrations();
+    $latest = max(array_keys($migrations));
+    try {
+        $cur = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn();
+    } catch (Exception $e) { $cur = 0; }
+    if ($cur >= $latest) return;
+
+    $locked = false;
+    try {
+        $locked = (bool)$pdo->query("SELECT GET_LOCK('gtu_schema_migrate', 20)")->fetchColumn();
+        if (!$locked) { error_log('[migrasyon] kilit alınamadı, bu istekte atlandı'); return; }
+        // kilidi beklerken başka istek bitirmiş olabilir
+        $cur = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn();
+        if ($cur >= $latest) return;
+
+        if ($cur > 0) { gtuBackupBeforeMigration($pdo, $cur, $latest); }
+
+        foreach ($migrations as $ver => $queries) {
+            if ($ver <= $cur) continue;
+            foreach ($queries as $q) {
+                try { $pdo->exec($q); }
+                catch (PDOException $e) {
+                    $errno = isset($e->errorInfo[1]) ? (int)$e->errorInfo[1] : 0;
+                    if (in_array($errno, [1060, 1061, 1050], true)) continue; // sütun/dizin/tablo zaten var → güvenli tekrar
+                    throw new Exception("Göç v{$ver} başarısız (hata {$errno}): " . $e->getMessage());
+                }
+            }
+            $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('schema_version', ?, 'Şema sürümü') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([(string)$ver]);
+            $cur = $ver;
+        }
+        $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('api_version', ?, 'Son çalışan API sürümü') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([GTU_API_VERSION]);
+        $pdo->exec("DELETE FROM `ayarlar` WHERE `anahtar` = 'schema_last_error'");
+    } catch (Exception $e) {
+        error_log('[migrasyon] ' . $e->getMessage());
+        try {
+            $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('schema_last_error', ?, 'Son göç hatası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([substr($e->getMessage(), 0, 250)]);
+        } catch (Exception $ignore) {}
+    } finally {
+        if ($locked) { try { $pdo->query("SELECT RELEASE_LOCK('gtu_schema_migrate')"); } catch (Exception $ignore) {} }
+    }
+}
+
+function gtuSchemaVersion() { return max(array_keys(gtuSchemaMigrations())); }
+
+function gtuSchemaMigrations() {
+    return [
         1 => [
             "ALTER TABLE `cihazlar` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL",
             "ALTER TABLE `cihazlar` ADD COLUMN `son_gorulme` DATETIME NULL DEFAULT NULL",
@@ -705,14 +795,4 @@ function runSchemaMigrations($pdo) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         ],
     ];
-    try {
-        $cur = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn();
-    } catch (Exception $e) { $cur = 0; }
-    foreach ($migrations as $ver => $queries) {
-        if ($ver <= $cur) continue;
-        foreach ($queries as $q) {
-            try { $pdo->exec($q); } catch (Exception $ignore) { /* sütun zaten varsa geç */ }
-        }
-        $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('schema_version', ?, 'Şema sürümü') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([(string)$ver]);
-    }
 }

@@ -29,6 +29,8 @@ export function isConfiguredApiUrl(requestUrl: string, configuredUrl: string): b
   }
 }
 
+import { APP_VERSION } from './appVersion';
+
 let installed = false;
 
 export function installCloudAuth(): void {
@@ -43,7 +45,17 @@ export function installCloudAuth(): void {
       if (key && base && isConfiguredApiUrl(url, base)) {
         const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
         if (!headers.has('X-Kasa-Key')) headers.set('X-Kasa-Key', key);
-        return original(input, { ...init, headers });
+        // Sürüm uyumluluğu: sunucu çok eski istemciyi 426 ile reddeder (sessiz veri kaybı olmasın).
+        headers.set('X-Client-Type', 'kasa');
+        headers.set('X-Client-Version', APP_VERSION);
+        return original(input, { ...init, headers }).then(async (res) => {
+          if (res.status === 426) {
+            let msg = 'Bu kasa sürümü sunucu tarafından desteklenmiyor. Uygulamayı güncelleyin.';
+            try { const j = await res.clone().json(); if (j?.error) msg = j.error; } catch {}
+            window.dispatchEvent(new CustomEvent('gtu-client-outdated', { detail: { message: msg } }));
+          }
+          return res;
+        });
       }
     } catch {}
     return original(input, init);

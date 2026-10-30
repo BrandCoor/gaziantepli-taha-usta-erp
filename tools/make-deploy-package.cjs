@@ -6,6 +6,9 @@
  *   node tools/make-deploy-package.cjs --out "C:\Users\...\YUKLEME_PAKETI" ^
  *     --api https://api.ornek.com --garson https://garson.ornek.com --menu https://qr.ornek.com --patron https://patron.ornek.com
  *
+ * GÜNCELLEME MODU (--update): çalışan sistemin kodunu yeniler. api zip'i config.local.php İÇERMEZ (mevcut ayarlar/anahtarlar
+ * ve veritabanı korunur) ve gizli anahtar dosyası üretilmez. Çıktı: 1-api-guncelleme.zip vb.
+ *
  * Gizli anahtarlar (APP_SECRET, KASA_API_KEY) ilk çalıştırmada üretilir, çıktı klasöründeki .anahtarlar.json'a yazılır (Git'e girmez)
  * ve sonraki çalıştırmalarda AYNEN yeniden kullanılır (kasaya girilen anahtar geçersiz kalmasın). Yenilemek için --yeni-anahtar verin.
  */
@@ -19,10 +22,11 @@ for (const k of ['out', 'api', 'garson', 'menu', 'patron']) if (!args[k]) { cons
 const clean = (u) => u.replace(/\/+$/, '');
 const API_BASE = clean(args.api), GARSON = clean(args.garson), MENU = clean(args.menu), PATRON = clean(args.patron);
 const apiIndex = API_BASE + '/index.php';
+const UPDATE = process.argv.includes('--update');
 
 const web = path.resolve(__dirname, '..', 'cpanel-yuklenecekler');
-const out = path.resolve(args.out);
-const keyFile = path.join(out, '.anahtarlar.json');
+const out = UPDATE ? path.join(path.resolve(args.out), 'sunucu-guncelleme') : path.resolve(args.out); // güncelleme, ilk kurulum paketlerini/anahtarlarını silmez
+const keyFile = path.join(path.resolve(args.out), '.anahtarlar.json');
 let saved = null;
 if (!process.argv.includes('--yeni-anahtar')) { try { saved = JSON.parse(fs.readFileSync(keyFile, 'utf8')); } catch (e) { saved = null; } }
 fs.rmSync(out, { recursive: true, force: true });
@@ -31,7 +35,7 @@ const tmp = path.join(out, '_hazirlik');
 
 const appSecret = (saved && saved.appSecret) || crypto.randomBytes(32).toString('hex');
 const kasaKey = (saved && saved.kasaKey) || crypto.randomBytes(24).toString('hex');
-fs.writeFileSync(keyFile, JSON.stringify({ appSecret, kasaKey }));
+if (!UPDATE) fs.writeFileSync(keyFile, JSON.stringify({ appSecret, kasaKey }));
 
 function stage(name, from, tweak) {
   const dir = path.join(tmp, name);
@@ -56,6 +60,8 @@ function zip(dir, zipPath) {
 const setConfigJs = (dir) => fs.writeFileSync(path.join(dir, 'config.js'), `window.GTU_API_URL = '${apiIndex}';\n`);
 
 stage('api', path.join(web, 'api'), (dir) => {
+  fs.rmSync(path.join(dir, '_yedek'), { recursive: true, force: true });
+  if (UPDATE) return; // güncelleme: mevcut config.local.php dokunulmaz
   fs.writeFileSync(
     path.join(dir, 'config.local.php'),
     `<?php
@@ -78,9 +84,11 @@ stage('garson', path.join(web, 'garson'), setConfigJs);
 stage('menu', path.join(web, 'menu'), setConfigJs);
 stage('patron', path.join(web, 'patron'), setConfigJs);
 
-for (const [n, f] of [['api', '1-api'], ['garson', '2-garson'], ['menu', '3-qr-menu'], ['patron', '4-patron']]) zip(path.join(tmp, n), path.join(out, `${f}.zip`));
+const sfx = UPDATE ? '-guncelleme' : '';
+for (const [n, f] of [['api', '1-api'], ['garson', '2-garson'], ['menu', '3-qr-menu'], ['patron', '4-patron']]) zip(path.join(tmp, n), path.join(out, `${f}${sfx}.zip`));
 fs.rmSync(tmp, { recursive: true, force: true });
 
+if (!UPDATE) {
 fs.writeFileSync(
   path.join(out, 'KASA-AYARLARI-GIZLI.txt'),
   `KASA PROGRAMINA GİRİLECEK BİLGİLER (Restoran & Donanım Ayarları > Bulut & Yedekleme)
@@ -91,4 +99,5 @@ QR menü adresi     : ${MENU}
 Kasa API anahtarı  : ${kasaKey}
 `
 );
+}
 console.log('Paketler hazır:', fs.readdirSync(out).join(', '));

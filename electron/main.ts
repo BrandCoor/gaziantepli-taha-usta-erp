@@ -20,6 +20,7 @@ import {
   sendToWindowsSpooler
 } from './printer';
 import { buildTicketBuffer } from './receiptBuilder';
+import { initUpdater, updaterApi } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -90,6 +91,8 @@ function createWindow() {
 
 // ===================== KALICI DEPO (SQLite) =====================
 // localStorage yazmaları Chromium tarafından gecikmeli diske yazılır; çökmede kaybolur. Asıl kaynak bu SQLite deposudur.
+/** Bu uygulama sürümünün anladığı yerel veri şeması. Daha yeni veri ile açılmaz (bkz. docs/updates.md). */
+const DATA_SCHEMA_VERSION = 1;
 let kv: KvStore | null = null;
 const kvOrThrow = (): KvStore => {
   if (!kv) throw new Error('Kalıcı depo açık değil');
@@ -119,6 +122,13 @@ secureHandle('kv-import', async (_e, { entries }) => {
 secureHandle('kv-info', async () => {
   try { return { success: true, ...kvOrThrow().info() }; } catch (e: any) { return { success: false, error: e?.message || String(e) }; }
 });
+
+// ===================== OTOMATİK GÜNCELLEME =====================
+secureHandle('update-status', async () => updaterApi.status());
+secureHandle('update-check', async () => updaterApi.check());
+secureHandle('update-install', async (_e, { openOrders, paymentInProgress }) =>
+  updaterApi.install({ openOrders: Number(openOrders) || 0, paymentInProgress: !!paymentInProgress }));
+secureHandle('update-set-feed', async (_e, { url }) => updaterApi.setFeed(String(url ?? '')));
 
 // ===================== YEDEKLEME =====================
 // Veri konumu: Electron `userData` (güncelleme/yeniden kurulumda silinmez). Yedekler ayrı klasörde tutulur.
@@ -321,13 +331,19 @@ app.whenReady().then(() => {
   log().info(`Kasa başlatıldı (sürüm ${app.getVersion()})`);
   applyBackupDirs();
   try {
-    kv = new KvStore(path.join(app.getPath('userData'), 'data', 'kasa.db'));
+    kv = new KvStore(path.join(app.getPath('userData'), 'data', 'kasa.db'), DATA_SCHEMA_VERSION);
     log().info(`Kalıcı depo açıldı: ${kv.info().path} (${kv.count()} kayıt)`);
   } catch (e) {
     log().error('Kalıcı depo açılamadı (uygulama yalnızca localStorage ile devam edecek)', e);
+    if (String((e as Error)?.message || '').startsWith('DATA_NEWER')) {
+      dialog.showErrorBox('Veri daha yeni bir sürümden', 'Bu bilgisayardaki işletme verisi, kurulu uygulamadan daha yeni bir sürümle oluşturulmuş. Veriye dokunulmadı.'+String.fromCharCode(10,10)+'Uygulamanın en son sürümünü kurun (eski kurulum dosyası ile geri dönmeyin).');
+      app.exit(1);
+      return;
+    }
   }
   startLocalServer(4545);
   createWindow();
+  initUpdater({ getKv: () => kv, log, getWindow: () => mainWindow });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -336,7 +352,10 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { try { kv?.close(); kv = null; } catch {} });
+app.on('before-quit', () => {
+  try { updaterApi.snapshotIfPending(); } catch {} // bekleyen güncelleme kapanışta kurulacaksa önce veri anlık görüntüsü
+  try { kv?.close(); kv = null; } catch {}
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

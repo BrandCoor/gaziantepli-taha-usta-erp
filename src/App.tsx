@@ -18,6 +18,7 @@ import { WaiterView, WaiterLoginView, WaiterPairingView, deviceService } from '.
 import { GlobalModal } from './components/common/GlobalModal';
 import { CallerIdPopup } from './components/common/CallerIdPopup';
 import { PrintQueueIndicator } from './components/common/PrintQueueIndicator';
+import { UpdateBanner } from './components/common/UpdateBanner';
 import { fullBackupService } from './services/fullBackupService';
 import { dataService } from './services/dataService';
 import { printerService } from './services/printerService';
@@ -196,6 +197,7 @@ export default function App() {
         setActiveTab('pos');
       }} />
       <PrintQueueIndicator />
+      <UpdateBanner />
     </div>
   );
 }

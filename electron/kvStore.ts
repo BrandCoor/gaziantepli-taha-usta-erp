@@ -22,7 +22,8 @@ export class KvStore {
   private stmtSet;
   private stmtDel;
 
-  constructor(private file: string) {
+  /** @param appSchemaVersion Bu uygulama sürümünün anladığı veri şeması. Veri daha YENİ bir sürümden geliyorsa açılmaz (sessiz bozulma olmasın). */
+  constructor(private file: string, appSchemaVersion = 1) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     this.db = new DatabaseSync(file);
     this.db.exec('PRAGMA journal_mode = WAL;');
@@ -38,7 +39,16 @@ export class KvStore {
         value TEXT NOT NULL
       );
     `);
-    this.db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')").run();
+    this.db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)").run(String(appSchemaVersion));
+    const stored = Number((this.db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value) || 1;
+    if (stored > appSchemaVersion) {
+      this.db.close();
+      throw new Error(`DATA_NEWER: veri şeması ${stored}, bu uygulama ${appSchemaVersion} sürümünü anlıyor. Uygulamayı güncelleyin; veriye dokunulmadı.`);
+    }
+    if (stored < appSchemaVersion) {
+      // Gelecekteki şema göçleri burada, ÖNCE anlık görüntü alınarak çalıştırılır.
+      this.db.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(appSchemaVersion));
+    }
     this.stmtSet = this.db.prepare('INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at');
     this.stmtDel = this.db.prepare('DELETE FROM kv WHERE key = ?');
   }
