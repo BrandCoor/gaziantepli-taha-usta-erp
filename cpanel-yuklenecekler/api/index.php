@@ -27,27 +27,10 @@ if ($pdo) {
     $useMysql = true;
 }
 
-// Fallback JSON Dosyası
+// JSON yedek modu KALDIRILDI: web'den okunabilen dosyada veri ve varsayılan parola tutmak güvenli değil.
+// Veritabanı yoksa API yalnızca 'health' yanıtı verir, diğer her şey 503 döner.
 $dbFile = __DIR__ . '/restaurant_sync.json';
-if (!$useMysql) {
-    if (!file_exists($dbFile)) {
-        $initialData = [
-            'sections' => [],
-            'tables' => [],
-            'products' => [],
-            'categories' => [],
-            'orders' => [],
-            'employees' => [],
-            'paired_devices' => [],
-            'boss_settings' => ['password' => '1453', 'approved_devices' => []],
-            'last_updated' => time()
-        ];
-        file_put_contents($dbFile, json_encode($initialData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    }
-    $db = json_decode(file_get_contents($dbFile), true) ?: [];
-    if (!isset($db['paired_devices'])) $db['paired_devices'] = [];
-    if (!isset($db['boss_settings'])) $db['boss_settings'] = ['password' => '1453', 'approved_devices' => []];
-}
+$db = [];
 
 $action = $_GET['action'] ?? '';
 $rawInput = file_get_contents('php://input');
@@ -55,6 +38,12 @@ $inputData = json_decode($rawInput, true) ?: [];
 if (empty($action) && isset($inputData['action'])) {
     $action = $inputData['action'];
 }
+
+require_once __DIR__ . '/security.php';
+if (!$useMysql && $action !== 'health' && $action !== 'test_db') {
+    sec_json_exit(503, ['success' => false, 'error' => 'Veritabanı yapılandırılmamış.', 'code' => 'DB_UNAVAILABLE']);
+}
+$authCtx = sec_enforce($action, $pdo);
 
 // Cihaz eşleme ve kimlik doğrulama işlemleri doğrudan auth.php tarafından ele alınır
 if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_device', 'pair_with_code', 'reset_device_pairing', 'login', 'waiter_login', 'check_device_status'])) {
@@ -124,7 +113,12 @@ function sort_tables_naturally_php(&$tables, $sections = []) {
 // ========================================================
 // 0. VERİTABANI BAĞLANTI TESTİ (test_db / health)
 // ========================================================
-if ($action === 'test_db' || $action === 'health') {
+if ($action === 'health' || $action === 'test_db') {
+    if ($action === 'test_db' && !sec_is_kasa()) { sec_json_exit(401, ['success' => false, 'error' => 'Yetkisiz istek.']); }
+    if ($action === 'health' && !sec_is_kasa()) {
+        echo json_encode(['success' => true, 'status' => $useMysql ? 'ONLINE' : 'DB_UNAVAILABLE', 'serverTime' => date('c')]);
+        exit;
+    }
     if ($useMysql) {
         $tableCounts = [];
         try {
@@ -165,45 +159,7 @@ if ($action === 'test_db' || $action === 'health') {
 // ========================================================
 // 1. CİHAZ EŞLEŞTİRME VE MÜHÜRLEME (pair_device)
 // ========================================================
-if ($action === 'pair_device' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    if ($input && !empty($input['waiterId'])) {
-        $waiterId = $input['waiterId'];
-        $waiterName = $input['waiterName'] ?? 'Garson';
-        $deviceUuid = $input['deviceUuid'] ?? ('TEL-' . rand(1000, 9999));
-        $deviceName = $input['deviceName'] ?? 'Mobil Cihaz';
-        $status = 'APPROVED';
-
-        if ($useMysql) {
-            $stmt = $pdo->prepare("INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `device_name`, `durum`, `eslesme_tarihi`) 
-                                   VALUES (?, ?, ?, ?, ?, NOW()) 
-                                   ON DUPLICATE KEY UPDATE `waiter_name` = VALUES(`waiter_name`), `device_uuid` = VALUES(`device_uuid`), `device_name` = VALUES(`device_name`), `durum` = VALUES(`durum`), `eslesme_tarihi` = NOW()");
-            $stmt->execute([$waiterId, $waiterName, $deviceUuid, $deviceName, $status]);
-        } else {
-            $db['paired_devices'][$waiterId] = [
-                'waiterId' => $waiterId,
-                'waiterName' => $waiterName,
-                'deviceUuid' => $deviceUuid,
-                'deviceName' => $deviceName,
-                'pairedAt' => date('Y-m-d H:i:s'),
-                'status' => $status
-            ];
-            file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        }
-
-        echo json_encode([
-            'success' => true,
-            'device' => [
-                'waiterId' => $waiterId,
-                'waiterName' => $waiterName,
-                'deviceUuid' => $deviceUuid,
-                'deviceName' => $deviceName,
-                'status' => $status
-            ]
-        ]);
-        exit;
-    }
-}
+// (Eski 'pair_device' kimliksiz kayıt yolu kaldırıldı; eşleştirme yalnızca auth.php içinde, süreli tek kullanımlık kodla yapılır.)
 
 // ========================================================
 // 2. KASA İÇİN EŞLEŞEN CİHAZLARI GETİR (get_paired_devices)
@@ -881,9 +837,10 @@ if ($action === 'delete_item' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // ========================================================
 if ($action === 'get_active_waiters') {
     if ($useMysql) {
-        $waiters = $pdo->query("SELECT `id`, `ad` as name, `rol` as role, `pozisyon` as position, `telefon` as phone, `pin`, `qr_token` as qrToken 
-                                FROM `personeller` 
-                                WHERE `aktif` = 1 AND `pin` IS NOT NULL AND `pin` != '' 
+        // PIN, telefon ve QR anahtarı ASLA döndürülmez.
+        $waiters = $pdo->query("SELECT `id`, `ad` as name, `rol` as role
+                                FROM `personeller`
+                                WHERE `aktif` = 1 AND `pin` IS NOT NULL AND `pin` != ''
                                 ORDER BY `ad` ASC")->fetchAll();
         echo json_encode(['success' => true, 'waiters' => $waiters], JSON_UNESCAPED_UNICODE);
         exit;
@@ -898,107 +855,33 @@ if ($action === 'get_active_waiters') {
 }
 
 if ($action === 'verify_waiter_pin' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $pin = trim($input['pin'] ?? '');
-    $waiterId = trim($input['waiterId'] ?? '');
-    $deviceUuid = trim($input['device_uuid'] ?? ($_SERVER['HTTP_X_DEVICE_UUID'] ?? ''));
-
-    if (empty($pin)) {
-        echo json_encode(['success' => false, 'message' => 'Lütfen PIN kodunuzu girin!']);
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $pin = trim((string)($input['pin'] ?? ''));
+    $ident = $authCtx['identity']; // eşleşmiş cihazdan geldi (sec_enforce)
+    if ($pin === '' || !$ident) {
+        sec_json_exit(400, ['success' => false, 'message' => 'Lütfen PIN kodunuzu girin!']);
+    }
+    // Brute-force koruması: cihaz başına ve garson başına
+    if (!sec_rate_limit($pdo, 'pin:dev:' . $ident['deviceHash'], 8, 600) || !sec_rate_limit($pdo, 'pin:w:' . $ident['waiterId'], 10, 600)) {
+        sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla hatalı deneme. 10 dakika sonra tekrar deneyin.']);
+    }
+    // PIN yalnızca token'daki (eşleşmiş) garsona karşı doğrulanır; istemcinin gönderdiği waiterId yok sayılır.
+    $stmt = $pdo->prepare("SELECT `id`, `ad` as name, `rol` as role, `pin` FROM `personeller` WHERE `id` = ? AND `aktif` = 1 LIMIT 1");
+    $stmt->execute([$ident['waiterId']]);
+    $w = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($w && $w['pin'] !== null && $w['pin'] !== '' && hash_equals((string)$w['pin'], $pin)) {
+        $session = sec_sign(['role' => 'waiter', 'wid' => $w['id'], 'dev' => $ident['deviceHash']], 12 * 3600);
+        if (!$session) { sec_json_exit(503, ['success' => false, 'message' => 'Sunucu gizli anahtarı yapılandırılmamış.']); }
+        try { $pdo->prepare("UPDATE `cihazlar` SET `son_gorulme` = NOW() WHERE `device_token_hash` = ?")->execute([$ident['deviceHash']]); } catch (Throwable $e) {}
+        echo json_encode([
+            'success' => true,
+            'waiter' => ['id' => $w['id'], 'name' => $w['name'], 'role' => $w['role'] ?? 'WAITER'],
+            'token' => $session,
+            'session' => $session
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
-
-    if ($useMysql) {
-        $stmt = null;
-        if (!empty($waiterId)) {
-            $stmt = $pdo->prepare("
-                SELECT `id`, `ad` as name, `rol` as role, `pin`, `device_uuid` 
-                FROM `personeller` 
-                WHERE `id` = ? AND `pin` = ? AND `aktif` = 1
-                UNION
-                SELECT `id`, `ad_soyad` as name, `rol` as role, `pin_kodu` as pin, `device_uuid` 
-                FROM `users` 
-                WHERE `id` = ? AND `pin_kodu` = ? AND `aktif` = 1
-                LIMIT 1
-            ");
-            $stmt->execute([$waiterId, $pin, $waiterId, $pin]);
-        } else {
-            $stmt = $pdo->prepare("
-                SELECT `id`, `ad` as name, `rol` as role, `pin`, `device_uuid` 
-                FROM `personeller` 
-                WHERE `pin` = ? AND `aktif` = 1
-                UNION
-                SELECT `id`, `ad_soyad` as name, `rol` as role, `pin_kodu` as pin, `device_uuid` 
-                FROM `users` 
-                WHERE `pin_kodu` = ? AND `aktif` = 1
-                LIMIT 1
-            ");
-            $stmt->execute([$pin, $pin]);
-        }
-        $w = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($w && ($w['pin'] === $pin || $pin === '1234')) {
-            // Cihaz UUID kaydı kontrolü & otomatik bağlama
-            if (!empty($deviceUuid)) {
-                try {
-                    $pdo->prepare("UPDATE `personeller` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
-                        ->execute([$deviceUuid, $w['id']]);
-                    $pdo->prepare("UPDATE `users` SET `device_uuid` = ?, `device_paired_at` = NOW() WHERE `id` = ?")
-                        ->execute([$deviceUuid, $w['id']]);
-                    $pdo->prepare("INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `durum`, `eslesme_tarihi`) 
-                                   VALUES (?, ?, ?, 'APPROVED', NOW()) 
-                                   ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `durum` = 'APPROVED', `eslesme_tarihi` = NOW()")
-                        ->execute([$w['id'], $w['name'], $deviceUuid]);
-                } catch (Exception $e) {}
-            }
-
-            echo json_encode([
-                'success' => true, 
-                'waiter' => [
-                    'id' => $w['id'],
-                    'name' => $w['name'],
-                    'role' => $w['role'] ?? 'WAITER',
-                    'pin' => $w['pin']
-                ], 
-                'token' => 'WTR-' . md5($w['id'] . time() . 'gtu_salt')
-            ], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-
-        http_response_code(401);
-        echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Yalnızca sisteme tanımlanmış garsonlar giriş yapabilir.']);
-        exit;
-    } else {
-        $emps = $db['employees'] ?? [];
-        foreach ($emps as $e) {
-            if (($e['pin'] ?? '') === $pin && ($e['isActive'] ?? true)) {
-                if (!empty($waiterId) && $e['id'] !== $waiterId) continue;
-                if (!empty($deviceUuid)) {
-                    $db['paired_devices'][$e['id']] = [
-                        'waiterId' => $e['id'],
-                        'waiterName' => $e['name'] ?? $e['fullName'] ?? 'Garson',
-                        'deviceUuid' => $deviceUuid,
-                        'pairedAt' => date('Y-m-d H:i:s'),
-                        'status' => 'APPROVED'
-                    ];
-                    @file_put_contents($dbFile, json_encode($db, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                }
-                echo json_encode([
-                    'success' => true,
-                    'waiter' => [
-                        'id' => $e['id'],
-                        'name' => $e['name'] ?? $e['fullName'],
-                        'pin' => $e['pin']
-                    ],
-                    'token' => 'WTR-' . md5($e['id'] . time())
-                ], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-        }
-        http_response_code(401);
-        echo json_encode(['success' => false, 'message' => 'Geçersiz Garson PIN Kodu! Tanımlı değilsiniz.']);
-        exit;
-    }
+    sec_json_exit(401, ['success' => false, 'message' => 'Geçersiz Garson PIN Kodu!']);
 }
 
 // ========================================================
@@ -1152,6 +1035,11 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $orderId = 'ord-' . time() . '-' . rand(100, 999);
         // Tekrar-gönderim koruması: istemci kimliği (clientOrderId) varsa sipariş kimliği ondan türetilir.
         // Aynı kimlikle gelen ikinci istek PRIMARY KEY nedeniyle yeni kayıt oluşturamaz.
+        if (($authCtx['who'] ?? '') === 'device' && !empty($authCtx['identity'])) {
+            // İstemcinin yazdığı garson adı yok sayılır; kimlik eşleşmiş cihazdan gelir.
+            $input['waiterName'] = $authCtx['identity']['waiterName'];
+            $input['waiterId'] = $authCtx['identity']['waiterId'];
+        }
         $clientOrderId = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($input['clientOrderId'] ?? ''));
         if ($clientOrderId !== '' && strlen($clientOrderId) >= 8 && strlen($clientOrderId) <= 48) {
             $orderId = 'ord-' . $clientOrderId;
@@ -1169,6 +1057,12 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $srcId = $input['sourceTableId'];
                 $tgtId = $input['targetTableId'];
 
+                $tgtChk = $pdo->prepare("SELECT `durum` FROM `masalar` WHERE `id` = ?");
+                $tgtChk->execute([$tgtId]);
+                $tgtRow = $tgtChk->fetch();
+                if (!$tgtRow || ($tgtRow['durum'] ?? 'EMPTY') !== 'EMPTY') {
+                    sec_json_exit(409, ['success' => false, 'error' => 'Hedef masa boş değil; taşıma yapılmadı.', 'code' => 'TARGET_OCCUPIED']);
+                }
                 $stmt = $pdo->prepare("SELECT `aktif_siparis`, `toplam_tutar` FROM `masalar` WHERE `id` = ?");
                 $stmt->execute([$srcId]);
                 $src = $stmt->fetch();
@@ -1199,11 +1093,41 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 }
                 $newItems = $input['items'] ?? [];
+                if (($authCtx['who'] ?? '') === 'device') {
+                    // Garson cihazından gelen fiyat/tutar GÜVENİLMEZ: ürün veritabanından yeniden hesaplanır.
+                    if (!is_array($newItems) || count($newItems) === 0 || count($newItems) > 100) {
+                        $pdo->rollBack();
+                        sec_json_exit(422, ['success' => false, 'error' => 'Sipariş kalemi geçersiz.']);
+                    }
+                    $priceStmt = $pdo->prepare("SELECT `ad`, `fiyat` FROM `urunler` WHERE `id` = ? AND `aktif` = 1");
+                    $clean = [];
+                    foreach ($newItems as $it) {
+                        $pid = (string)($it['productId'] ?? '');
+                        $qty = (int)($it['quantity'] ?? 0);
+                        $portion = (float)($it['portion'] ?? 1);
+                        if ($pid === '' || $qty < 1 || $qty > 99 || !in_array($portion, [0.5, 1.0, 1.5], true)) {
+                            $pdo->rollBack();
+                            sec_json_exit(422, ['success' => false, 'error' => 'Sipariş kalemi geçersiz.']);
+                        }
+                        $priceStmt->execute([$pid]);
+                        $prod = $priceStmt->fetch(PDO::FETCH_ASSOC);
+                        if (!$prod) {
+                            $pdo->rollBack();
+                            sec_json_exit(422, ['success' => false, 'error' => 'Ürün bulunamadı veya satışta değil.', 'code' => 'PRODUCT_UNAVAILABLE']);
+                        }
+                        $it['price'] = round((float)$prod['fiyat'] * $portion);
+                        $it['quantity'] = $qty;
+                        $it['portion'] = $portion;
+                        $it['note'] = mb_substr((string)($it['note'] ?? ''), 0, 200);
+                        $clean[] = $it;
+                    }
+                    $newItems = $clean;
+                }
                 $orderTotal = 0;
                 foreach ($newItems as $it) {
                     $orderTotal += ((float)($it['price'] ?? 0)) * ((int)($it['quantity'] ?? 1));
                 }
-                if (!empty($input['totalAmount'])) {
+                if (!empty($input['totalAmount']) && ($authCtx['who'] ?? '') !== 'device') {
                     $orderTotal = (float)$input['totalAmount'];
                 }
 
@@ -1533,67 +1457,61 @@ if ($action === 'update_platform_order_status' && $_SERVER['REQUEST_METHOD'] ===
 // ========================================================
 // 8. PATRON GİRİŞİ (boss_login) & PAROLA DEĞİŞTİRME & ÖZET RAPORLAR
 // ========================================================
+/** Patron parolasını okur: ayarlar tablosu (hash'li ya da eski düz metin) veya yapılandırma değeri. */
+function boss_stored_secret($pdo) {
+    $val = null;
+    try {
+        $val = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'")->fetchColumn();
+    } catch (Throwable $e) {}
+    $val = is_string($val) ? trim($val) : '';
+    return $val !== '' ? $val : (string)DEFAULT_BOSS_PASSWORD;
+}
+function boss_check_password($stored, $input) {
+    if ($stored === '' || $input === '') return false;
+    if (strpos($stored, '$2y$') === 0 || strpos($stored, '$argon2') === 0) return password_verify($input, $stored);
+    return hash_equals($stored, $input); // eski düz metin kayıt; başarılı girişte hash'e yükseltilir
+}
+
 if ($action === 'boss_login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $pwd = trim($input['password'] ?? '');
-    $deviceFp = $input['deviceFingerprint'] ?? '';
-
-    $bossPwd = DEFAULT_BOSS_PASSWORD;
-    if ($useMysql) {
-        $stmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'");
-        $val = $stmt ? $stmt->fetchColumn() : null;
-        if ($val && trim($val) !== '') {
-            $bossPwd = trim($val);
-        }
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $pwd = trim((string)($input['password'] ?? ''));
+    if (!sec_rate_limit($pdo, 'boss_login:' . sec_client_ip(), 5, 900)) {
+        sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla deneme. 15 dakika sonra tekrar deneyin.']);
     }
-
-    // Kesin doğrulama: Sadece kayıtlı patron parolası ile eşleşirse giriş verilir!
-    if ($pwd !== '' && $pwd === $bossPwd) {
-        $token = 'BOSS-' . md5($deviceFp . time() . 'gtu_salt_' . $bossPwd);
-        echo json_encode([
-            'success' => true, 
-            'token' => $token, 
-            'message' => 'Patron girişi başarılı'
-        ]);
+    $stored = boss_stored_secret($pdo);
+    if (boss_check_password($stored, $pwd)) {
+        $token = sec_sign(['role' => 'boss'], 8 * 3600);
+        if (!$token) { sec_json_exit(503, ['success' => false, 'message' => 'Sunucu gizli anahtarı yapılandırılmamış.']); }
+        if (strpos($stored, '$2y$') !== 0) {
+            try {
+                $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('boss_password', ?, 'Patron Parolası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")
+                    ->execute([password_hash($pwd, PASSWORD_DEFAULT)]);
+            } catch (Throwable $e) {}
+        }
+        echo json_encode(['success' => true, 'token' => $token, 'message' => 'Patron girişi başarılı']);
     } else {
-        echo json_encode([
-            'success' => false, 
-            'message' => 'Hatalı Patron Parolası! Lütfen şifrenizi kontrol ediniz.'
-        ]);
+        sec_json_exit(401, ['success' => false, 'message' => 'Hatalı Patron Parolası! Lütfen şifrenizi kontrol ediniz.']);
     }
     exit;
 }
 
 if ($action === 'change_boss_password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $currentPwd = trim($input['currentPassword'] ?? '');
-    $newPwd = trim($input['newPassword'] ?? '');
-
-    $bossPwd = DEFAULT_BOSS_PASSWORD;
-    if ($useMysql) {
-        $stmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'boss_password'");
-        $val = $stmt ? $stmt->fetchColumn() : null;
-        if ($val && trim($val) !== '') $bossPwd = trim($val);
-
-        if ($currentPwd !== $bossPwd) {
-            echo json_encode(['success' => false, 'message' => 'Mevcut patron parolası hatalı!']);
-            exit;
-        }
-
-        if (strlen($newPwd) < 4) {
-            echo json_encode(['success' => false, 'message' => 'Yeni parola en az 4 karakter olmalıdır!']);
-            exit;
-        }
-
-        $stmt = $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('boss_password', ?, 'Patron Parolası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)");
-        $stmt->execute([$newPwd]);
-
-        echo json_encode(['success' => true, 'message' => 'Patron parolası başarıyla değiştirildi.']);
-        exit;
-    } else {
-        echo json_encode(['success' => false, 'message' => 'MySQL veritabanı aktif değil!']);
-        exit;
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $currentPwd = trim((string)($input['currentPassword'] ?? ''));
+    $newPwd = trim((string)($input['newPassword'] ?? ''));
+    if (!sec_rate_limit($pdo, 'boss_chpw:' . sec_client_ip(), 5, 900)) {
+        sec_json_exit(429, ['success' => false, 'message' => 'Çok fazla deneme.']);
     }
+    if (!boss_check_password(boss_stored_secret($pdo), $currentPwd)) {
+        sec_json_exit(403, ['success' => false, 'message' => 'Mevcut patron parolası hatalı!']);
+    }
+    if (strlen($newPwd) < 8) {
+        sec_json_exit(400, ['success' => false, 'message' => 'Yeni parola en az 8 karakter olmalıdır!']);
+    }
+    $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('boss_password', ?, 'Patron Parolası') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")
+        ->execute([password_hash($newPwd, PASSWORD_DEFAULT)]);
+    echo json_encode(['success' => true, 'message' => 'Patron parolası başarıyla değiştirildi.']);
+    exit;
 }
 
 // Z-Raporları Detaylı Filtreleme ve Ekstre Çekimi

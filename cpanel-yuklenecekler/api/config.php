@@ -25,12 +25,17 @@ define('DB_PORT', $__cfg('DB_PORT', 'TAHA_DB_PORT', '3306'));
 define('DB_NAME', $__cfg('DB_NAME', 'TAHA_DB_NAME'));
 define('DB_USER', $__cfg('DB_USER', 'TAHA_DB_USER'));
 define('DB_PASS', $__cfg('DB_PASS', 'TAHA_DB_PASS'));
+// Oturum imzalama sırrı ve kasa API anahtarı (en az 32 / 24 karakter; rastgele üretin).
+define('APP_SECRET', $__cfg('APP_SECRET', 'TAHA_APP_SECRET'));
+define('KASA_API_KEY', $__cfg('KASA_API_KEY', 'TAHA_KASA_KEY'));
 define('DB_CHARSET', 'utf8mb4');
 
 // PATRON PANELİ ŞİFRESİ
 define('DEFAULT_BOSS_PASSWORD', $__cfg('BOSS_PASSWORD', 'TAHA_BOSS_PASSWORD'));
 
 // 3. PDO VERİTABANI BAĞLANTI FONKSİYONU
+date_default_timezone_set('Europe/Istanbul');
+
 function getDbConnection() {
     static $pdo = null;
     if ($pdo !== null) {
@@ -48,7 +53,7 @@ function getDbConnection() {
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
-            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET . ", time_zone = '+03:00'"
         ];
         $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         return $pdo;
@@ -642,9 +647,36 @@ function ensureDatabaseTables($pdo) {
             $pdo->exec("ALTER TABLE `personeller` ADD COLUMN `pairing_expires_at` DATETIME NULL");
         } catch (Exception $ignore) {}
 
+        runSchemaMigrations($pdo);
         return true;
     } catch (Exception $e) {
         error_log("Tablo kontrol hatası: " . $e->getMessage());
         return false;
+    }
+}
+
+/**
+ * Sürüm numaralı şema göçü. Her sürüm yalnızca BİR KEZ çalışır; sürüm `ayarlar.schema_version` içinde tutulur.
+ * Yalnızca ekleme yapılır (sütun/tablo); veri silen göç yoktur.
+ */
+function runSchemaMigrations($pdo) {
+    $migrations = [
+        1 => [
+            "ALTER TABLE `cihazlar` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL",
+            "ALTER TABLE `cihazlar` ADD COLUMN `son_gorulme` DATETIME NULL DEFAULT NULL",
+            "ALTER TABLE `personeller` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL",
+            "ALTER TABLE `personeller` ADD COLUMN `pairing_code_hash` VARCHAR(64) NULL DEFAULT NULL",
+            "CREATE TABLE IF NOT EXISTS `rate_limits` (`k` VARCHAR(190) NOT NULL, `hits` INT NOT NULL DEFAULT 0, `window_start` INT NOT NULL, PRIMARY KEY (`k`)) ENGINE=InnoDB",
+        ],
+    ];
+    try {
+        $cur = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn();
+    } catch (Exception $e) { $cur = 0; }
+    foreach ($migrations as $ver => $queries) {
+        if ($ver <= $cur) continue;
+        foreach ($queries as $q) {
+            try { $pdo->exec($q); } catch (Exception $ignore) { /* sütun zaten varsa geç */ }
+        }
+        $pdo->prepare("INSERT INTO `ayarlar` (`anahtar`, `deger`, `aciklama`) VALUES ('schema_version', ?, 'Şema sürümü') ON DUPLICATE KEY UPDATE `deger` = VALUES(`deger`)")->execute([(string)$ver]);
     }
 }

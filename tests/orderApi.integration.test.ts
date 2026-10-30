@@ -1,17 +1,11 @@
 // Yalnızca izole TEST sunucusuna karşı çalışır. Örn: TEST_API_URL=http://127.0.0.1:8080/api/index.php
 import { describe, it, expect } from 'vitest';
 
-const API = process.env.TEST_API_URL;
+import { API, call as rawCall } from './helpers/apiTestKit';
 const d = API ? describe : describe.skip;
 
-const call = async (action: string, body?: any) => {
-  const r = await fetch(`${API}?action=${action}`, {
-    method: body ? 'POST' : 'GET',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return { status: r.status, data: await r.json() as any };
-};
+// Kasa anahtarıyla çağrı (kasa tarafı akışları)
+const call = async (action: string, body?: any) => rawCall(action, { body, kasa: true });
 
 d('send_order / pull / ack (gerçek PHP+MySQL)', () => {
   const tableId = 'tbl-sec-salon-1';

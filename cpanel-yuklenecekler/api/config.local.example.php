@@ -12,4 +12,7 @@ return [
     'DB_USER' => '',
     'DB_PASS' => '',
     'BOSS_PASSWORD' => '',
+    // Rastgele üretin: php -r "echo bin2hex(random_bytes(32));"
+    'APP_SECRET' => '',     // >= 32 karakter, oturum imzalama
+    'KASA_API_KEY' => '',   // >= 24 karakter, kasa uygulamasına da aynı değer girilir
 ];

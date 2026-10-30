@@ -41,7 +41,9 @@ if ($pdo) {
         "ALTER TABLE `users` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL AFTER `pairing_expires_at`",
         "ALTER TABLE `personeller` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL AFTER `pairing_expires_at`",
         "ALTER TABLE `cihazlar` ADD COLUMN `device_token_hash` VARCHAR(64) NULL DEFAULT NULL",
-        "ALTER TABLE `cihazlar` ADD COLUMN `son_gorulme` DATETIME NULL DEFAULT NULL"
+        "ALTER TABLE `cihazlar` ADD COLUMN `son_gorulme` DATETIME NULL DEFAULT NULL",
+        "ALTER TABLE `personeller` ADD COLUMN `pairing_code_hash` VARCHAR(64) NULL DEFAULT NULL",
+        "ALTER TABLE `users` ADD COLUMN `pairing_code_hash` VARCHAR(64) NULL DEFAULT NULL"
     ];
 
     foreach ($migrationQueries as $sql) {
@@ -97,74 +99,36 @@ function hashDeviceToken($token) {
     return hash('sha256', (string)$token);
 }
 
+require_once __DIR__ . '/security.php';
+if (!$useMysql) { sec_json_exit(503, ['success' => false, 'error' => 'Veritabanı yapılandırılmamış.']); }
+$authCtx = sec_enforce($action, $pdo);
+
 switch ($action) {
     // ========================================================
     // 1. QR EŞLEŞTİRME BELİRTECİ ÜRET (KASA TARAFINDAN ÇAĞRILIR)
     // ========================================================
     case 'create_pairing_token':
     case 'generate_pairing_token':
-        $userId = trim($inputData['userId'] ?? $inputData['personelId'] ?? $_GET['userId'] ?? '');
-        if (!$userId) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'error' => 'Geçerli bir personel ID belirtilmedi.'], JSON_UNESCAPED_UNICODE);
-            exit;
+        // Yalnızca kasa çağırabilir (sec_enforce: varsayılan politika 'kasa').
+        $userId = trim((string)($inputData['userId'] ?? $inputData['personelId'] ?? $_GET['userId'] ?? ''));
+        if ($userId === '') {
+            sec_json_exit(400, ['success' => false, 'error' => 'Geçerli bir personel ID belirtilmedi.']);
+        }
+        $userStmt = $pdo->prepare("SELECT id, ad as ad_soyad, rol FROM `personeller` WHERE `id` = ? AND aktif = 1 LIMIT 1");
+        $userStmt->execute([$userId]);
+        $userData = $userStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$userData || !in_array(strtoupper($userData['rol'] ?? 'WAITER'), ['WAITER', 'GARSON'], true)) {
+            sec_json_exit(403, ['success' => false, 'error' => 'Bu hesap için cihaz eşleştirmesi başlatılamaz.']);
         }
 
-        $actorId = trim($inputData['actorId'] ?? '');
-        $actorPin = trim($inputData['actorPin'] ?? '');
-        if (!$actorId || !$actorPin) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'error' => 'Eşleştirme başlatmak için yetkili kullanıcı doğrulaması gerekir.'], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-
-        $token = bin2hex(random_bytes(32)); // Ham değer yalnızca QR yanıtında tutulur.
+        $token = bin2hex(random_bytes(32));
+        $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $tokenHash = hash('sha256', $token);
-        $expiresAt = date('Y-m-d H:i:s', time() + (5 * 60)); // 5 Dakika geçerlilik süresi
+        $codeHash = hash('sha256', $code);
+        $upd = $pdo->prepare("UPDATE `personeller` SET `pairing_secret` = ?, `pairing_code_hash` = ?, `pairing_expires_at` = DATE_ADD(NOW(), INTERVAL 5 MINUTE) WHERE `id` = ? AND `aktif` = 1");
+        $upd->execute([$tokenHash, $codeHash, $userId]);
+        $expiresAt = date('Y-m-d H:i:s', time() + (5 * 60));
 
-        if ($useMysql) {
-            $actorStmt = $pdo->prepare("SELECT id, rol FROM `users` WHERE id = ? AND pin_kodu = ? AND aktif = 1 UNION SELECT id, rol FROM `personeller` WHERE id = ? AND pin = ? AND aktif = 1 LIMIT 1");
-            $actorStmt->execute([$actorId, $actorPin, $actorId, $actorPin]);
-            $actor = $actorStmt->fetch(PDO::FETCH_ASSOC);
-            $actorRole = strtoupper($actor['rol'] ?? '');
-            if (!$actor || (!in_array($actorRole, ['ADMIN', 'MANAGER', 'CASHIER', 'KASİYER', 'YÖNETİCİ'], true) && $actorId !== $userId)) {
-                http_response_code(403);
-                echo json_encode(['success' => false, 'error' => 'Bu kullanıcı cihaz eşleştirmesi başlatma yetkisine sahip değil.'], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-            $userStmt = $pdo->prepare("SELECT id, ad_soyad, rol FROM `users` WHERE `id` = ? AND aktif = 1 UNION SELECT id, ad as ad_soyad, rol FROM `personeller` WHERE `id` = ? AND aktif = 1 LIMIT 1");
-            $userStmt->execute([$userId, $userId]);
-            $userData = $userStmt->fetch(PDO::FETCH_ASSOC);
-            if (!$userData || !in_array(strtoupper($userData['rol'] ?? 'WAITER'), ['WAITER', 'GARSON'], true)) {
-                http_response_code(403);
-                echo json_encode(['success' => false, 'error' => 'Bu hesap için cihaz eşleştirmesi başlatılamaz.'], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-
-            $pdo->beginTransaction();
-            try {
-                $stmt1 = $pdo->prepare("UPDATE `users` SET `pairing_secret` = ?, `pairing_expires_at` = ? WHERE `id` = ? AND `aktif` = 1");
-                $stmt1->execute([$tokenHash, $expiresAt, $userId]);
-                $stmt2 = $pdo->prepare("UPDATE `personeller` SET `pairing_secret` = ?, `pairing_expires_at` = ? WHERE `id` = ? AND `aktif` = 1");
-                $stmt2->execute([$tokenHash, $expiresAt, $userId]);
-                $pdo->commit();
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                throw $e;
-            }
-            $userName = $userData['ad_soyad'] ?? 'Garson';
-        } else {
-            $json = loadJsonData($dbFile);
-            if (!isset($json['pairing_tokens'])) $json['pairing_tokens'] = [];
-            $json['pairing_tokens'][$userId] = [
-                'token' => $tokenHash,
-                'expires_at' => time() + (5 * 60)
-            ];
-            saveJsonData($dbFile, $json);
-            $userName = 'Garson';
-        }
-
-        // PWA ve tarayıcı yönlendirme URL'si (Otomatik mevcut host algılama ile)
         $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) ? 'https' : 'http';
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
         $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
@@ -175,189 +139,83 @@ switch ($action) {
         echo json_encode([
             'success' => true,
             'token' => $token,
+            'pairingCode' => $code,
             'userId' => $userId,
-            'userName' => $userName,
+            'userName' => $userData['ad_soyad'] ?? 'Garson',
             'expiresAt' => $expiresAt,
             'qrUrl' => $pairingUrl,
             'appUrl' => $pairingUrl,
-            'message' => '5 dakika geçerli eşleştirme QR kodu oluşturuldu.'
+            'message' => '5 dakika geçerli, tek kullanımlık eşleştirme kodu oluşturuldu.'
         ], JSON_UNESCAPED_UNICODE);
         exit;
 
     // ========================================================
-    // ========================================================
-    // 2. MOBİL TELEFON CİHAZINI EŞLEŞTİR (GARSON PWA TARAFINDAN ÇAĞRILIR)
+    // 2. MOBİL TELEFON CİHAZINI EŞLEŞTİR (garson PWA)
+    //    Yalnızca kasanın ürettiği, süresi dolmamış, tek kullanımlık kod/QR ile. Yedek/tahmin yolu YOK.
     // ========================================================
     case 'pair_with_code':
     case 'pair_device':
-        $rawCode = trim($inputData['code'] ?? $inputData['pairingCode'] ?? $_GET['code'] ?? '');
-        $userId = trim($inputData['userId'] ?? $inputData['waiterId'] ?? $_GET['userId'] ?? '');
-        $token = trim($inputData['token'] ?? $_GET['token'] ?? '');
-        $targetDeviceUuid = trim($inputData['device_uuid'] ?? $deviceUuid);
-        $name = trim($inputData['name'] ?? $inputData['waiterName'] ?? $_GET['name'] ?? '');
-        $pin = trim($inputData['pin'] ?? $_GET['pin'] ?? '');
+        if (!sec_rate_limit($pdo, 'pair:ip:' . sec_client_ip(), 10, 600)) {
+            sec_json_exit(429, ['success' => false, 'error' => 'Çok fazla deneme. Birkaç dakika sonra tekrar deneyin.']);
+        }
+        $rawCode = preg_replace('/\D/', '', (string)($inputData['code'] ?? $inputData['pairingCode'] ?? $_GET['code'] ?? ''));
+        $token = trim((string)($inputData['token'] ?? $_GET['token'] ?? ''));
+        $userId = trim((string)($inputData['userId'] ?? $inputData['waiterId'] ?? $_GET['userId'] ?? ''));
+        $targetDeviceUuid = trim((string)($inputData['device_uuid'] ?? $deviceUuid));
+        if ($targetDeviceUuid === '' || strlen($targetDeviceUuid) > 100) {
+            $targetDeviceUuid = 'MOB-' . strtoupper(bin2hex(random_bytes(6)));
+        }
 
-        if (!$targetDeviceUuid) {
-            $targetDeviceUuid = 'MOB-' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 8));
+        $targetUser = null;
+        if ($token !== '' && $userId !== '') {
+            $st = $pdo->prepare("SELECT id, ad, rol FROM `personeller` WHERE id = ? AND pairing_secret = ? AND pairing_expires_at > NOW() AND aktif = 1 LIMIT 1");
+            $st->execute([$userId, hash('sha256', $token)]);
+            $targetUser = $st->fetch(PDO::FETCH_ASSOC);
+        } elseif (strlen($rawCode) === 6) {
+            $st = $pdo->prepare("SELECT id, ad, rol FROM `personeller` WHERE pairing_code_hash = ? AND pairing_expires_at > NOW() AND aktif = 1 LIMIT 2");
+            $st->execute([hash('sha256', $rawCode)]);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            if (count($rows) === 1) { $targetUser = $rows[0]; }
+        }
+        if (!$targetUser) {
+            sec_json_exit(401, ['success' => false, 'error' => 'Eşleştirme kodu geçersiz veya süresi dolmuş. Kasadan yeni kod alın.']);
         }
 
         $now = date('Y-m-d H:i:s');
-        $targetUser = null;
-
-        if ($useMysql) {
-            // A) Eğer 6 Haneli Kod Gönderilmişse
-            if (!empty($rawCode)) {
-                $cleanCode = preg_replace('/\D/', '', $rawCode);
-                $codeHash = hash('sha256', $rawCode);
-
-                // 1. Secret hash veya doğrudan PIN veya QR token ile ara
-                $stmt = $pdo->prepare("
-                    SELECT id, ad_soyad as ad, pin_kodu as pin, rol, device_uuid 
-                    FROM `users` 
-                    WHERE (pairing_secret = ? OR pairing_secret = ? OR pin_kodu = ? OR id = ?) AND aktif = 1
-                    UNION
-                    SELECT id, ad, pin, rol, device_uuid 
-                    FROM `personeller` 
-                    WHERE (pairing_secret = ? OR pairing_secret = ? OR pin = ? OR qr_token LIKE ? OR id = ?) AND aktif = 1
-                    LIMIT 1
-                ");
-                $stmt->execute([
-                    $codeHash, $rawCode, $cleanCode, $rawCode,
-                    $codeHash, $rawCode, $cleanCode, '%' . $rawCode . '%', $rawCode
-                ]);
-                $targetUser = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                // Eğer bulunamazsa ama aktif garsonlar varsa ilk garsonu veya fallback eşleşmeyi sağla
-                if (!$targetUser && !empty($cleanCode)) {
-                    $firstWaiter = $pdo->query("SELECT id, ad, pin, rol FROM `personeller` WHERE aktif = 1 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
-                    if ($firstWaiter) {
-                        $targetUser = $firstWaiter;
-                    }
-                }
-            }
-
-            // B) Eğer Token & User ID Gönderilmişse
-            if (!$targetUser && !empty($userId)) {
-                $checkStmt = $pdo->prepare("
-                    SELECT id, ad_soyad as ad, pin_kodu as pin, rol, pairing_secret, pairing_expires_at 
-                    FROM `users` 
-                    WHERE id = ? 
-                    UNION 
-                    SELECT id, ad, pin, rol, pairing_secret, pairing_expires_at 
-                    FROM `personeller` 
-                    WHERE id = ?
-                    LIMIT 1
-                ");
-                $checkStmt->execute([$userId, $userId]);
-                $targetUser = $checkStmt->fetch(PDO::FETCH_ASSOC);
-            }
-
-            // C) Kullanıcı yoksa otomatik oluştur
-            if (!$targetUser) {
-                $newUserId = $userId ?: 'W-' . ($cleanCode ?? rand(100, 999));
-                $waiterName = $name ?: 'Garson ' . ($cleanCode ?? '1');
-                $waiterPin = $pin ?: ($cleanCode ?? '1234');
-                try {
-                    $insPers = $pdo->prepare("INSERT INTO `personeller` (`id`, `ad`, `pin`, `rol`, `device_uuid`, `device_paired_at`, `aktif`) VALUES (?, ?, ?, 'WAITER', ?, ?, 1) ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `device_paired_at` = VALUES(`device_paired_at`)");
-                    $insPers->execute([$newUserId, $waiterName, $waiterPin, $targetDeviceUuid, $now]);
-                } catch (Exception $e) {}
-                try {
-                    $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `ad_soyad`, `pin_kodu`, `rol`, `device_uuid`, `device_paired_at`, `aktif`) VALUES (?, ?, ?, 'WAITER', ?, ?, 1) ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `device_paired_at` = VALUES(`device_paired_at`)");
-                    $insUser->execute([$newUserId, $waiterName, $waiterPin, $targetDeviceUuid, $now]);
-                } catch (Exception $e) {}
-                $targetUser = ['id' => $newUserId, 'ad' => $waiterName, 'pin' => $waiterPin, 'rol' => 'WAITER'];
-            } else {
-                $updUser = $pdo->prepare("UPDATE `users` SET `device_uuid` = ?, `device_paired_at` = ?, `pairing_secret` = NULL, `pairing_expires_at` = NULL WHERE `id` = ?");
-                $updUser->execute([$targetDeviceUuid, $now, $targetUser['id']]);
-                $updPers = $pdo->prepare("UPDATE `personeller` SET `device_uuid` = ?, `device_paired_at` = ?, `pairing_secret` = NULL, `pairing_expires_at` = NULL WHERE `id` = ?");
-                $updPers->execute([$targetDeviceUuid, $now, $targetUser['id']]);
-            }
-
-            // Kalıcı cihaz anahtarı üret: telefon bunu saklar ve bir daha QR istenmez.
-            $newDeviceToken = issueDeviceToken();
-            $newDeviceTokenHash = hashDeviceToken($newDeviceToken);
-            try {
-                $tokPers = $pdo->prepare("UPDATE `personeller` SET `device_token_hash` = ? WHERE `id` = ?");
-                $tokPers->execute([$newDeviceTokenHash, $targetUser['id']]);
-            } catch (Exception $ignore) {}
-            try {
-                $tokUser = $pdo->prepare("UPDATE `users` SET `device_token_hash` = ? WHERE `id` = ?");
-                $tokUser->execute([$newDeviceTokenHash, $targetUser['id']]);
-            } catch (Exception $ignore) {}
-
-            try {
-                $updCihaz = $pdo->prepare("
-                    INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `device_token_hash`, `durum`, `eslesme_tarihi`, `son_gorulme`)
-                    VALUES (?, ?, ?, ?, 'APPROVED', NOW(), NOW())
-                    ON DUPLICATE KEY UPDATE `device_uuid` = VALUES(`device_uuid`), `device_token_hash` = VALUES(`device_token_hash`), `durum` = 'APPROVED', `eslesme_tarihi` = NOW(), `son_gorulme` = NOW()
-                ");
-                $updCihaz->execute([$targetUser['id'], $targetUser['ad'] ?? $name ?? 'Garson', $targetDeviceUuid, $newDeviceTokenHash]);
-            } catch (Exception $ignore) {}
-
-            // PIN yanıtta DÖNDÜRÜLMEZ: eşleştirme trafiğini görebilen birine garsonun
-            // giriş kodunu vermek, cihaz kilidini anlamsız kılar.
-            echo json_encode([
-                'success' => true,
-                'message' => 'Cihazınız Başarıyla Eşleştirildi',
-                'user' => [
-                    'id' => $targetUser['id'],
-                    'ad' => $targetUser['ad'] ?? $name ?? 'Garson',
-                    'name' => $targetUser['ad'] ?? $name ?? 'Garson',
-                    'rol' => $targetUser['rol'] ?? 'WAITER',
-                    'device_paired' => true
-                ],
-                'waiterId' => $targetUser['id'],
-                'device_uuid' => $targetDeviceUuid,
-                'device_token' => $newDeviceToken,
-                'paired_at' => $now
-            ], JSON_UNESCAPED_UNICODE);
-            exit;
-        } else {
-            $json = loadJsonData($dbFile);
-            $userId = $userId ?: 'w1';
-            $waiterName = $name ?: 'Garson';
-            $waiterPin = $pin ?: ($rawCode ?: '1234');
-
-            if (!empty($json['employees'])) {
-                foreach ($json['employees'] as $e) {
-                    if (!empty($rawCode) && (($e['pin'] ?? '') === $rawCode || ($e['id'] ?? '') === $rawCode)) {
-                        $userId = $e['id'];
-                        $waiterName = $e['name'] ?? $e['ad'] ?? 'Garson';
-                        $waiterPin = $e['pin'] ?? $waiterPin;
-                        break;
-                    }
-                }
-            }
-
-            $newDeviceToken = issueDeviceToken();
-
-            if (!isset($json['paired_devices'])) $json['paired_devices'] = [];
-            $json['paired_devices'][$userId] = [
-                'device_uuid' => $targetDeviceUuid,
-                'device_token_hash' => hashDeviceToken($newDeviceToken),
-                'waiterName' => $waiterName,
-                'paired_at' => $now
-            ];
-            saveJsonData($dbFile, $json);
-
-            // PIN yanıtta döndürülmez (bkz. MySQL yolundaki açıklama).
-            echo json_encode([
-                'success' => true,
-                'message' => 'Cihazınız Başarıyla Eşleştirildi',
-                'user' => [
-                    'id' => $userId,
-                    'ad' => $waiterName,
-                    'name' => $waiterName,
-                    'rol' => 'WAITER',
-                    'device_paired' => true
-                ],
-                'waiterId' => $userId,
-                'device_uuid' => $targetDeviceUuid,
-                'device_token' => $newDeviceToken,
-                'paired_at' => $now
-            ], JSON_UNESCAPED_UNICODE);
-            exit;
+        $newDeviceToken = issueDeviceToken();
+        $newDeviceTokenHash = hashDeviceToken($newDeviceToken);
+        $pdo->beginTransaction();
+        try {
+            // Kod tek kullanımlıktır: kullanıldığı anda silinir.
+            $pdo->prepare("UPDATE `personeller` SET `device_uuid` = ?, `device_paired_at` = ?, `device_token_hash` = ?, `pairing_secret` = NULL, `pairing_code_hash` = NULL, `pairing_expires_at` = NULL WHERE `id` = ?")
+                ->execute([$targetDeviceUuid, $now, $newDeviceTokenHash, $targetUser['id']]);
+            $pdo->prepare("
+                INSERT INTO `cihazlar` (`waiter_id`, `waiter_name`, `device_uuid`, `device_token_hash`, `durum`, `eslesme_tarihi`, `son_gorulme`)
+                VALUES (?, ?, ?, ?, 'APPROVED', NOW(), NOW())
+                ON DUPLICATE KEY UPDATE `waiter_name` = VALUES(`waiter_name`), `device_uuid` = VALUES(`device_uuid`), `device_token_hash` = VALUES(`device_token_hash`), `durum` = 'APPROVED', `eslesme_tarihi` = NOW(), `son_gorulme` = NOW()
+            ")->execute([$targetUser['id'], $targetUser['ad'], $targetDeviceUuid, $newDeviceTokenHash]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            error_log('pair hata: ' . $e->getMessage());
+            sec_json_exit(500, ['success' => false, 'error' => 'Eşleştirme kaydedilemedi.']);
         }
+        try {
+            $pdo->prepare("INSERT INTO `audit_logs` (id, islem_turu, yetkili, detay, ip_adresi) VALUES (?, 'CIHAZ_ESLESTI', ?, 'Garson cihazı eşleştirildi.', ?)")
+                ->execute(['log_' . uniqid(), $targetUser['id'], sec_client_ip()]);
+        } catch (Throwable $e) {}
+
+        // PIN ve ham değerler yanıtta DÖNDÜRÜLMEZ.
+        echo json_encode([
+            'success' => true,
+            'message' => 'Cihazınız Başarıyla Eşleştirildi',
+            'user' => ['id' => $targetUser['id'], 'ad' => $targetUser['ad'], 'name' => $targetUser['ad'], 'rol' => $targetUser['rol'] ?? 'WAITER', 'device_paired' => true],
+            'waiterId' => $targetUser['id'],
+            'device_uuid' => $targetDeviceUuid,
+            'device_token' => $newDeviceToken,
+            'paired_at' => $now
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
 
     // ========================================================
     // 3. CİHAZ EŞLEŞMESİNİ SIFIRLA (KASA YÖNETİCİSİ TARAFINDAN ÇAĞRILIR)
@@ -371,11 +229,10 @@ switch ($action) {
         }
 
         if ($useMysql) {
-            $stmt1 = $pdo->prepare("UPDATE `users` SET `device_uuid` = NULL, `device_paired_at` = NULL, `pairing_secret` = NULL WHERE `id` = ?");
-            $stmt1->execute([$userId]);
-
             $stmt2 = $pdo->prepare("UPDATE `personeller` SET `device_uuid` = NULL, `device_paired_at` = NULL, `pairing_secret` = NULL WHERE `id` = ?");
             $stmt2->execute([$userId]);
+            $pdo->prepare("UPDATE `personeller` SET `device_token_hash` = NULL, `pairing_code_hash` = NULL WHERE `id` = ?")->execute([$userId]);
+            $pdo->prepare("UPDATE `cihazlar` SET `device_token_hash` = NULL, `durum` = 'REVOKED' WHERE `waiter_id` = ?")->execute([$userId]);
 
             try {
                 $logStmt = $pdo->prepare("

@@ -532,6 +532,14 @@
   </div>
 
   <script>
+    function bossFetch(url, opts) {
+      opts = opts || {};
+      const headers = Object.assign({}, opts.headers || {});
+      const t = sessionStorage.getItem('gtu_boss_token');
+      if (t) headers['Authorization'] = 'Bearer ' + t;
+      return fetch(url, Object.assign({}, opts, { headers }));
+    }
+
     const API_URL = (function() {
       const custom = localStorage.getItem('CUSTOM_API_URL');
       if (custom && custom.trim() !== '') return custom.trim();
@@ -636,7 +644,7 @@
 
     async function loadBossData(isManual = false) {
       try {
-        const res = await fetch(API_URL + '?action=get_boss_summary');
+        const res = await bossFetch(API_URL + '?action=get_boss_summary');
         const data = await res.json();
         if (data.success) {
           currentBossSummary = data;
@@ -766,7 +774,7 @@
       if (end) url += `&endDate=${end}`;
 
       try {
-        const res = await fetch(url);
+        const res = await bossFetch(url);
         const data = await res.json();
 
         if (data.success && data.zReports) {
@@ -838,7 +846,7 @@
       tbody.innerHTML = '<tr><td colspan="4" class="text-center text-[#8E8E98] py-6">Müşteriler çekiliyor...</td></tr>';
 
       try {
-        const res = await fetch(`${API_URL}?action=get_customers_overview`);
+        const res = await bossFetch(`${API_URL}?action=get_customers_overview`);
         const data = await res.json();
         if (data.success && data.customers && data.customers.length > 0) {
           tbody.innerHTML = '';
@@ -869,7 +877,7 @@
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-[#8E8E98] py-6">Personeller çekiliyor...</td></tr>';
 
       try {
-        const res = await fetch(`${API_URL}?action=get_employees_overview`);
+        const res = await bossFetch(`${API_URL}?action=get_employees_overview`);
         const data = await res.json();
         if (data.success && data.employees && data.employees.length > 0) {
           tbody.innerHTML = '';
@@ -929,7 +937,7 @@
       }
 
       try {
-        const res = await fetch(`${API_URL}?action=change_boss_password`, {
+        const res = await bossFetch(`${API_URL}?action=change_boss_password`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ currentPassword: cur, newPassword: next })
