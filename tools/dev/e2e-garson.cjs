@@ -71,7 +71,7 @@ const check = (name, ok, extra = '') => { results.push(ok); console.log((ok ? 'G
   const mainVisible = await ev(`!document.getElementById('mainApp').classList.contains('hidden')`);
   check('PIN ile giriş yapıldı, ana ekran açıldı', mainVisible === true);
   const sess = await ev(`sessionStorage.getItem('gtu_session') || ''`);
-  check('sunucu imzalı oturum verdi (PIN telefonda saklanmıyor)', sess.includes('.') && !(await ev(`JSON.stringify(localStorage)`)).includes('2468'));
+  check('sunucu imzalı oturum verdi (PIN telefonda saklanmıyor)', sess.includes('.') && (await ev(`(function(){var bad=false;[localStorage,sessionStorage].forEach(function(st){for(var i=0;i<st.length;i++){var k=st.key(i),v=st.getItem(k)||''; if(v==='2468'||/"pin"\s*:\s*"?2468"?/.test(v)||/pin/i.test(k)&&v.indexOf('2468')>-1) bad=true;}});return bad})()`)) === false);
 
   // --- 3) sipariş hazırlama (gerçek sunucu verisiyle)
   await ev(`fetchLiveState()`);

@@ -16,7 +16,7 @@ Bu belge **kodda gerçekten olan** mimariyi anlatır.
                                   │ kasanın internetten erişilebilir olması GEREKMEZ)
   ┌───────────────────────────────┴───────────────────────────────────────┐
   │  KASA BİLGİSAYARI (Windows) — Electron                                │
-  │   • React arayüz (localStorage = hızlı önbellek)                      │
+  │   • React arayüz (bellek tabanlı, SQLite'a bağlı localStorage)        │
   │   • Ana süreç: SQLite kasa.db (ASIL KAYNAK), yedek, günlük, yazdırma  │
   │   • Yerel sunucu 127.0.0.1:4545 (yazıcı + Caller ID; ağdan erişilemez)│
   │   • Kalıcı yazdırma kuyruğu                                           │
@@ -29,7 +29,7 @@ Bu belge **kodda gerçekten olan** mimariyi anlatır.
 
 | Veri | Asıl kaynak | Kopya |
 |---|---|---|
-| Masa/adisyon, ödeme, Z, cari, ürün, personel (kasa verisi) | **Kasa `kasa.db` (SQLite)** | Arayüzde localStorage önbelleği; bulutta MySQL aynası (`push_kasa_state`) |
+| Masa/adisyon, ödeme, Z, cari, ürün, personel (kasa verisi) | **Kasa `kasa.db` (SQLite)** | Arayüzde bellek önbelleği; bulutta MySQL aynası (`push_kasa_state`) |
 | Garson/QR'dan gelen **siparişler (kuyruk)** | **Bulut MySQL `siparisler`** — kasa kalıcı kaydedip onaylayana kadar | Kasada işlenince kasa verisine katılır |
 | Garson cihaz eşleşmeleri, PIN oturumları | Bulut MySQL (`cihazlar`, `personeller`) | — |
 
@@ -37,7 +37,7 @@ Bu belge **kodda gerçekten olan** mimariyi anlatır.
 - **Geçmiş kayıtlar** (Z, arşiv, cari/toptancı hareketleri, giderler): ID bazlı **birleşim**; yerel kayıt asla ezilmez.
 - **Ana veri** (ürün, kategori, personel, yazıcı, bölüm): bulut yalnızca **yerel liste boşsa** uygulanır (yeni PC'ye geri yükleme).
 - **Açık masalar**: yerelde hiç masa yoksa bulutan alınır; aksi halde kasa kazanır.
-- Kasa buluta gönderirken **silme yapmaz** (gizli "gönderilmeyeni sil" kaldırıldı); silme yalnızca açık `delete_item` ile.
+- Kasa buluta gönderirken mali/geçmiş kayıtları **silmez** (gizli "gönderilmeyeni sil" kaldırıldı); silme açık `delete_item` ile yapılır. Yalnızca düzen tabloları (boş masa/bölüm) kasanın güncel düzenine eşitlenir.
 
 ## Sipariş akışı (garson → kasa → mutfak)
 

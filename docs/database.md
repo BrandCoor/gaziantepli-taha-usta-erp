@@ -5,11 +5,11 @@
 | Ne | Nerede | Not |
 |---|---|---|
 | **Asıl veri deposu** | `%APPDATA%\gaziantepli-taha-usta\data\kasa.db` (SQLite, WAL, `synchronous=FULL`) | Her yazma anında COMMIT edilir; süreç öldürülse bile işlenmiş yazmalar korunur (testle doğrulandı) |
-| Arayüz önbelleği | Chromium `Local Storage` (aynı klasör) | Hızlı eşzamanlı okuma için; silinse/bozulsa bile açılışta SQLite'tan geri yüklenir |
+| Arayüz önbelleği | **Bellekte**, SQLite'a bağlı `localStorage` yerine geçen depo (`durableStorage.ts`) | Hızlı eşzamanlı okuma; **kota yok** (Chromium ~5-10 MB sınırı kalktı); her yazma anında SQLite'a işlenir. Chromium'un eski `Local Storage` klasörü yalnızca eski sürümden geçişte okunur ve geri dönüş için yerinde bırakılır |
 | Dosya yedekleri | `Belgelerim\GaziantepliTahaUsta-Yedekler\` (+ isteğe bağlı ikinci klasör) | [backup-restore.md](backup-restore.md) |
 | Günlükler | `%APPDATA%\gaziantepli-taha-usta\logs\kasa-YYYY-AA-GG.log` | 14 gün saklanır, gizli değerler maskelenir |
 
-`%APPDATA%\gaziantepli-taha-usta` kurulum klasöründe **değildir**; yeniden kurulum/güncelleme/kaldırmada **silinmez** (kurulum paketi `deleteAppDataOnUninstall:false`; kurulum–üzerine kurulum–kaldırma döngüsü test bilgisayarında denendi, veri klasörü yerinde kaldı).
+`%APPDATA%\gaziantepli-taha-usta` kurulum klasöründe **değildir**; yeniden kurulum/güncelleme/kaldırmada **silinmez** (kurulum paketi `deleteAppDataOnUninstall:false`; kurulum → çökme → üzerine kurulum → kaldırma → yeniden kurulum döngüsü test bilgisayarında **gerçek veriyle** denendi, veri her adımda korundu: `tools/dev/e2e-installer.ps1`).
 
 ### SQLite şeması (`kasa.db`)
 
@@ -38,7 +38,7 @@ Başlıca anahtarlar (önek `gtu_`):
 
 ### Eski sürümden geçiş
 
-İlk açılışta SQLite boşsa ve arayüzde (Chromium) veri varsa, veri **tek işlemde içe aktarılır**; SQLite doluysa içe aktarma **reddedilir** (mevcut veri ezilmez). Senaryo gerçek Electron'da test edilir (`tools/dev/e2e-durable.cjs`).
+İlk açılışta SQLite boşsa ve Chromium'un eski localStorage'ında veri varsa, veri **tek işlemde içe aktarılır**; SQLite doluysa içe aktarma **reddedilir** (mevcut veri ezilmez). Senaryo gerçek Electron'da test edilir (`tools/dev/e2e-durable.cjs`).
 
 ## Bulut (MySQL / MariaDB)
 
