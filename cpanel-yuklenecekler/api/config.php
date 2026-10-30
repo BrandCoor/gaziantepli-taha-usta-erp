@@ -1,4 +1,7 @@
 <?php
+// Üretimde hata ayrıntıları istemciye gösterilmez (tüm API uçları bu dosyayı yükler); yalnızca sunucu loguna yazılır.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
 /**
  * GAZİANTEPLİ TAHA USTA ERP - phpMyAdmin / MySQL Veritabanı Yapılandırması
  * -----------------------------------------------------------------------

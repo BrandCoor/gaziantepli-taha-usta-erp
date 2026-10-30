@@ -152,7 +152,7 @@ export default function App() {
             <span className="text-base leading-none">⚠️</span>
             <span>
               Senkronizasyon sunucusu ayarlanmadı. Garson telefonları, QR menü ve patron paneli bu kasayla
-              aynı veriyi göremez. Ayarlar &gt; Sistem &amp; Yedekleme bölümünden kendi sunucu adresinizi girin
+              aynı veriyi göremez. Restoran &amp; Donanım Ayarları &gt; Bulut &amp; Yedekleme bölümünden kendi sunucu adresinizi girin
               (örnek: https://alanadiniz.com.tr/api/index.php).
             </span>
           </div>
@@ -163,7 +163,7 @@ export default function App() {
             <span className="text-base leading-none">🔑</span>
             <span>
               Kasa API anahtarı girilmemiş: sunucu bu kasadan gelen istekleri reddeder (garson siparişleri kasaya ulaşmaz).
-              Ayarlar &gt; Sistem &amp; Yedekleme bölümünden sunucudaki KASA_API_KEY değerini girin.
+              Restoran &amp; Donanım Ayarları &gt; Bulut &amp; Yedekleme bölümünden sunucudaki KASA_API_KEY değerini girin.
             </span>
           </div>
         )}

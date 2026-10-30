@@ -55,9 +55,9 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
   }, []);
 
   const getWebhookUrl = (code: OnlinePlatformCode) => {
-    // Webhook adresi, işletmenin KENDİ sunucu adresinden türetilir (Ayarlar > Sistem). Başka bir alan adı kullanılmaz.
+    // Webhook adresi, işletmenin KENDİ sunucu adresinden türetilir (Restoran & Donanım Ayarları > Bulut & Yedekleme). Başka bir alan adı kullanılmaz.
     const api = getApiSyncUrl();
-    if (!api) return 'Önce Ayarlar > Sistem bölümünden sunucu adresini girin';
+    if (!api) return 'Önce Restoran & Donanım Ayarları > Bulut & Yedekleme bölümünden sunucu adresini girin';
     return `${api}${api.includes('?') ? '&' : '?'}action=platform_webhook&platform=${code}`;
   };
 

@@ -34,7 +34,7 @@ export const SectionsTablesTab: React.FC<SectionsTablesTabProps> = ({ sections, 
   useEffect(() => {
     if (!qrModalOpen) return;
     const api = getApiSyncUrl();
-    if (!api) { setQrTokenError('Sunucu adresi ayarlanmamış (Ayarlar > Sistem).'); return; }
+    if (!api) { setQrTokenError('Sunucu adresi ayarlanmamış (Restoran & Donanım Ayarları > Bulut & Yedekleme).'); return; }
     fetch(`${api}${api.includes('?') ? '&' : '?'}action=get_table_qr_tokens`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {

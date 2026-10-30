@@ -346,7 +346,7 @@ class OnlinePlatformService {
     if (missing.length > 0) {
       return {
         success: false,
-        message: `${p.name} için eksik bilgiler: ${missing.join(', ')}. Ayarlar > Platform API ekranından doldurun.`,
+        message: `${p.name} için eksik bilgiler: ${missing.join(', ')}. Restoran & Donanım Ayarları > Yemek Platformları (API) ekranından doldurun.`,
       };
     }
 
@@ -354,7 +354,7 @@ class OnlinePlatformService {
     if (!apiUrl) {
       return {
         success: false,
-        message: 'Senkronizasyon sunucusu ayarlanmadı. Ayarlar > Sistem & Yedekleme bölümünden kendi sunucu adresinizi girin.'
+        message: 'Senkronizasyon sunucusu ayarlanmadı. Restoran & Donanım Ayarları > Bulut & Yedekleme bölümünden kendi sunucu adresinizi girin.'
       };
     }
 

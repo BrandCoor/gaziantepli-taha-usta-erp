@@ -353,7 +353,7 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
     } else {
       notify.warning(
         'Adisyon Yazdırılamadı',
-        res.message || 'Yazıcıya bağlanılamadı. Lütfen Ayarlar > Yazıcılar sekmesinden yazıcı ayarlarınızı kontrol edin.'
+        res.message || 'Yazıcıya bağlanılamadı. Lütfen Restoran & Donanım Ayarları > Termal Yazıcılar sekmesinden yazıcı ayarlarınızı kontrol edin.'
       );
     }
   };
@@ -441,7 +441,7 @@ Adres: ${selectedTable.customerInfo.address}
         `${customerLine}${selectedTable.name} siparişi kaydedildi ancak mutfak fişi şu an basılamadı. ` +
         (queued > 0
           ? `Fiş yazdırma kuyruğuna alındı ve otomatik tekrar denenecek (sağ alttaki Yazdırma Kuyruğu'ndan izleyebilirsiniz). ${((printResult as any).failedDetails || []).join(' | ')}`
-          : `Ayarlar > Yazıcılar bölümünden yazıcı tanımlayın. ${printResult.details.join(', ')}`)
+          : `Restoran & Donanım Ayarları > Termal Yazıcılar bölümünden yazıcı tanımlayın. ${printResult.details.join(', ')}`)
       );
     }
 

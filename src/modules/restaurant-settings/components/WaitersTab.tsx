@@ -248,26 +248,21 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
   };
 
   const handleResetDevice = async (w: WaiterConfig) => {
+    let res: { success: boolean; error?: string } = { success: false, error: 'Bilinmeyen hata' };
     try {
-      await deviceService.resetDevicePairing(w.id);
-    } catch (e) {}
+      res = await deviceService.resetDevicePairing(w.id);
+    } catch (e: any) {
+      res = { success: false, error: e?.message };
+    }
     restaurantDataService.resetWaiterDevice(w.id);
-    notify.info('Cihaz Sıfırlandı', `[${w.name}] garsonunun cihaz bağlantısı sıfırlandı. Yeni QR okutularak telefon tekrar bağlanabilir.`);
-    onRefresh();
-  };
-
-  const handleQuickPair = (w: WaiterConfig) => {
-    deviceService.quickApproveAndPair(w.id);
-    notify.success('Cihaz Mühürlendi', `[${w.name}] garson cihazı başarıyla onaylandı ve mühürlendi.`);
-    if (qrModalWaiter?.id === w.id) {
-      setQrModalWaiter(prev => prev ? ({
-        ...prev,
-        status: 'APPROVED',
-        deviceName: prev.deviceName || 'Mobil Telefon'
-      }) : null);
+    if (res.success) {
+      notify.info('Cihaz Sıfırlandı', `[${w.name}] garsonunun telefon yetkisi sunucuda iptal edildi. Yeni kodla telefon tekrar bağlanabilir.`);
+    } else {
+      notify.error('Sunucuda İptal EDİLEMEDİ', res.error || 'Telefon yetkisi sunucuda hâlâ açık olabilir.');
     }
     onRefresh();
   };
+
 
   const getWaiterConnectUrl = (_w: WaiterConfig) => pairingUrl;
 
@@ -550,24 +545,18 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                   </button>
 
                   {isPaired ? (
-                    <a
-                      href={getAppWaiterTerminalUrl()}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-                      title="Garson terminalini bu tarayıcıda yeni sekmede aç"
-                    >
-                      <Smartphone className="w-4 h-4 text-amber-400" />
-                      <span>Terminali Aç</span>
-                    </a>
+                    <div className="py-2.5 bg-emerald-950/50 border border-emerald-700/60 text-emerald-300 text-xs font-black rounded-xl flex items-center justify-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <span>Telefon bağlı</span>
+                    </div>
                   ) : (
                     <button
-                      onClick={() => handleQuickPair(w)}
-                      className="py-2.5 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-700/80 text-emerald-300 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-                      title="QR okutmadan kasadan doğrudan anında onayla"
+                      onClick={() => handleOpenQrModal(w)}
+                      className="py-2.5 bg-[#141416] hover:bg-[#282830] border border-[#383844] text-white text-xs font-black rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                      title="5 dakika geçerli yeni eşleştirme kodu üret"
                     >
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      <span>⚡ Hızlı Onayla</span>
+                      <Hash className="w-4 h-4 text-[#F5C877]" />
+                      <span>Yeni Kod Üret</span>
                     </button>
                   )}
                 </div>
@@ -725,18 +714,6 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                 </strong>
               </div>
             </div>
-
-            {/* Hızlı Aksiyon: Kasadan Tek Tıkla Onayla */}
-            {qrModalWaiter.status !== 'APPROVED' && (
-              <button
-                type="button"
-                onClick={() => handleQuickPair(qrModalWaiter)}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition-all"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>⚡ Kasadan Anında Onayla & Eşleştir</span>
-              </button>
-            )}
 
             {/* Butonlar */}
             <div className="space-y-2 pt-1">
