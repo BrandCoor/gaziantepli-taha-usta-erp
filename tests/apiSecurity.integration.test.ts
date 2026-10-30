@@ -249,5 +249,4 @@ d('API güvenliği (gerçek PHP+MySQL)', () => {
       for (const h of needed) expect(allow).toContain(h);
     });
   });
-  });
 });
