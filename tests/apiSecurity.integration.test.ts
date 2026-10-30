@@ -215,7 +215,7 @@ d('API güvenliği (gerçek PHP+MySQL)', () => {
   });
 
   describe('Online platform uçları', () => {
-    const base = API!.replace('/index.php', '/online');
+    const base = (API ?? 'http://x/api/index.php').replace('/index.php', '/online');
     it('action.php ve orders.php kimliksiz çağrılamaz', async () => {
       expect((await fetch(`${base}/orders.php?action=list`)).status).toBe(401);
       expect((await fetch(`${base}/action.php?action=accept`, { method: 'POST', body: '{}' })).status).toBe(401);
@@ -237,11 +237,12 @@ d('API güvenliği (gerçek PHP+MySQL)', () => {
   });
 
   describe('CORS ön kontrol (Electron/tarayıcı)', () => {
+    const A = API ?? 'http://x/api/index.php';
     const cases: Array<[string, string, string[]]> = [
-      ['index.php', API!, ['x-kasa-key', 'x-session', 'x-device-token']],
-      ['auth.php', API!.replace('index.php', 'auth.php'), ['x-kasa-key', 'x-session', 'x-device-token']],
-      ['online/orders.php', API!.replace('index.php', 'online/orders.php'), ['x-kasa-key']],
-      ['online/action.php', API!.replace('index.php', 'online/action.php'), ['x-kasa-key']],
+      ['index.php', A, ['x-kasa-key', 'x-session', 'x-device-token']],
+      ['auth.php', A.replace('index.php', 'auth.php'), ['x-kasa-key', 'x-session', 'x-device-token']],
+      ['online/orders.php', A.replace('index.php', 'online/orders.php'), ['x-kasa-key']],
+      ['online/action.php', A.replace('index.php', 'online/action.php'), ['x-kasa-key']],
     ];
     it.each(cases)('%s gerekli özel başlıklara izin verir', async (_n, url, needed) => {
       const r = await fetch(url, { method: 'OPTIONS', headers: { Origin: 'null', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': needed.join(',') + ',content-type' } });
