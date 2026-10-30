@@ -17,3 +17,4 @@ app/
 cpanel-yuklenecekler/api/config.local.php
 prisma/*.db-journal
 .claude/settings.local.json
+cpanel-yuklenecekler/api/online/*.json

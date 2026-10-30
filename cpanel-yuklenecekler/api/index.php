@@ -275,7 +275,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($tblIds)) {
                         $inQ = implode(',', array_fill(0, count($tblIds), '?'));
-                        $pdo->prepare("DELETE FROM `masalar` WHERE `id` NOT IN ($inQ)")->execute($tblIds);
+                        $pdo->prepare("DELETE FROM `masalar` WHERE `id` NOT IN ($inQ) AND `durum` = 'EMPTY'")->execute($tblIds);
                     }
                 }
 
@@ -297,7 +297,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($catIds)) {
                         $inQ = implode(',', array_fill(0, count($catIds), '?'));
-                        $pdo->prepare("DELETE FROM `kategoriler` WHERE `id` NOT IN ($inQ)")->execute($catIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -324,7 +324,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($prodIds)) {
                         $inQ = implode(',', array_fill(0, count($prodIds), '?'));
-                        $pdo->prepare("DELETE FROM `urunler` WHERE `id` NOT IN ($inQ)")->execute($prodIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -357,7 +357,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($empIds)) {
                         $inQ = implode(',', array_fill(0, count($empIds), '?'));
-                        $pdo->prepare("DELETE FROM `personeller` WHERE `id` NOT IN ($inQ)")->execute($empIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -385,7 +385,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($epIds)) {
                         $inQ = implode(',', array_fill(0, count($epIds), '?'));
-                        $pdo->prepare("DELETE FROM `personel_hareketler` WHERE `id` NOT IN ($inQ)")->execute($epIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -409,7 +409,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($custIds)) {
                         $inQ = implode(',', array_fill(0, count($custIds), '?'));
-                        $pdo->prepare("DELETE FROM `musteriler` WHERE `id` NOT IN ($inQ)")->execute($custIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -433,7 +433,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($ctxIds)) {
                         $inQ = implode(',', array_fill(0, count($ctxIds), '?'));
-                        $pdo->prepare("DELETE FROM `cari_hareketler` WHERE `id` NOT IN ($inQ)")->execute($ctxIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -459,7 +459,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($supIds)) {
                         $inQ = implode(',', array_fill(0, count($supIds), '?'));
-                        $pdo->prepare("DELETE FROM `toptancilar` WHERE `id` NOT IN ($inQ)")->execute($supIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -484,7 +484,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($stxIds)) {
                         $inQ = implode(',', array_fill(0, count($stxIds), '?'));
-                        $pdo->prepare("DELETE FROM `toptanci_hareketler` WHERE `id` NOT IN ($inQ)")->execute($stxIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -510,7 +510,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($expIds)) {
                         $inQ = implode(',', array_fill(0, count($expIds), '?'));
-                        $pdo->prepare("DELETE FROM `giderler` WHERE `id` NOT IN ($inQ)")->execute($expIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -550,7 +550,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($zIds)) {
                         $inQ = implode(',', array_fill(0, count($zIds), '?'));
-                        $pdo->prepare("DELETE FROM `z_raporlari` WHERE `id` NOT IN ($inQ)")->execute($zIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 
@@ -580,7 +580,7 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                     }
                     if (!empty($coIds)) {
                         $inQ = implode(',', array_fill(0, count($coIds), '?'));
-                        $pdo->prepare("DELETE FROM `tamamlanan_adisyonlar` WHERE `id` NOT IN ($inQ)")->execute($coIds);
+                        // (Toplu "gönderilmeyeni sil" kaldırıldı: veri kaybı riski. Silme yalnızca delete_item ile açıkça yapılır.)
                     }
                 }
 

@@ -225,30 +225,12 @@ if ($pdo) {
     }
 }
 
-// Yedek Dosya Kuyruğu (Offline veya DB erişim sorunlarına karşı tam garanti)
-$queueFile = __DIR__ . '/online_orders_queue.json';
-$queue = [];
-if (file_exists($queueFile)) {
-    $queue = json_decode(file_get_contents($queueFile), true) ?: [];
+// Kalıcı kayıt yoksa platforma BAŞARI dönülmez: platform siparişi yeniden dener, sipariş sessizce kaybolmaz.
+if (!$savedToDb) {
+    http_response_code(503);
+    echo json_encode(['success' => false, 'error' => 'Sipariş şu an kaydedilemedi, lütfen tekrar deneyin.']);
+    exit;
 }
-$orderObject = [
-    'id' => $orderDbId ? strval($orderDbId) : ('onl-' . time() . '-' . rand(100, 999)),
-    'platform' => $platformCode,
-    'platform_order_id' => $platformOrderId,
-    'customer_name' => $customerName,
-    'customer_phone' => $customerPhone,
-    'delivery_address' => $deliveryAddress,
-    'order_note' => $orderNote,
-    'items' => $items,
-    'total_amount' => $totalAmount,
-    'payment_method' => $paymentMethod,
-    'platform_status' => $platformStatus,
-    'local_status' => 'BEKLIYOR',
-    'created_at' => date('Y-m-d H:i:s')
-];
-array_unshift($queue, $orderObject);
-$queue = array_slice($queue, 0, 200);
-@file_put_contents($queueFile, json_encode($queue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
 // Platforma HTTP 200 Başarılı Yanıtı
 echo json_encode([
