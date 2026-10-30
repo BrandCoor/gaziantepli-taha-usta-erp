@@ -21,6 +21,7 @@ import { fullBackupService } from './services/fullBackupService';
 import { dataService } from './services/dataService';
 import { printerService } from './services/printerService';
 import { isApiSyncConfigured } from './services/restaurantDataService';
+import { getKasaApiKey } from './services/cloudAuth';
 import { parseAppRoute } from './utils/routeUtils';
 
 export default function App() {
@@ -178,6 +179,16 @@ export default function App() {
               Senkronizasyon sunucusu ayarlanmadı. Garson telefonları, QR menü ve patron paneli bu kasayla
               aynı veriyi göremez. Ayarlar &gt; Sistem &amp; Yedekleme bölümünden kendi sunucu adresinizi girin
               (örnek: https://alanadiniz.com.tr/api/index.php).
+            </span>
+          </div>
+        )}
+
+        {isApiSyncConfigured() && !getKasaApiKey() && (
+          <div className="bg-amber-950/60 border-b border-amber-500/40 px-4 py-2.5 text-[11px] text-amber-200 font-bold flex items-center gap-2">
+            <span className="text-base leading-none">🔑</span>
+            <span>
+              Kasa API anahtarı girilmemiş: sunucu bu kasadan gelen istekleri reddeder (garson siparişleri kasaya ulaşmaz).
+              Ayarlar &gt; Sistem &amp; Yedekleme bölümünden sunucudaki KASA_API_KEY değerini girin.
             </span>
           </div>
         )}
