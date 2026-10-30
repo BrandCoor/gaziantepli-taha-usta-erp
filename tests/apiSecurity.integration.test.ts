@@ -235,4 +235,19 @@ d('API güvenliği (gerçek PHP+MySQL)', () => {
       testSql("UPDATE online_platforms SET webhook_secret='' WHERE platform_code='TRENDYOL'");
     });
   });
+
+  describe('CORS ön kontrol (Electron/tarayıcı)', () => {
+    const cases: Array<[string, string, string[]]> = [
+      ['index.php', API!, ['x-kasa-key', 'x-session', 'x-device-token']],
+      ['auth.php', API!.replace('index.php', 'auth.php'), ['x-kasa-key', 'x-session', 'x-device-token']],
+      ['online/orders.php', API!.replace('index.php', 'online/orders.php'), ['x-kasa-key']],
+      ['online/action.php', API!.replace('index.php', 'online/action.php'), ['x-kasa-key']],
+    ];
+    it.each(cases)('%s gerekli özel başlıklara izin verir', async (_n, url, needed) => {
+      const r = await fetch(url, { method: 'OPTIONS', headers: { Origin: 'null', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': needed.join(',') + ',content-type' } });
+      const allow = (r.headers.get('access-control-allow-headers') || '').toLowerCase();
+      for (const h of needed) expect(allow).toContain(h);
+    });
+  });
+  });
 });
