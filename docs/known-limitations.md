@@ -17,6 +17,12 @@ Dürüst liste: aşağıdakiler **yapılmadı veya eksik**.
 - Otomatik geri sürüme dönüş yoktur (güncelleyici düşürmeyi bilerek reddeder); geri dönüş = önceki kurulum dosyasını elle kurmak + gerekirse anlık görüntüyü geri yüklemek.
 - Test edilemeyenler: gerçek hosting üzerinden indirme, imza doğrulama, iOS/Android arka plan davranışı, kurulum sırasında elektrik kesintisi.
 
+## Ürün seçenekleri
+- Hammadde/reçete **maliyeti ürün başınadır** (seçenek başına değil); seçenekli üründe kâr marjı sütunu "—" gösterilir.
+- Seçenekli üründe eski 0,5x / 1,5x çarpanı kullanılmaz (seçenekler onun yerine geçer). Seçeneksiz ürünlerde çarpan aynen çalışır.
+- Yemek platformlarından (Getir/Trendyol/Yemeksepeti) gelen siparişler platformun gönderdiği ürün adıyla gelir; platform menüsündeki boyutlar bu seçeneklerle otomatik eşlenmez.
+- Seçenek eklenen/kaldırılan ürünler, kasa sunucuya eşitleyince (birkaç saniye) garson ve QR menüde güncellenir; açık sepetteki eski seçenek reddedilirse "Menüyü yenileyin" uyarısı çıkar.
+
 ## Mimari
 - **Veri modeli hâlâ anahtar-değer (JSON) tabanlı.** Dayanıklılık SQLite ile çözüldü; ancak adisyon satırı, ödeme, stok hareketi gibi kayıtlar **ilişkisel tablolara bölünmedi** (SQL ile raporlama, kısıtlar, satır düzeyi denetim yok). Yeni özellikler (stok, çoklu şube) bunu gerektirecek; geçiş için doğrulamalı göç aracı gerekir.
 - **Kasa tek istasyon varsayar.** İkinci bir kasa bilgisayarı aynı veriyi paylaşamaz (tek örnek kilidi iki pencereyi engeller; ağ üzerinden çoklu kasa yok).

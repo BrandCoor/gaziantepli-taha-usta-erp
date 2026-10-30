@@ -1,3 +1,4 @@
+import type { ProductVariant } from '../utils/variants';
 // Gaziantepli Taha Usta - Restoran Veri Servisi (Gider, Toptancı & Net Kasa Destekli Z Raporu)
 import { mergeById, safeParseArray } from './syncMerge';
 import { getBusinessDate, formatLocalDate } from '../utils/businessDate';
@@ -38,6 +39,8 @@ export interface TableState {
 export interface OrderItemState {
   id: string;
   productId: string;
+  /** Seçenekli üründe seçilen seçeneğin kimliği; productName "Ürün (Seçenek)" biçimindedir. */
+  variantId?: string;
   productName: string;
   categoryName?: string;
   price: number;
@@ -216,6 +219,8 @@ export interface CategoryConfig {
 
 export interface ProductConfig {
   id: string;
+  /** Boyut/porsiyon seçenekleri (her birinin kendi sabit fiyatı). Varsa `price` = en düşük seçenek fiyatıdır. Bkz. src/utils/variants.ts */
+  variants?: ProductVariant[];
   categoryId: string;
   name: string;
   price: number;

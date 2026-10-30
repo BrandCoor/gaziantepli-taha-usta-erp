@@ -162,10 +162,13 @@
         <div class="flex items-start justify-between gap-3">
           <div>
             <h3 id="modalProductName" class="text-base font-black text-white">Ürün Adı</h3>
-            <p id="modalProductDesc" class="text-xs text-[#A8A8B4] mt-1 leading-relaxed">Özel Antep baharatları ile marine edilmiş leziz sunum.</p>
+            <p id="modalProductDesc" class="text-xs text-[#A8A8B4] mt-1 leading-relaxed"></p>
           </div>
           <span id="modalProductPrice" class="text-lg font-black text-[#F5C877] font-mono shrink-0">0.00 ₺</span>
         </div>
+
+        <!-- Boyut / porsiyon seçenekleri -->
+        <div id="modalVariantBox" class="hidden space-y-1.5"></div>
 
         <!-- Hızlı İstek Seçenekleri -->
         <div class="space-y-1.5 pt-2 border-t border-[#2C2C34]">
@@ -456,34 +459,10 @@
       }
     }
 
-    // Yedek / Varsayılan Menü (İnternet veya API geçici olarak yavaş/kapalıysa anında yüklenir)
-    const FALLBACK_CATEGORIES = [
-      { id: 'cat-kebap', name: 'Kebaplar & Izgaralar' },
-      { id: 'cat-firin', name: 'Pide & Lahmacun' },
-      { id: 'cat-corba', name: 'Çorbalar & Mezeler' },
-      { id: 'cat-icecek', name: 'İçecekler & Meşrubat' },
-      { id: 'cat-tatli', name: 'Tatlılar & Meyve' }
-    ];
-
-    // Yedek / Varsayılan Bölüm ve Masalar (Kasa ERP ile 100% Uyumlu)
-    const FALLBACK_SECTIONS = [
-      { id: 'sec-salon', name: 'Ana Salon', tableCount: 12, capacityPerTable: 4 },
-      { id: 'sec-bahce', name: 'Bahçe', tableCount: 10, capacityPerTable: 6 },
-      { id: 'sec-paket', name: 'Paket Servis', tableCount: 8, capacityPerTable: 1 }
-    ];
-
-    const FALLBACK_PRODUCTS = [
-      { id: 'p1', categoryId: 'cat-kebap', name: 'Adana Kebap (Porsiyon)', price: 320, preparationMin: 15, imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&auto=format&fit=crop&q=80', description: 'Zırhla çekilmiş kuzu eti, pul biber ve özel baharatlarla kömür ateşinde pişirilir. Köz garnitür ile sunulur.' },
-      { id: 'p2', categoryId: 'cat-kebap', name: 'Urfa Kebap (Porsiyon)', price: 320, preparationMin: 15, imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80', description: 'Acısız, zırhta çekilmiş taze kuzu eti. Közlenmiş biber ve domates eşliğinde servis edilir.' },
-      { id: 'p3', categoryId: 'cat-kebap', name: 'Kuzu Şiş Kebap', price: 380, preparationMin: 18, imageUrl: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=600&auto=format&fit=crop&q=80', description: 'Marine edilmiş yumuşacık kuzu but etleri, odun kömüründe özel şişlerde pişirilir.' },
-      { id: 'p4', categoryId: 'cat-kebap', name: 'Ali Nazik Kebap', price: 390, preparationMin: 20, imageUrl: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=600&auto=format&fit=crop&q=80', description: 'Közlenmiş patlıcanlı süzme yoğurt yatağında tereyağlı kuzu eti parçaları.' },
-      { id: 'p5', categoryId: 'cat-firin', name: 'Gaziantep Lahmacun', price: 110, preparationMin: 8, imageUrl: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=600&auto=format&fit=crop&q=80', description: 'İncecik çıtır Antep hamuru, zırh kıyması, sarımsak, maydanoz ve taş fırın lezzeti.' },
-      { id: 'p6', categoryId: 'cat-firin', name: 'Kuşbaşılı Kaşarlı Pide', price: 280, preparationMin: 12, imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&auto=format&fit=crop&q=80', description: 'Marine kuşbaşı kuzu eti, domates, biber ve eriyen leziz kaşar peyniri.' },
-      { id: 'p7', categoryId: 'cat-firin', name: 'Kıymalı Kaşarlı Pide', price: 260, preparationMin: 10, imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&auto=format&fit=crop&q=80', description: 'Geleneksel kıymalı iç harç ve bol kaşar peyniri ile taş fırında tereyağlı lezzet.' },
-      { id: 'p8', categoryId: 'cat-icecek', name: 'Açık Yayık Ayranı', price: 40, preparationMin: 1, imageUrl: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=600&auto=format&fit=crop&q=80', description: 'Bol köpüklü, doğal köy yoğurdundan taze çalkalanmış soğuk yayık ayranı.' },
-      { id: 'p9', categoryId: 'cat-icecek', name: 'Kutu İçecekler / Kola', price: 60, preparationMin: 1, imageUrl: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=600&auto=format&fit=crop&q=80', description: 'Kutu 330ml soğuk içecekler (Coca-Cola, Fanta, Sprite, Cappy).' },
-      { id: 'p10', categoryId: 'cat-tatli', name: 'Havuç Dilim Baklava (Dondurmalı)', price: 240, preparationMin: 5, imageUrl: 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?w=600&auto=format&fit=crop&q=80', description: 'Hakiki Antep fıstıklı, çıtır kat kat sıcak şerbetli havuç dilimi ve Maraş dondurması.' }
-    ];
+    // Menü yalnızca sunucudan gelir. Uydurma/yedek menü, bölüm ve masa YOKTUR.
+    const FALLBACK_CATEGORIES = [];
+    const FALLBACK_SECTIONS = [];
+    const FALLBACK_PRODUCTS = [];
 
     // API'den Canlı Menü ve Masa Durumunu Çek
     async function fetchMenuData() {
@@ -651,18 +630,10 @@
     }
 
     // Yemek Görseli Getirici
+    // Görsel yoksa nötr tabak simgesi (dış sitelerden hazır/stok fotoğraf YOKTUR)
+    const PLACEHOLDER_IMG = 'data:image/svg+xml;utf8,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'><rect width='400' height='300' fill='#24242A'/><circle cx='200' cy='150' r='62' fill='none' stroke='#4A4A56' stroke-width='6'/><circle cx='200' cy='150' r='36' fill='none' stroke='#4A4A56' stroke-width='4'/></svg>");
     function getDishImage(p) {
-      if (p && p.imageUrl && p.imageUrl.trim().length > 5) return p.imageUrl;
-      const name = (p && p.name) ? p.name.toLowerCase() : '';
-      if (name.includes('ali nazik')) return 'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80';
-      if (name.includes('beyti') || name.includes('adana') || name.includes('kebap') || name.includes('urfa') || name.includes('kuşbaşı') || name.includes('kıyma')) return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&auto=format&fit=crop&q=80';
-      if (name.includes('lahmacun')) return 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=600&auto=format&fit=crop&q=80';
-      if (name.includes('pide') || name.includes('kaşarlı') || name.includes('sucuklu')) return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&auto=format&fit=crop&q=80';
-      if (name.includes('çorba') || name.includes('beyran') || name.includes('kelle') || name.includes('ayak')) return 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=600&auto=format&fit=crop&q=80';
-      if (name.includes('baklava') || name.includes('kadayıf') || name.includes('katmer') || name.includes('künefe') || name.includes('tatlı')) return 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?w=600&auto=format&fit=crop&q=80';
-      if (name.includes('ayran') || name.includes('şalgam') || name.includes('kola') || name.includes('fanta') || name.includes('su') || name.includes('içecek') || name.includes('gazoz')) return 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=600&auto=format&fit=crop&q=80';
-      if (name.includes('salata') || name.includes('ezme') || name.includes('meze') || name.includes('cacık')) return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600&auto=format&fit=crop&q=80';
-      return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&auto=format&fit=crop&q=80';
+      return (p && p.imageUrl && p.imageUrl.trim().length > 5) ? p.imageUrl : PLACEHOLDER_IMG;
     }
 
     // Kategorileri Çiz
@@ -738,11 +709,11 @@
         card.onclick = () => openProductModal(p);
 
         const imgUrl = getDishImage(p);
-        const descText = p.description || 'Gaziantep usulü meşe odunu ateşinde özel pişirim.';
+        const descText = p.description || '';
 
         card.innerHTML = `
           <div class="relative w-24 h-24 rounded-2xl overflow-hidden bg-[#141416] shrink-0 border border-[#2C2C34]">
-            <img src="${imgUrl}" alt="${p.name}" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&auto=format&fit=crop&q=80';" />
+            <img src="${imgUrl}" alt="${p.name}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src=PLACEHOLDER_IMG;" />
             <span class="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm text-[8px] text-[#F5C877] font-black rounded-md">
               ⏱️ ${p.preparationMin || 15}dk
             </span>
@@ -755,7 +726,7 @@
             </div>
 
             <div class="flex items-center justify-between mt-1 pt-1.5 border-t border-[#2C2C34]/60">
-              <span class="text-sm font-black text-[#F5C877] font-mono">${p.price} ₺</span>
+              <span class="text-sm font-black text-[#F5C877] font-mono">${(p.variants && p.variants.length) ? Math.min.apply(null, p.variants.map(v => Number(v.price))) + ' ₺\'den' : p.price + ' ₺'}</span>
               <button class="px-2.5 py-1 bg-[#F5C877] text-[#141416] rounded-xl text-[11px] font-black flex items-center gap-1 shadow-md active:scale-90 transition-transform">
                 <i class="fa-solid fa-plus text-[9px]"></i>
                 <span>Ekle</span>
@@ -788,16 +759,39 @@
     }
 
     // Ürün Detay Modalı
+    let modalVariant = null;
+    const effectivePrice = () => (modalVariant ? Number(modalVariant.price) : Number(activeDetailProduct.price));
+    function renderModalVariants() {
+      const box = document.getElementById('modalVariantBox');
+      box.innerHTML = '';
+      const vs = (activeDetailProduct && activeDetailProduct.variants) || [];
+      if (!vs.length) { box.classList.add('hidden'); return; }
+      box.classList.remove('hidden');
+      vs.forEach(v => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        const on = modalVariant && modalVariant.id === v.id;
+        b.className = 'flex items-center justify-between w-full px-3 py-2.5 rounded-xl border text-left ' + (on ? 'border-[#F5C877] bg-[#F5C877]/10' : 'border-[#2C2C34] bg-[#18181C]');
+        const n = document.createElement('span'); n.className = 'text-xs font-black text-white'; n.textContent = v.name;
+        const pr = document.createElement('span'); pr.className = 'text-xs font-black text-[#F5C877] font-mono'; pr.textContent = Number(v.price).toFixed(2) + ' ₺';
+        b.appendChild(n); b.appendChild(pr);
+        b.onclick = () => { modalVariant = v; renderModalVariants(); document.getElementById('modalProductPrice').innerText = Number(v.price).toFixed(2) + ' ₺'; updateModalAddBtnText(); };
+        box.appendChild(b);
+      });
+    }
+
     function openProductModal(p) {
       activeDetailProduct = p;
+      modalVariant = (p.variants && p.variants.length) ? p.variants[0] : null; // en düşük/ilk seçenek seçili gelir; müşteri değiştirebilir
       modalQuantity = 1;
       document.getElementById('modalItemCustomNote').value = '';
 
       document.getElementById('modalProductImg').src = getDishImage(p);
       document.getElementById('modalProductName').innerText = p.name;
-      document.getElementById('modalProductDesc').innerText = p.description || 'Geleneksel Gaziantep tarifiyle meşe kömüründe özenle hazırlanmaktadır.';
+      document.getElementById('modalProductDesc').innerText = p.description || '';
       document.getElementById('modalProductPrep').innerText = `⏱️ ${p.preparationMin || 15} dk`;
-      document.getElementById('modalProductPrice').innerText = `${p.price} ₺`;
+      document.getElementById('modalProductPrice').innerText = `${effectivePrice()} ₺`;
+      renderModalVariants();
       document.getElementById('modalItemQuantity').innerText = modalQuantity;
       updateModalAddBtnText();
 
@@ -827,7 +821,7 @@
 
     function updateModalAddBtnText() {
       if (!activeDetailProduct) return;
-      const total = activeDetailProduct.price * modalQuantity;
+      const total = effectivePrice() * modalQuantity;
       document.getElementById('modalAddBtnText').innerText = `Sepete Ekle • ${total.toFixed(2)} ₺`;
     }
 
@@ -835,21 +829,24 @@
       if (!activeDetailProduct) return;
       const note = document.getElementById('modalItemCustomNote').value.trim();
 
-      const existingIndex = cart.findIndex(c => c.productId === activeDetailProduct.id && c.note === note);
+      const vId = modalVariant ? modalVariant.id : '';
+      const lineName = modalVariant ? `${activeDetailProduct.name} (${modalVariant.name})` : activeDetailProduct.name;
+      const existingIndex = cart.findIndex(c => c.productId === activeDetailProduct.id && (c.variantId || '') === vId && c.note === note);
       if (existingIndex > -1) {
         cart[existingIndex].quantity += modalQuantity;
       } else {
         cart.push({
           productId: activeDetailProduct.id,
-          productName: activeDetailProduct.name,
-          price: activeDetailProduct.price,
+          variantId: vId || undefined,
+          productName: lineName,
+          price: effectivePrice(),
           quantity: modalQuantity,
           note: note,
           imageUrl: activeDetailProduct.imageUrl
         });
       }
 
-      showToast(`🛒 ${activeDetailProduct.name} sepete eklendi.`);
+      showToast(`🛒 ${lineName} sepete eklendi.`);
       closeProductModal();
       updateCartBar();
     }
@@ -894,7 +891,7 @@
 
         row.innerHTML = `
           <div class="flex items-center gap-2.5 min-w-0 flex-1">
-            <img src="${img}" class="w-10 h-10 rounded-xl object-cover border border-[#2C2C34] shrink-0" onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&auto=format&fit=crop&q=80';" />
+            <img src="${img}" class="w-10 h-10 rounded-xl object-cover border border-[#2C2C34] shrink-0" onerror="this.onerror=null;this.src=PLACEHOLDER_IMG;" />
             <div class="min-w-0 flex-1">
               <div class="font-black text-xs text-white truncate">${item.productName}</div>
               <div class="text-[10px] text-[#F5C877] font-bold">${item.quantity} adet x ${item.price} ₺ = ${itemTotal.toFixed(2)} ₺</div>
@@ -951,6 +948,7 @@
         waiterName: 'QR Menü (Müşteri)',
         items: cart.map(item => ({
           productId: item.productId,
+          variantId: item.variantId,
           productName: item.productName,
           price: item.price,
           quantity: item.quantity,

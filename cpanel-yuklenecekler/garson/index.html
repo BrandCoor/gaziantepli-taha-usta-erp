@@ -79,6 +79,19 @@
     <span id="updateBarText" class="flex-1">Yeni sürüm hazır.</span>
     <button id="updateBarBtn" type="button" class="px-3 py-1.5 rounded-xl bg-[#141416] text-[#F5C877] font-black">Güncelle</button>
   </div>
+  <!-- Seçenek seçimi (boyut/porsiyon) -->
+  <div id="variantSheet" class="hidden fixed inset-0 z-[115] bg-black/80 items-end sm:items-center justify-center" onclick="if(event.target===this)closeVariantSheet()">
+    <div class="w-full max-w-md bg-[#1C1C20] border border-[#383844] rounded-t-3xl sm:rounded-3xl p-5 space-y-3 shadow-2xl animate-slide-up">
+      <div class="flex items-center justify-between">
+        <div>
+          <div id="variantSheetTitle" class="text-sm font-black text-white">Ürün</div>
+          <div class="text-[11px] text-[#A0A0AA]">Boyut / porsiyon seçin</div>
+        </div>
+        <button type="button" onclick="closeVariantSheet()" class="w-8 h-8 rounded-full bg-[#282830] text-[#C4C4CC]"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="variantSheetList" class="space-y-2"></div>
+    </div>
+  </div>
   <div id="toastContainer" class="fixed top-3 left-1/2 -translate-x-1/2 z-[100] w-11/12 max-w-sm pointer-events-none flex flex-col gap-2"></div>
 
   <!-- ========================================== -->
@@ -1597,33 +1610,62 @@
       renderProducts();
     }
 
-    function quickAddProductToCart(p) {
+    // Seçenekli ürün (ör. 1 Porsiyon / 1,5 Porsiyon, 330 ml / 1 Litre): önce seçenek seçilir; fiyat sunucuda seçenekten belirlenir.
+    function quickAddProductToCart(p, variant) {
+      if (p && Array.isArray(p.variants) && p.variants.length > 0 && !variant) { openVariantSheet(p); return; }
       playBeep();
       playHaptic();
 
-      const portionText = activePortion === 0.5 ? ' (0.5 Porsiyon)' : activePortion === 1.5 ? ' (1.5 Porsiyon)' : '';
-      const unitPrice = Math.round(p.price * activePortion);
-      const itemName = p.name + portionText;
+      const hasVariant = !!variant;
+      const portion = hasVariant ? 1 : activePortion; // seçenekli üründe 0.5x/1.5x çarpanı kullanılmaz
+      const portionText = !hasVariant && activePortion === 0.5 ? ' (0.5 Porsiyon)' : (!hasVariant && activePortion === 1.5 ? ' (1.5 Porsiyon)' : '');
+      const unitPrice = hasVariant ? Number(variant.price) : Math.round(p.price * portion);
+      const itemName = hasVariant ? `${p.name} (${variant.name})` : p.name + portionText;
+      const variantId = hasVariant ? variant.id : '';
 
-      const existingIndex = cart.findIndex(i => i.productId === p.id && i.portion === activePortion && !i.note);
+      const existingIndex = cart.findIndex(i => i.productId === p.id && (i.variantId || '') === variantId && i.portion === portion && !i.note);
 
       if (existingIndex > -1) {
         cart[existingIndex].quantity += 1;
       } else {
-        cart.push({
+        const line = {
           id: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           productId: p.id,
           productName: itemName,
-          portion: activePortion,
+          portion: portion,
           price: unitPrice,
           quantity: 1,
           note: '',
           targetPrinter: p.printer && p.printer.includes('Fırın') ? 'FIRIN' : p.printer && p.printer.includes('Ocak') ? 'OCAK' : 'KASA'
-        });
+        };
+        if (hasVariant) line.variantId = variantId;
+        cart.push(line);
       }
 
       showToast(`+1 ${itemName} sepete eklendi`, 'success');
       updateCartBar();
+    }
+
+    function openVariantSheet(p) {
+      document.getElementById('variantSheetTitle').innerText = p.name;
+      const box = document.getElementById('variantSheetList');
+      box.innerHTML = '';
+      p.variants.forEach(v => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-full flex items-center justify-between px-4 py-4 rounded-2xl bg-[#24242A] border border-[#383844] active:border-[#F5C877] active:bg-[#2E2E36] text-left';
+        const nm = document.createElement('span'); nm.className = 'text-sm font-black text-white'; nm.textContent = v.name;
+        const pr = document.createElement('span'); pr.className = 'text-sm font-black text-[#F5C877] font-mono'; pr.textContent = Number(v.price).toFixed(2) + ' ₺';
+        btn.appendChild(nm); btn.appendChild(pr);
+        btn.onclick = () => { closeVariantSheet(); quickAddProductToCart(p, v); };
+        box.appendChild(btn);
+      });
+      const sh = document.getElementById('variantSheet');
+      sh.classList.remove('hidden'); sh.classList.add('flex');
+    }
+    function closeVariantSheet() {
+      const sh = document.getElementById('variantSheet');
+      sh.classList.add('hidden'); sh.classList.remove('flex');
     }
 
     function updateCartBar() {
@@ -1675,7 +1717,7 @@
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5 min-w-0 flex-1">
               <div class="w-10 h-10 rounded-xl bg-[#141416] border border-[#2C2C34] overflow-hidden shrink-0">
-                <img src="${itemImg}" alt="${item.productName}" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';"/>
+                <img src="${itemImg}" alt="${item.productName}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src=PLACEHOLDER_IMG;"/>
               </div>
               <div class="min-w-0 flex-1">
                 <div class="font-black text-xs text-white truncate">${item.productName}</div>
@@ -1942,7 +1984,7 @@
 
       const orderNote = document.getElementById('generalOrderNoteInput').value.trim();
       // Aynı sepet için tekrar denemelerde AYNI clientOrderId kullanılır; sunucu mükerrer kaydı engeller.
-      const fingerprint = JSON.stringify([selectedTable.id, orderNote, cart.map(i => [i.productId || i.id, i.quantity, i.note || ''])]);
+      const fingerprint = JSON.stringify([selectedTable.id, orderNote, cart.map(i => [i.productId || i.id, i.variantId || '', i.quantity, i.note || ''])]);
       if (!window.__pendingOrder || window.__pendingOrder.fingerprint !== fingerprint) {
         const rnd = (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
         window.__pendingOrder = { fingerprint, clientOrderId: rnd };
@@ -2017,18 +2059,10 @@
       });
     }
 
+    // Görsel yoksa nötr tabak simgesi (dış sitelerden hazır/stok fotoğraf YOKTUR)
+    const PLACEHOLDER_IMG = 'data:image/svg+xml;utf8,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'><rect width='400' height='300' fill='#24242A'/><circle cx='200' cy='150' r='62' fill='none' stroke='#4A4A56' stroke-width='6'/><circle cx='200' cy='150' r='36' fill='none' stroke='#4A4A56' stroke-width='4'/></svg>");
     function getGarsonProductImage(p) {
-      if (p && p.imageUrl && p.imageUrl.trim().length > 5) return p.imageUrl;
-      const name = (p && p.name) ? p.name.toLowerCase() : '';
-      if (name.includes('ali nazik')) return 'https://images.unsplash.com/photo-1544025162-d76694265947?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('beyti') || name.includes('adana') || name.includes('kebap') || name.includes('urfa') || name.includes('kuşbaşı') || name.includes('kıyma')) return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('lahmacun')) return 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('pide') || name.includes('kaşarlı') || name.includes('sucuklu')) return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('çorba') || name.includes('beyran') || name.includes('kelle') || name.includes('ayak')) return 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('baklava') || name.includes('kadayıf') || name.includes('katmer') || name.includes('künefe') || name.includes('tatlı')) return 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('ayran') || name.includes('şalgam') || name.includes('kola') || name.includes('fanta') || name.includes('su') || name.includes('içecek') || name.includes('gazoz')) return 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80';
-      if (name.includes('salata') || name.includes('ezme') || name.includes('meze') || name.includes('cacık')) return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&auto=format&fit=crop&q=80';
-      return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';
+      return (p && p.imageUrl && p.imageUrl.trim().length > 5) ? p.imageUrl : PLACEHOLDER_IMG;
     }
 
     function renderProducts() {
@@ -2059,9 +2093,12 @@
         const div = document.createElement('div');
         div.className = 'bg-[#1C1C20] border border-[#2C2C34] rounded-2xl flex flex-col justify-between overflow-hidden active:scale-95 active:border-[#F5C877] transition-all cursor-pointer shadow-sm';
         div.onclick = () => quickAddProductToCart(p);
+        if (Array.isArray(p.variants) && p.variants.length > 0) div.setAttribute('data-variants', String(p.variants.length));
         
         const printerLabel = p.printer && p.printer.includes('Fırın') ? '🔥 FIRIN' : (p.printer && p.printer.includes('Ocak') ? '🍖 OCAK' : 'KASA');
-        const calculatedPrice = Math.round(p.price * activePortion);
+        const hasVar = Array.isArray(p.variants) && p.variants.length > 0;
+        const varPrices = hasVar ? p.variants.map(v => Number(v.price)) : [];
+        const calculatedPrice = hasVar ? Math.min(...varPrices) : Math.round(p.price * activePortion);
         const imgUrl = getGarsonProductImage(p);
 
         div.innerHTML = `
@@ -2070,7 +2107,7 @@
               src="${imgUrl}" 
               alt="${p.name}" 
               class="w-full h-full object-cover" 
-              onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';"
+              onerror="this.onerror=null;this.src=PLACEHOLDER_IMG;"
             />
             <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20"></div>
             <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm text-[8px] text-[#F5C877] font-black rounded-md border border-[#F5C877]/30">
@@ -2081,7 +2118,7 @@
           <div class="p-2 flex-1 flex flex-col justify-between">
             <div class="font-black text-xs text-white line-clamp-1">${p.name}</div>
             <div class="flex justify-between items-center mt-2 pt-1 border-t border-[#2C2C34]/80">
-              <span class="font-black text-sm text-[#F5C877] font-mono">${calculatedPrice} ₺</span>
+              <span class="font-black text-sm text-[#F5C877] font-mono">${hasVar ? calculatedPrice + ' ₺\'den' : calculatedPrice + ' ₺'}</span>
               <span class="w-6 h-6 bg-[#F5C877] text-[#141416] rounded-xl flex items-center justify-center text-xs font-black shadow-md">+</span>
             </div>
           </div>

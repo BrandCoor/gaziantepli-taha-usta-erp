@@ -16,6 +16,8 @@
     "test:e2e": "node tools/dev/e2e-garson.cjs",
     "test:pwa": "node tools/dev/pwa-check.cjs http://127.0.0.1:8080/garson/",
     "test:pwa-update": "node tools/dev/pwa-update-check.cjs",
+    "test:ui-variants": "node tools/dev/ui-variants.cjs",
+    "test:qr-variants": "node tools/dev/qr-variants-check.cjs",
     "test:updater": "node tools/dev/e2e-updater.cjs",
     "release:bump": "node tools/bump-version.cjs",
     "release:publish": "node tools/update-tools.cjs"

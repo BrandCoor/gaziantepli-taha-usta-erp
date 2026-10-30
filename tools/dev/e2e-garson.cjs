@@ -132,6 +132,24 @@ const check = (name, ok, extra = '') => { results.push(ok); console.log((ok ? 'G
   const after = await kasa('pull_pending_orders');
   check('onaydan sonra kuyruktan çıktı', !after.orders.some((o) => o.id === mine.id));
 
+  // --- 7b) seçenekli ürün (boyut/porsiyon): seçenek penceresi, seçenek fiyatı, sunucu doğrulaması
+  sql(`INSERT INTO urunler (id, kategori_id, ad, fiyat, aktif, varyantlar) VALUES ('p-e2e-var','k-e2e','E2E Ayran',25,1,'[{"id":"v-a","name":"330 ml","price":25},{"id":"v-b","name":"1 Litre","price":60.5}]') ON DUPLICATE KEY UPDATE fiyat=25, aktif=1, varyantlar=VALUES(varyantlar);
+       UPDATE masalar SET durum='EMPTY', aktif_siparis=NULL, toplam_tutar=0 WHERE id='tbl-sec-salon-8'; DELETE FROM siparisler WHERE masa_id='tbl-sec-salon-8';`);
+  await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  await ev(`fetchLiveState()`);
+  await sleep(1500);
+  await ev(`cart.length = 0; openOrderModal(liveTables.find(function(t){return t.id==='tbl-sec-salon-8'})); 1`);
+  await sleep(400);
+  await ev(`quickAddProductToCart(liveProducts.find(function(p){return p.id==='p-e2e-var'}))`);
+  check('seçenekli üründe SEÇENEK penceresi açıldı, seçmeden sepete eklenmedi', (await ev(`!document.getElementById('variantSheet').classList.contains('hidden') && cart.length === 0`)) === true);
+  check('seçenekler ve fiyatları listelendi', (await ev(`Array.from(document.querySelectorAll('#variantSheetList button')).map(function(b){return b.innerText.split(String.fromCharCode(10)).join(' ')}).join('|')`)) === '330 ml 25.00 ₺|1 Litre 60.50 ₺');
+  await ev(`document.querySelectorAll('#variantSheetList button')[1].click(); 1`);
+  await sleep(300);
+  check('seçilen seçenek sepette: ad, fiyat ve seçenek kimliği doğru', (await ev(`JSON.stringify(cart.map(function(i){return [i.productName,i.price,i.variantId,i.quantity]}))`)) === '[["E2E Ayran (1 Litre)",60.5,"v-b",1]]');
+  await ev(`confirmAndSendKitchen()`);
+  await sleep(2500);
+  check('sunucuda seçenek fiyatıyla kayıt (60,50) ve kalem adı doğru', sql(`SELECT toplam_tutar FROM siparisler WHERE masa_id='tbl-sec-salon-8'`) === '60.50' && /E2E Ayran \(1 Litre\)/.test(sql(`SELECT kalemler FROM siparisler WHERE masa_id='tbl-sec-salon-8'`)));
+
   // --- 8) cihaz yetkisi kasadan iptal edilince telefon düşer
   await kasa('reset_device_pairing', { userId: 'w-e2e' });
   const live = await ev(`(async function(){ var r = await apiFetch('get_live_state'); return r.status })()`);

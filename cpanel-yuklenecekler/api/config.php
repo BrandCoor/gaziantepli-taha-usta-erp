@@ -752,6 +752,28 @@ function runSchemaMigrations($pdo) {
     }
 }
 
+/** Ürün seçenekleri (varyantlar): [{id,name,price}]. Geçersiz kayıtlar atılır; en fazla 12. */
+function gtuParseVariants($json) {
+    if (!is_string($json) || $json === '') return [];
+    $arr = json_decode($json, true);
+    if (!is_array($arr)) return [];
+    $out = [];
+    foreach ($arr as $v) {
+        $id = isset($v['id']) ? trim((string)$v['id']) : '';
+        $name = isset($v['name']) ? trim((string)$v['name']) : '';
+        $price = isset($v['price']) ? round((float)$v['price'], 2) : 0;
+        if ($id === '' || $name === '' || $price <= 0) continue;
+        $out[] = ['id' => $id, 'name' => $name, 'price' => $price];
+    }
+    return array_slice($out, 0, 12);
+}
+/** Kasadan gelen seçenek listesini saklanacak JSON'a çevirir (boşsa NULL). */
+function gtuEncodeVariants($arr) {
+    if (!is_array($arr)) return null;
+    $clean = gtuParseVariants(json_encode($arr, JSON_UNESCAPED_UNICODE));
+    return count($clean) > 0 ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null;
+}
+
 function gtuSchemaVersion() { return max(array_keys(gtuSchemaMigrations())); }
 
 function gtuSchemaMigrations() {
@@ -793,6 +815,10 @@ function gtuSchemaMigrations() {
                 `order_ref` VARCHAR(100) NULL,
                 INDEX `idx_owl_created` (`created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        ],
+        // 3: Ürün seçenekleri (boyut/porsiyon; her birinin kendi sabit fiyatı) — JSON, yalnızca ekleme
+        3 => [
+            "ALTER TABLE `urunler` ADD COLUMN `varyantlar` TEXT NULL",
         ],
     ];
 }

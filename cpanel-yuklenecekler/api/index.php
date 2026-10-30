@@ -318,9 +318,9 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                 // Ürünler
                 if (isset($input['products']) && is_array($input['products'])) {
                     $prodIds = [];
-                    $stmt = $pdo->prepare("INSERT INTO `urunler` (`id`, `kategori_id`, `ad`, `fiyat`, `hazirlik_dk`, `barkod`, `yazici_id`, `aktif`, `aciklama`, `resim_url`) 
-                                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
-                                           ON DUPLICATE KEY UPDATE `kategori_id` = VALUES(`kategori_id`), `ad` = VALUES(`ad`), `fiyat` = VALUES(`fiyat`), `hazirlik_dk` = VALUES(`hazirlik_dk`), `barkod` = VALUES(`barkod`), `yazici_id` = VALUES(`yazici_id`), `aktif` = VALUES(`aktif`), `aciklama` = VALUES(`aciklama`), `resim_url` = VALUES(`resim_url`)");
+                    $stmt = $pdo->prepare("INSERT INTO `urunler` (`id`, `kategori_id`, `ad`, `fiyat`, `hazirlik_dk`, `barkod`, `yazici_id`, `aktif`, `aciklama`, `resim_url`, `varyantlar`) 
+                                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                                           ON DUPLICATE KEY UPDATE `kategori_id` = VALUES(`kategori_id`), `ad` = VALUES(`ad`), `fiyat` = VALUES(`fiyat`), `hazirlik_dk` = VALUES(`hazirlik_dk`), `barkod` = VALUES(`barkod`), `yazici_id` = VALUES(`yazici_id`), `aktif` = VALUES(`aktif`), `aciklama` = VALUES(`aciklama`), `resim_url` = VALUES(`resim_url`), `varyantlar` = VALUES(`varyantlar`)");
                     foreach ($input['products'] as $prod) {
                         $prodIds[] = $prod['id'];
                         $stmt->execute([
@@ -333,7 +333,8 @@ if (($action === 'push_kasa_state' || $action === 'sync_all_erp_data') && $_SERV
                             $prod['printerId'] ?? null,
                             isset($prod['isAvailable']) && !$prod['isAvailable'] ? 0 : 1,
                             $prod['description'] ?? null,
-                            $prod['imageUrl'] ?? null
+                            $prod['imageUrl'] ?? null,
+                            gtuEncodeVariants($prod['variants'] ?? null)
                         ]);
                     }
                     if (!empty($prodIds)) {
@@ -697,11 +698,13 @@ if ($action === 'get_all_erp_data') {
 
         $categories = $pdo->query("SELECT `id`, `ad` as name, `renk` as color, `yazici_id` as printerId, `sira` as `order` FROM `kategoriler` ORDER BY `sira` ASC")->fetchAll();
         
-        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl FROM `urunler`")->fetchAll();
+        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl, `varyantlar` as variantsJson FROM `urunler`")->fetchAll();
         foreach ($products as &$p) {
             $p['price'] = (float)$p['price'];
             $p['preparationMin'] = (int)$p['preparationMin'];
             $p['isAvailable'] = (bool)$p['isAvailable'];
+            $p['variants'] = gtuParseVariants($p['variantsJson'] ?? null);
+            unset($p['variantsJson']);
         }
 
         $empRows = $pdo->query("SELECT `id`, `ad` as fullName, `rol` as role, `pozisyon` as position, `telefon` as phone, `maas` as salary, `maas_gunu` as salaryPaymentDay, `calisma_saati` as dailyWorkHours, `mesai_carpani` as overtimeMultiplier, `iban`, `bakiye` as balance, `pin`, `qr_token` as qrToken, `aktif` as isActive, `baslangic_tarihi` as startDate FROM `personeller`")->fetchAll();
@@ -989,13 +992,15 @@ if ($action === 'get_live_state') {
         sort_tables_naturally_php($tables, $sections);
 
         $categories = $pdo->query("SELECT `id`, `ad` as name, `renk` as color, `yazici_id` as printerId FROM `kategoriler` ORDER BY `sira` ASC")->fetchAll();
-        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl FROM `urunler` WHERE `aktif` = 1")->fetchAll();
+        $products = $pdo->query("SELECT `id`, `kategori_id` as categoryId, `ad` as name, `fiyat` as price, `hazirlik_dk` as preparationMin, `barkod` as barcode, `yazici_id` as printerId, `aktif` as isAvailable, `aciklama` as description, `resim_url` as imageUrl, `varyantlar` as variantsJson FROM `urunler` WHERE `aktif` = 1")->fetchAll();
         
         // Ürün fiyat ve boolean dönüşümleri
         foreach ($products as &$p) {
             $p['price'] = (float)$p['price'];
             $p['preparationMin'] = (int)$p['preparationMin'];
             $p['isAvailable'] = (bool)$p['isAvailable'];
+            $p['variants'] = gtuParseVariants($p['variantsJson'] ?? null);
+            unset($p['variantsJson']);
         }
 
         $lastUpdatedStmt = $pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'last_updated'");
@@ -1154,7 +1159,7 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo->rollBack();
                         sec_json_exit(422, ['success' => false, 'error' => 'Sipariş kalemi geçersiz.']);
                     }
-                    $priceStmt = $pdo->prepare("SELECT `ad`, `fiyat` FROM `urunler` WHERE `id` = ? AND `aktif` = 1");
+                    $priceStmt = $pdo->prepare("SELECT `ad`, `fiyat`, `varyantlar` FROM `urunler` WHERE `id` = ? AND `aktif` = 1");
                     $clean = [];
                     foreach ($newItems as $it) {
                         $pid = (string)($it['productId'] ?? '');
@@ -1170,7 +1175,27 @@ if ($action === 'send_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                             $pdo->rollBack();
                             sec_json_exit(422, ['success' => false, 'error' => 'Ürün bulunamadı veya satışta değil.', 'code' => 'PRODUCT_UNAVAILABLE']);
                         }
-                        $it['price'] = round((float)$prod['fiyat'] * $portion);
+                        $variants = gtuParseVariants($prod['varyantlar'] ?? null);
+                        if (count($variants) > 0) {
+                            // Seçenekli ürün: seçenek ZORUNLU; fiyat ve ad sunucuda seçenekten belirlenir (istemci fiyatına güvenilmez)
+                            $vid = (string)($it['variantId'] ?? '');
+                            if ($vid === '') {
+                                $pdo->rollBack();
+                                sec_json_exit(422, ['success' => false, 'error' => '"' . $prod['ad'] . '" için boyut/porsiyon seçeneği seçilmelidir.', 'code' => 'VARIANT_REQUIRED']);
+                            }
+                            $picked = null;
+                            foreach ($variants as $vv) { if ($vv['id'] === $vid) { $picked = $vv; break; } }
+                            if (!$picked || $portion !== 1.0) {
+                                $pdo->rollBack();
+                                sec_json_exit(422, ['success' => false, 'error' => 'Seçilen seçenek geçersiz veya artık satışta değil. Menüyü yenileyin.', 'code' => 'VARIANT_INVALID']);
+                            }
+                            $it['price'] = $picked['price'];
+                            $it['variantId'] = $picked['id'];
+                            $it['productName'] = $prod['ad'] . ' (' . $picked['name'] . ')';
+                        } else {
+                            unset($it['variantId']); // seçeneksiz üründe seçenek kimliği yok sayılır
+                            $it['price'] = round((float)$prod['fiyat'] * $portion);
+                        }
                         $it['quantity'] = $qty;
                         $it['portion'] = $portion;
                         $it['note'] = mb_substr((string)($it['note'] ?? ''), 0, 200);

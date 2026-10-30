@@ -14,6 +14,12 @@ Biçim: [Keep a Changelog](https://keepachangelog.com/tr/). Sürümleme: package
 - Webhook yedeği olarak **periyodik sorgulama** (Getir), ayarlarda webhook adresleri + gizli anahtar üretici.
 - **Demo/test kalıntıları kaldırıldı:** sahte test siparişi, sahte bağlantı testi, demo menü/salon/garson, kullanılmayan tohum veri üreticileri; para çekmecesi hata durumunda artık başarı yalanı söylemez.
 
+### Ürün seçenekleri (boyut / porsiyon)
+- Aynı üründe **farklı sabit fiyatlar**: örn. Adana Kebap → 1 Porsiyon 280 ₺, 1,5 Porsiyon 400 ₺; Ayran → 330 ml 25 ₺, 1 Litre 60,50 ₺. Ayarlar › Menü & Ürünler › ürün düzenle › "Boyut / Porsiyon Seçenekleri".
+- Kasa POS, garson ve QR menü seçenekli ürüne dokunulunca **seçenek seçtirir**; adisyonda/fişte/raporda "Ayran (1 Litre)" olarak ayrı kalem görünür.
+- Fiyatı **sunucu** seçenekten belirler (istemci fiyatı yok sayılır); seçenek seçilmeden sipariş reddedilir (422). Şema göçü v3 (`urunler.varyantlar`).
+- QR menüdeki **uydurma yedek menü/bölüm/masa ve internetten çekilen stok yemek fotoğrafları kaldırıldı** (görsel yoksa nötr simge).
+
 ### Fiş yazı tipi ve garson ekranı
 - **Fişler gerçek yazı tipiyle (Segoe UI) görüntü olarak basılır:** okunaklı, **tam Türkçe karakter** (İ, Ş, Ğ, Ü, Ö, Ç). Yazıcı ayarında "Baskı Biçimi" ile eski metin moduna dönülebilir. Ayarlar › Fiş Şablonu'nda "Gerçek Fiş Önizleme".
 - **Garson ekranı duyarlı:** telefon (dikey/yatay), tablet ve masaüstünde kullanılabilir; dar ekranda taşma yok, kısa yatay ekranda ürün kartları ezilmez, PIN ekranı yatayda iki sütun, geniş ekranda daha çok sütun.
