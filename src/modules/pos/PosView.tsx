@@ -1,3 +1,4 @@
+// POS_CANCEL: kalem iptali / masa iptali / ikram. Varsayılan yalnızca yönetici (bkz. ROLE_PERMISSIONS).
 import { getBusinessDate } from '../../utils/businessDate';
 import React, { useRef, useState, useEffect } from 'react';
 import { 
@@ -306,6 +307,9 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
       }
     } else {
       // Mutfağa iletilmiş ürün için iptal nedeni ve onay penceresi açılır
+      if (!dataService.hasPermission('POS_CANCEL')) {
+        return notify.error('Yetki Yok', 'Mutfağa iletilmiş ürünü iptal etme yetkiniz yok. Yöneticiye başvurun.');
+      }
       setItemCancelModal({
         open: true,
         itemIndex: index,
@@ -319,6 +323,9 @@ export const PosView: React.FC<PosViewProps> = ({ autoOpenTableId, onClearAutoOp
 
   // KALEM İKRAMINI AÇMA / KAPATMA
   const handleToggleItemGift = (index: number) => {
+    if (!dataService.hasPermission('POS_CANCEL')) {
+      return notify.error('Yetki Yok', 'İkram işlemi için yetkiniz yok. Yöneticiye başvurun.');
+    }
     const updated = [...orderItems];
     const item = updated[index];
     if (!item) return;
@@ -443,6 +450,9 @@ Adres: ${selectedTable.customerInfo.address}
 
   const handleConfirmTableCancel = () => {
     if (!selectedTable) return;
+    if (!dataService.hasPermission('POS_CANCEL')) {
+      return notify.error('Yetki Yok', 'Adisyon iptal yetkiniz yok. Yöneticiye başvurun.');
+    }
     const reason = tableCancelModal.selectedReason === 'Diğer (Özel Açıklama)' ? tableCancelModal.customNote : tableCancelModal.selectedReason;
 
     // Mutfağa daha önce gönderilmiş ürünler varsa mutfağa toplu iptal fişi bas
@@ -455,7 +465,7 @@ Adres: ${selectedTable.customerInfo.address}
       })), 'Kasa');
     }
 
-    restaurantDataService.cancelTableOrder(selectedTable.id, reason);
+    restaurantDataService.cancelTableOrder(selectedTable.id, reason, dataService.getCurrentUserName());
     notify.error('Masa İptal Edildi', `${selectedTable.name} adisyonu iptal edilerek kapatıldı.`);
 
     setTableCancelModal({ open: false, selectedReason: CANCEL_REASONS[0], customNote: '' });
@@ -638,6 +648,19 @@ Adres: ${selectedTable.customerInfo.address}
     // Çift tıklama koruması: işlem bitene kadar ikinci çağrı yok sayılır.
     if (finalizingRef.current) return;
     finalizingRef.current = true;
+
+    // 0) Ekrandaki (tahsil edilen) kalemler kalıcı adisyona yazılır: tahsilat = kayıt tutarı olmalı.
+    if (orderItems.length === 0) {
+      finalizingRef.current = false;
+      return notify.error('Hesap Kapatılamadı', 'Adisyonda kalem yok.');
+    }
+    restaurantDataService.updateTableOrder(
+      selectedTable.id,
+      orderItems,
+      selectedTable.order?.waiterName || dataService.getCurrentUserName(),
+      selectedTable.customerInfo,
+      selectedTable.order?.orderNote
+    );
 
     // 1) Önce adisyon kapatılır ve doğrulanır. Başarısızsa cari borç YAZILMAZ.
     const closed = restaurantDataService.completeTablePayment(selectedTable.id, 'Tamamlandı', paymentEntries);

@@ -62,20 +62,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, mobil
     ...(hasActiveOnlinePlatforms ? [{ id: 'online-orders', label: '🛵 Yemek Platformları', icon: Bike }] : []),
   ];
 
+  // Menü yalnızca kullanıcının yetkili olduğu bölümleri gösterir (içerik ayrıca App'te de korunur).
   const erpMenuItems = [
-    { id: 'dashboard', label: 'Özet & Kasa Durumu', icon: LayoutDashboard },
-    { id: 'customers', label: 'Müşteriler & Cari', icon: Users },
-    { id: 'expenses', label: 'Giderler & Harcamalar', icon: Receipt },
-    { id: 'employees', label: 'Personeller & Garsonlar', icon: UserCheck },
-    { id: 'reports', label: 'Z Raporu & Mali Analiz', icon: BarChart2 },
-  ];
+    { id: 'dashboard', label: 'Özet & Kasa Durumu', icon: LayoutDashboard, perm: null as string | null },
+    { id: 'customers', label: 'Müşteriler & Cari', icon: Users, perm: 'CUSTOMERS_VIEW' },
+    { id: 'expenses', label: 'Giderler & Harcamalar', icon: Receipt, perm: 'EXPENSES_MANAGE' },
+    { id: 'employees', label: 'Personeller & Garsonlar', icon: UserCheck, perm: 'EMPLOYEES_VIEW' },
+    { id: 'reports', label: 'Z Raporu & Mali Analiz', icon: BarChart2, perm: 'REPORTS_VIEW' },
+  ].filter((m) => !m.perm || dataService.hasPermission(m.perm));
 
-  const settingsMenuItems = [
-    { id: 'restaurant-settings', label: '⚙️ Restoran & Donanım Ayarları', icon: SlidersHorizontal },
-  ];
+  const settingsMenuItems: Array<{ id: string; label: string; icon: any }> = [];
+  if (dataService.hasPermission('SETTINGS_MANAGE')) {
+    settingsMenuItems.push({ id: 'restaurant-settings', label: '⚙️ Restoran & Donanım Ayarları', icon: SlidersHorizontal });
+  }
 
   if (canManageUsers) {
     settingsMenuItems.push({ id: 'users', label: 'Kullanıcılar & Yetkiler', icon: ShieldCheck });
+  }
+  if (dataService.hasPermission('SETTINGS_MANAGE')) {
     settingsMenuItems.push({ id: 'company-settings', label: 'Firma & Logo Ayarları', icon: Building2 });
   }
 

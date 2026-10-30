@@ -53,29 +53,25 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
   const [customDomainInput, setCustomDomainInput] = useState<string>(() => getPublicBaseUrl());
   const [showDomainConfig, setShowDomainConfig] = useState<boolean>(false);
 
-  // QR Modal açıldığında personele özel geçerli pairing token ve 6 haneli kod üret
+  // Eşleştirme kodu/QR YALNIZCA sunucudan alınır (5 dk geçerli, tek kullanımlık). Sunucuya ulaşılamazsa
+  // yerelde uydurma bir kod gösterilmez: telefonda çalışmayacağı için kullanıcıyı yanıltırdı.
+  const [pairingUrl, setPairingUrl] = useState<string>('');
   const handleOpenQrModal = async (w: WaiterConfig) => {
-    const defaultToken = w.qrToken || `TOKEN-GTU-${Math.random().toString(36).substring(2, 9).toUpperCase()}-${Date.now().toString().slice(-4)}`;
-    const code = w.pairingCode || restaurantDataService.generatePairingCode();
-    
-    if (!w.qrToken || !w.pairingCode) {
-      restaurantDataService.updateWaiter(w.id, { qrToken: defaultToken, pairingCode: code });
-    }
-    
-    setPairingToken(defaultToken);
-    setPairingCode(code);
-    setQrModalWaiter({ ...w, qrToken: defaultToken, pairingCode: code });
-
+    setPairingToken('');
+    setPairingCode('');
+    setPairingUrl('');
     try {
-      const currentUser = dataService.getCurrentUser();
-      const actorPin = w.pin || currentUser.password || '1234';
-      const res = await deviceService.createPairingToken(w.id, { id: w.id, pin: actorPin });
-      if (res && res.success) {
-        if (res.token) setPairingToken(res.token);
-        if (res.pairingCode) setPairingCode(res.pairingCode);
+      const res: any = await deviceService.createPairingToken(w.id);
+      if (res && res.success && res.pairingCode) {
+        setPairingToken(res.token || '');
+        setPairingCode(res.pairingCode);
+        setPairingUrl(res.qrUrl || res.appUrl || '');
+        setQrModalWaiter(w);
+      } else {
+        notify.error('Eşleştirme Kodu Alınamadı', res?.error || 'Sunucudan kod alınamadı.');
       }
-    } catch (e) {
-      // Arka plan senkron hatası olsa bile yerel QR kodu kesintisiz görüntülenir
+    } catch (e: any) {
+      notify.error('Eşleştirme Kodu Alınamadı', e?.message || 'Sunucuya ulaşılamadı.');
     }
   };
 
@@ -273,24 +269,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
     onRefresh();
   };
 
-  const getWaiterConnectUrl = (w: WaiterConfig) => {
-    if (!w) return '';
-    const token = pairingToken || w.qrToken || `TOKEN-GTU-${(w.id || 'W1').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`;
-    const code = pairingCode || w.pairingCode || '';
-    // PIN QR koduna KONULMAZ: QR'ı fotoğraflayan herkes garsonun giriş kodunu
-    // öğrenirdi ve cihaz kilidi anlamsız hale gelirdi. Giriş sunucuda doğrulanır.
-    const query = `token=${encodeURIComponent(token)}&code=${encodeURIComponent(code)}&userId=${encodeURIComponent(w.id)}&name=${encodeURIComponent(w.name || '')}`;
-    const publicBase = getPublicBaseUrl();
-    if (qrTargetMode === 'REMOTE') {
-      return publicBase ? `${publicBase}/#/pair?${query}` : '';
-    }
-    const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    const origin = isLocal ? publicBase : (typeof window !== 'undefined' ? window.location.origin : publicBase);
-    const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
-    const cleanPath = isLocal ? '' : (pathname.endsWith('/') ? pathname : pathname + '/');
-    const baseWithSlash = isLocal ? (origin.endsWith('/') ? origin : origin + '/') : (cleanPath === '/' ? (origin.endsWith('/') ? origin : origin + '/') : origin + cleanPath);
-    return `${baseWithSlash}#/pair?${query}`;
-  };
+  const getWaiterConnectUrl = (_w: WaiterConfig) => pairingUrl;
 
   const getAppWaiterTerminalUrl = () => {
     const publicBase = getPublicBaseUrl();
@@ -419,7 +398,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredWaiters.map((w) => {
           const isPaired = w.status === 'APPROVED' && Boolean(w.deviceUuid || w.macAddress);
-          const pairingCodeDisplay = w.pairingCode || '123 456';
+          const pairingCodeDisplay = '••••••';
 
           return (
             <div 
@@ -511,9 +490,9 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleCopyCode(w.pairingCode || '')}
+                          onClick={() => handleOpenQrModal(w)}
                           className="p-1 text-amber-400 hover:text-white rounded transition-colors cursor-pointer"
-                          title="Kodu Kopyala"
+                          title="Yeni eşleştirme kodu / QR üret"
                         >
                           <Copy className="w-3 h-3" />
                         </button>
@@ -654,7 +633,7 @@ export const WaitersTab: React.FC<WaitersTabProps> = ({
               </span>
               <div className="flex items-center justify-center gap-3">
                 <span className="text-2xl font-mono font-black text-amber-400 tracking-widest bg-[#121214] px-4 py-1 rounded-xl border border-amber-500/40">
-                  {pairingCode ? `${pairingCode.slice(0, 3)} ${pairingCode.slice(3)}` : '123 456'}
+                  {pairingCode ? `${pairingCode.slice(0, 3)} ${pairingCode.slice(3)}` : '—'}
                 </span>
                 <button
                   type="button"

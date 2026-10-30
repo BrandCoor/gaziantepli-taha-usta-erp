@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Lock, ArrowRight, ShieldCheck, AlertCircle, Sparkles, UtensilsCrossed } from 'lucide-react';
 import { dataService, User } from '../../services/dataService';
+import { verifyPassword, hashPassword } from '../../utils/passwordHash';
+import { lockRemainingMs, recordFailure, recordSuccess } from '../../utils/loginThrottle';
 
 interface LoginViewProps {
   onLoginSuccess: (user: User) => void;
@@ -22,25 +24,40 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onSwitchTo
     }, 100);
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    const user = users.find(u => u.id === selectedUserId);
-    if (!user) {
-      setError('Lütfen bir kullanıcı seçin');
+    const lock = lockRemainingMs(localStorage);
+    if (lock > 0) {
+      setError(`Çok fazla hatalı deneme. ${Math.ceil(lock / 1000)} sn sonra tekrar deneyin.`);
       return;
     }
 
-    if (user.password !== password) {
-      setError('Hatalı şifre girdiniz! Lütfen tekrar deneyin.');
+    const user = users.find(u => u.id === selectedUserId);
+    if (!user || user.isActive === false) {
+      setError('Lütfen etkin bir kullanıcı seçin');
+      return;
+    }
+
+    const check = await verifyPassword(password, user.password);
+    if (!check.ok) {
+      const st = recordFailure(localStorage);
+      const remaining = lockRemainingMs(localStorage);
+      setError(remaining > 0 ? `Çok fazla hatalı deneme. ${Math.ceil(remaining / 1000)} sn beklemelisiniz.` : `Hatalı şifre girdiniz! (${st.failures % 5 || 5}/5)`);
       setPassword('');
       setTimeout(() => passwordInputRef.current?.focus(), 50);
       return;
     }
 
-    dataService.setCurrentUser(user);
-    onLoginSuccess(user);
+    recordSuccess(localStorage);
+    let loggedUser = user;
+    if (check.needsUpgrade) {
+      // Eski düz metin parola ilk başarılı girişte hash'e yükseltilir.
+      loggedUser = dataService.saveUser({ ...user, password: await hashPassword(password) });
+    }
+    dataService.setCurrentUser(loggedUser);
+    onLoginSuccess(loggedUser);
   };
 
   return (

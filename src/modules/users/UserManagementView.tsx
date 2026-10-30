@@ -1,6 +1,7 @@
+import { hashPassword, validatePasswordPolicy } from '../../utils/passwordHash';
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Shield, User as UserIcon, Trash2, Edit2, CheckCircle2, AlertCircle } from 'lucide-react';
-import { dataService, User, RoleType, Permission } from '../../services/dataService';
+import { ROLE_PERMISSIONS, dataService, User, RoleType, Permission } from '../../services/dataService';
 
 export const UserManagementView: React.FC = () => {
   const [users, setUsers] = useState<User[]>(dataService.getUsers());
@@ -43,7 +44,7 @@ export const UserManagementView: React.FC = () => {
     setEditingUserId(user.id);
     setFullName(user.fullName);
     setUsername(user.username);
-    setPassword(user.password || '');
+    setPassword(''); // parola saklı hash'ten gösterilmez; boş bırakılırsa değişmez
     setRole(user.role);
     setFormError('');
     setShowModal(true);
@@ -58,7 +59,7 @@ export const UserManagementView: React.FC = () => {
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     
@@ -74,31 +75,35 @@ export const UserManagementView: React.FC = () => {
       setFormError('Lütfen Kullanıcı Adı belirleyin');
       return;
     }
-    if (!cleanPassword) {
+    // Yeni kullanıcıda parola zorunlu; düzenlemede boş bırakılırsa mevcut parola korunur.
+    if (!editingUserId && !cleanPassword) {
       setFormError('Lütfen Giriş Şifresi belirleyin');
       return;
     }
-
-    let roleName = 'Muhasebe / Cari Sorumlusu';
-    let permissions: Permission[] = ['CUSTOMERS_VIEW', 'CUSTOMERS_MANAGE', 'CUSTOMERS_TRANSACTION', 'REPORTS_VIEW'];
-
-    if (role === 'ADMIN') {
-      roleName = 'Yönetici (Tam Yetkili)';
-      permissions = ['ALL'];
-    } else if (role === 'HR') {
-      roleName = 'İnsan Kaynakları Sorumlusu';
-      permissions = ['EMPLOYEES_VIEW', 'EMPLOYEES_MANAGE', 'EMPLOYEES_PAYMENT', 'REPORTS_VIEW'];
-    } else if (role === 'VIEWER') {
-      roleName = 'Sadece Görüntüleme (İzleyici)';
-      permissions = ['CUSTOMERS_VIEW', 'EMPLOYEES_VIEW', 'REPORTS_VIEW'];
+    if (cleanPassword) {
+      const policyErr = validatePasswordPolicy(cleanPassword);
+      if (policyErr) {
+        setFormError(policyErr);
+        return;
+      }
     }
 
+    const roleDef = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.ACCOUNTANT;
+    const roleName = roleDef.label;
+    const permissions: Permission[] = [...roleDef.permissions];
+
     try {
+      const existing = editingUserId ? dataService.getUsers().find(x => x.id === editingUserId) : undefined;
+      // Son yönetici başka role çevrilemez
+      if (existing && existing.role === 'ADMIN' && role !== 'ADMIN' && dataService.getUsers().filter(x => x.role === 'ADMIN' && x.isActive !== false).length <= 1) {
+        setFormError('Sistemdeki son yönetici başka bir role çevrilemez.');
+        return;
+      }
       dataService.saveUser({
         id: editingUserId || undefined,
         username: cleanUsername,
         fullName: cleanFullName,
-        password: cleanPassword,
+        password: cleanPassword ? await hashPassword(cleanPassword) : existing?.password,
         role,
         roleName,
         permissions,
@@ -165,7 +170,7 @@ export const UserManagementView: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#A0A0AA]">Giriş Şifresi:</span>
-                  <span className="font-mono text-[#A0A0AA] font-bold">{u.password}</span>
+                  <span className="font-mono text-[#A0A0AA] font-bold">••••••••</span>
                 </div>
               </div>
 
@@ -279,6 +284,7 @@ export const UserManagementView: React.FC = () => {
                   onChange={e => setRole(e.target.value as RoleType)}
                   className="w-full px-3 py-2 border-2 border-slate-300 focus:border-blue-600 rounded-xl text-xs font-bold text-[#FAF7F2] bg-[#1C1C20] focus:outline-none shadow-sm cursor-pointer"
                 >
+                  <option value="CASHIER">🧾 Kasiyer (Adisyon & Tahsilat; iptal/ikram yok)</option>
                   <option value="ACCOUNTANT">💼 Muhasebe / Cari (Müşteri & Borç/Tahsilat)</option>
                   <option value="HR">👥 İnsan Kaynakları (Personel & Maaş/Ödeme)</option>
                   <option value="VIEWER">👁️ Sadece Görüntüleme (Hiçbir Veriyi Değiştiremez)</option>

@@ -117,6 +117,15 @@ export interface Expense {
   createdAt: string;
 }
 
+/** Rollere göre varsayılan izinler (en az yetki ilkesi). İptal/ikram/indirim yalnızca 'POS_CANCEL' izniyle yapılır. */
+export const ROLE_PERMISSIONS: Record<string, { label: string; permissions: string[] }> = {
+  ADMIN: { label: 'Yönetici (Tam Yetkili)', permissions: ['ALL'] },
+  CASHIER: { label: 'Kasiyer', permissions: ['POS_USE', 'POS_PAYMENT', 'CUSTOMERS_VIEW', 'CUSTOMERS_TRANSACTION'] },
+  ACCOUNTANT: { label: 'Muhasebe / Cari Sorumlusu', permissions: ['CUSTOMERS_VIEW', 'CUSTOMERS_MANAGE', 'CUSTOMERS_TRANSACTION', 'REPORTS_VIEW', 'EXPENSES_MANAGE'] },
+  HR: { label: 'İnsan Kaynakları Sorumlusu', permissions: ['EMPLOYEES_VIEW', 'EMPLOYEES_MANAGE', 'EMPLOYEES_PAYMENT', 'REPORTS_VIEW'] },
+  VIEWER: { label: 'Sadece Görüntüleme (İzleyici)', permissions: ['CUSTOMERS_VIEW', 'EMPLOYEES_VIEW', 'REPORTS_VIEW'] },
+};
+
 export type RoleType = 'ADMIN' | 'CASHIER' | 'WAITER' | 'ACCOUNTANT' | 'HR' | 'VIEWER';
 export type Permission = 'ALL' | 'CUSTOMERS_VIEW' | 'CUSTOMERS_MANAGE' | 'CUSTOMERS_TRANSACTION' | 'EMPLOYEES_VIEW' | 'EMPLOYEES_MANAGE' | 'EMPLOYEES_PAYMENT' | 'REPORTS_VIEW' | string;
 
@@ -1033,13 +1042,12 @@ class DataService {
         console.error(e);
       }
     }
-    const defaultUsers: User[] = [
-      { id: 'u-1', username: 'admin', fullName: 'Taha Usta', password: '1', role: 'ADMIN', roleName: 'Yönetici (Tam Yetkili)', permissions: ['ALL'], isActive: true },
-      { id: 'u-2', username: 'kasa', fullName: 'Kasa Görevlisi', password: '123', role: 'CASHIER', roleName: 'Kasa Terminali', permissions: ['CUSTOMERS_VIEW', 'CUSTOMERS_TRANSACTION'], isActive: true },
-      { id: 'u-3', username: 'garson', fullName: 'Garson Terminali', password: '123', role: 'WAITER', roleName: 'Garson', permissions: [], isActive: true },
-    ];
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(defaultUsers));
-    return defaultUsers;
+    // Varsayılan (herkesin bildiği) kullanıcı/parola YOKTUR. Kullanıcı yoksa ilk kurulum ekranı yönetici oluşturur.
+    return [];
+  }
+
+  public hasUsers(): boolean {
+    return this.getUsers().length > 0;
   }
 
   public getCurrentUser(): User {
@@ -1047,7 +1055,7 @@ class DataService {
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
-    return this.getUsers()[0];
+    return this.getUsers()[0] || { id: 'none', username: '', fullName: 'Oturum yok', role: 'VIEWER', permissions: [], isActive: false };
   }
 
   public setCurrentUser(user: User): void {
@@ -1079,14 +1087,27 @@ class DataService {
   public deleteUser(userId: string): boolean {
     const users = this.getUsers();
     if (users.length <= 1) return false;
+    const target = users.find(u => u.id === userId);
+    // Son aktif yönetici silinemez: sistem yönetilemez hale gelirdi.
+    if (target && target.role === 'ADMIN' && users.filter(u => u.role === 'ADMIN' && u.isActive !== false).length <= 1) return false;
     const updated = users.filter(u => u.id !== userId);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
     this.notify();
     return true;
   }
 
+  /** Geçerli kullanıcının yetkisi var mı? ADMIN / 'ALL' her şeye sahiptir. */
   public hasPermission(perm: string): boolean {
-    return true;
+    const u = this.getCurrentUser();
+    if (!u || u.isActive === false || u.id === 'none') return false;
+    if (u.role === 'ADMIN') return true;
+    const perms = u.permissions || [];
+    return perms.includes('ALL') || perms.includes(perm);
+  }
+
+  /** Kullanıcı kaydında parola alanı hash olarak saklanır; ekranlara/yedeğe düz metin gitmez. */
+  public getCurrentUserName(): string {
+    return this.getCurrentUser().fullName || 'Kasiyer';
   }
 
   public getCompanySettings(): CompanySettings {

@@ -13,6 +13,7 @@ import { ReportsView } from './modules/reports/ReportsView';
 import { UserManagementView } from './modules/users/UserManagementView';
 import { CompanySettingsView } from './modules/settings/CompanySettingsView';
 import { LoginView } from './modules/auth/LoginView';
+import { FirstRunSetupView } from './modules/auth/FirstRunSetupView';
 import { WaiterView, WaiterLoginView, WaiterPairingView, deviceService } from './modules/waiter';
 import { GlobalModal } from './components/common/GlobalModal';
 import { CallerIdPopup } from './components/common/CallerIdPopup';
@@ -20,13 +21,24 @@ import { PrintQueueIndicator } from './components/common/PrintQueueIndicator';
 import { fullBackupService } from './services/fullBackupService';
 import { dataService } from './services/dataService';
 import { printerService } from './services/printerService';
-import { isApiSyncConfigured } from './services/restaurantDataService';
+import { isApiSyncConfigured, getPublicBaseUrl } from './services/restaurantDataService';
 import { getKasaApiKey } from './services/cloudAuth';
 import { parseAppRoute } from './utils/routeUtils';
+
+function NoAccess() {
+  return (
+    <div className="p-10 text-center space-y-2">
+      <div className="text-4xl">🔒</div>
+      <h2 className="text-lg font-black text-white">Bu bölüme erişim yetkiniz yok</h2>
+      <p className="text-sm text-[#A0A0AA]">Gerekli yetki için yöneticinize başvurun.</p>
+    </div>
+  );
+}
 
 export default function App() {
   useEffect(() => { fullBackupService.startScheduler(); }, []);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState<boolean>(() => !dataService.hasUsers());
   const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
   const [targetPosTableId, setTargetPosTableId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -77,71 +89,34 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // 1. QR KOD EŞLEŞTİRME EKRANI (/pair veya /#/pair?token=...&userId=...)
-  if (isPairingView) {
+  // 1-2. GARSON ARAYÜZÜ: tek resmi garson uygulaması /garson/ adresindeki PWA'dır (cihaz anahtarı + PIN oturumu).
+  // Kasa uygulamasının içindeki eski garson/eşleştirme modu kapatıldı; ikisini birden sürdürmek çift mantık ve
+  // güvenlik açığı demekti.
+  if (isPairingView || isWaiterMode) {
+    const base = (getPublicBaseUrl() || '').replace(/\/+$/, '');
+    const target = base ? `${base}/garson/${typeof window !== 'undefined' ? window.location.search : ''}` : '';
     return (
-      <>
-        <WaiterPairingView
-          initialToken={routeState.token}
-          initialUserId={routeState.userId}
-          onPairedSuccess={(devInfo: any) => {
-            setIsPairingView(false);
-            setIsWaiterMode(true);
-            setWaiterUser(devInfo);
-            if (typeof window !== 'undefined' && window.location.hash.includes('pair')) {
-              window.history.replaceState({}, document.title, window.location.pathname + '#/');
-            }
-          }}
-          onGoToLogin={() => {
-            setIsPairingView(false);
-            setIsWaiterMode(true);
-            if (typeof window !== 'undefined' && window.location.hash.includes('pair')) {
-              window.history.replaceState({}, document.title, window.location.pathname + '#/');
-            }
-          }}
-          onCancel={() => {
-            setIsPairingView(false);
-            if (!isGarsonSubdomain) setIsWaiterMode(false);
-            if (typeof window !== 'undefined' && window.location.hash.includes('pair')) {
-              window.history.replaceState({}, document.title, window.location.pathname + '#/');
-            }
-          }}
-        />
-        <GlobalModal />
-      </>
+      <div className="min-h-screen bg-[#141416] text-white flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-4">
+          <div className="text-4xl">📱</div>
+          <h1 className="text-lg font-black">Garson uygulaması ayrı bir sayfadır</h1>
+          <p className="text-sm text-[#C4C4CC]">
+            Garson terminali artık sunucudaki <strong>/garson/</strong> sayfasından çalışır. Telefonunuzdan bu adresi açın ve kasadan aldığınız eşleştirme kodunu / QR'ı kullanın.
+          </p>
+          {target && <a href={target} className="inline-block px-5 py-3 bg-[#F5C877] text-slate-950 font-black rounded-xl">Garson sayfasını aç</a>}
+        </div>
+      </div>
     );
   }
 
-  // 2. GARSON MOBİL TERMİNALİ (garson.rymedya.com.tr veya ?mode=waiter)
-  if (isWaiterMode) {
-    if (waiterUser) {
-      return (
-        <>
-          <WaiterView
-            waiterUser={waiterUser}
-            onLogout={() => {
-              deviceService.logout();
-              setWaiterUser(null);
-            }}
-            onBackToKasa={!isGarsonSubdomain ? () => setIsWaiterMode(false) : undefined}
-          />
-          <GlobalModal />
-        </>
-      );
-    } else {
-      return (
-        <>
-          <WaiterLoginView
-            onLoginSuccess={(user) => {
-              setWaiterUser(user);
-            }}
-            onOpenPairingScreen={() => setIsPairingView(true)}
-            onBackToKasa={!isGarsonSubdomain ? () => setIsWaiterMode(false) : undefined}
-          />
-          <GlobalModal />
-        </>
-      );
-    }
+  // 3a. İLK KURULUM: kullanıcı yoksa varsayılan hesap OLUŞTURULMAZ, yönetici hesabı kurulum ekranında açılır.
+  if (needsSetup) {
+    return (
+      <>
+        <FirstRunSetupView onCreated={() => { setNeedsSetup(false); setIsAuthenticated(true); }} />
+        <GlobalModal />
+      </>
+    );
   }
 
   // 3. KASA GİRİŞİ (Desktop / Tablet Kasa Paneli)
@@ -204,14 +179,14 @@ export default function App() {
             }} />
           )}
           {activeTab === 'online-orders' && <OnlineOrdersView />}
-          {activeTab === 'restaurant-settings' && <RestaurantSettingsView />}
+          {activeTab === 'restaurant-settings' && (dataService.hasPermission('SETTINGS_MANAGE') ? <RestaurantSettingsView /> : <NoAccess />)}
           {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
-          {activeTab === 'customers' && <CustomerListView customers={customers} onRefresh={refreshAll} />}
-          {activeTab === 'expenses' && <ExpenseListView />}
-          {activeTab === 'employees' && <EmployeeListView employees={employees} onRefresh={refreshAll} onOpenPaymentModal={() => {}} />}
-          {activeTab === 'reports' && <ReportsView />}
-          {activeTab === 'users' && <UserManagementView />}
-          {activeTab === 'company-settings' && <CompanySettingsView onSettingsSaved={refreshAll} />}
+          {activeTab === 'customers' && (dataService.hasPermission('CUSTOMERS_VIEW') ? <CustomerListView customers={customers} onRefresh={refreshAll} /> : <NoAccess />)}
+          {activeTab === 'expenses' && (dataService.hasPermission('EXPENSES_MANAGE') ? <ExpenseListView /> : <NoAccess />)}
+          {activeTab === 'employees' && (dataService.hasPermission('EMPLOYEES_VIEW') ? <EmployeeListView employees={employees} onRefresh={refreshAll} onOpenPaymentModal={() => {}} /> : <NoAccess />)}
+          {activeTab === 'reports' && (dataService.hasPermission('REPORTS_VIEW') ? <ReportsView /> : <NoAccess />)}
+          {activeTab === 'users' && (dataService.hasPermission('USERS_MANAGE') ? <UserManagementView /> : <NoAccess />)}
+          {activeTab === 'company-settings' && (dataService.hasPermission('SETTINGS_MANAGE') ? <CompanySettingsView onSettingsSaved={refreshAll} /> : <NoAccess />)}
         </main>
       </div>
 
