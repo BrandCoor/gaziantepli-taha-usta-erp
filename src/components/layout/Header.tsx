@@ -1,3 +1,4 @@
+import { ipcSend } from '../../services/electronBridge';
 import React from 'react';
 import { notify } from '../../services/notificationService';
 import { Minus, Maximize, Power, Lock, Calendar, Clock, ShieldCheck, Sparkles, Menu } from 'lucide-react';
@@ -19,18 +20,12 @@ export const Header: React.FC<HeaderProps> = ({ onLockApp, onToggleMobileMenu })
 
   const handleMinimize = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if ((window as any).require) {
-      const { ipcRenderer } = (window as any).require('electron');
-      ipcRenderer.send('window-minimize');
-    }
+    ipcSend('window-minimize');
   };
 
   const handleToggleFullscreen = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if ((window as any).require) {
-      const { ipcRenderer } = (window as any).require('electron');
-      ipcRenderer.send('window-toggle-fullscreen');
-    }
+    ipcSend('window-toggle-fullscreen');
   };
 
   const handleExitApp = (e: React.MouseEvent) => {
@@ -41,10 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ onLockApp, onToggleMobileMenu })
       type: 'danger',
       confirmText: 'Evet, Kapat',
       onConfirm: () => {
-        if ((window as any).require) {
-          const { ipcRenderer } = (window as any).require('electron');
-          ipcRenderer.send('window-close');
-        }
+        ipcSend('window-close');
       }
     });
   };

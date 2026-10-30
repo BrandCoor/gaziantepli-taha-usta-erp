@@ -1,4 +1,5 @@
 import { PrintQueue, PrintJob } from './printQueue';
+import { isElectronApp, ipcInvoke } from './electronBridge';
 import {
   restaurantDataService,
   PrinterConfig,
@@ -547,11 +548,9 @@ class PrinterService {
     // B) Electron Masaüstü IPC Doğrudan Erişim
     if (!printSuccess) {
       try {
-        const win = window as any;
-        if (win.require) {
-          const { ipcRenderer } = win.require('electron');
+        if (isElectronApp()) {
           if (printer.type === 'NETWORK' && printer.ipAddress) {
-            const ipcRes = await ipcRenderer.invoke('print-network-ticket', {
+            const ipcRes = await ipcInvoke('print-network-ticket', {
               ip: printer.ipAddress,
               port: printer.port || 9100,
               ticketType: jobType,
@@ -563,7 +562,7 @@ class PrinterService {
             }
           } else if (printer.type === 'USB' || printer.type === 'SYSTEM_DRIVER') {
             const rawText = this.generatePlainTextReceipt(jobType as any, data);
-            const ipcRes = await ipcRenderer.invoke('print-usb-receipt', {
+            const ipcRes = await ipcInvoke('print-usb-receipt', {
               printerName: printer.driverName || printer.usbName || printer.name,
               rawText,
             });
@@ -1642,10 +1641,8 @@ class PrinterService {
 
     // 2. Electron IPC üzerinden test
     try {
-      const win = window as any;
-      if (win.require) {
-        const { ipcRenderer } = win.require('electron');
-        const res = await ipcRenderer.invoke('print-hardware-test', {
+      if (isElectronApp()) {
+        const res = await ipcInvoke('print-hardware-test', {
           printerName: printer.driverName || printer.usbName || printer.name,
           type: printer.type,
           ip: printer.ipAddress,

@@ -1,3 +1,4 @@
+import { isElectronApp, ipcInvoke } from '../../../services/electronBridge';
 import React, { useState } from 'react';
 import { 
   Printer, 
@@ -128,10 +129,9 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
     const foundNetwork: Array<{ ip: string; port: number; model: string; status?: string }> = [];
 
     // 1. Electron / Windows USB Taraması
-    if ((window as any).require) {
+    if (isElectronApp()) {
       try {
-        const { ipcRenderer } = (window as any).require('electron');
-        const usbList = await ipcRenderer.invoke('get-system-usb-printers');
+        const usbList = await ipcInvoke('get-system-usb-printers');
         if (Array.isArray(usbList)) {
           foundUsb.push(...usbList);
         }

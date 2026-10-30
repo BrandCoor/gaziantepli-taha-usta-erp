@@ -17,13 +17,56 @@ import {
 } from './printer';
 import { gCallerIdDriver, CallerIdEvent } from './callerid/gcallerid';
 
+import { isAllowedOrigin, isAllowedHost, isPrivateOrLoopbackIp } from './netGuard';
+
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// 1) DNS-rebinding koruması: yalnızca localhost/127.0.0.1 Host başlığı kabul edilir.
+app.use((req, res, next) => {
+  if (!isAllowedHost(req.headers.host)) {
+    return res.status(403).json({ success: false, error: 'Geçersiz Host' });
+  }
+  next();
+});
+
+// 2) CORS: yalnızca uygulamanın kendi penceresi (file:// → "null", geliştirmede localhost:3000).
+app.use(
+  cors({
+    origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
+  })
+);
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string | undefined;
+  if (origin && !isAllowedOrigin(origin)) {
+    return res.status(403).json({ success: false, error: 'İzin verilmeyen kaynak' });
+  }
+  next();
+});
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// 3) Yazıcı hedefi yalnızca yerel/özel ağ adresi olabilir (SSRF / ağ tarama koruması).
+app.use('/api/printers', (req, res, next) => {
+  const candidates: any[] = [
+    (req.body as any)?.printer?.ipAddress,
+    (req.body as any)?.ip,
+    (req.body as any)?.ipAddress,
+    (req.query as any)?.ip,
+  ].filter((v) => typeof v === 'string' && v.length > 0);
+  for (const ip of candidates) {
+    if (!isPrivateOrLoopbackIp(ip)) {
+      return res.status(400).json({ success: false, error: 'Yazıcı adresi yerel ağ (özel IP) olmalıdır.' });
+    }
+  }
+  next();
+});
+
 const httpServer = createServer(app);
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({
+  server: httpServer,
+  verifyClient: (info: { origin?: string; req: { headers: { host?: string } } }) =>
+    isAllowedHost(info.req.headers.host) && isAllowedOrigin(info.origin),
+});
 
 const activeClients = new Set<WebSocket>();
 
@@ -273,6 +316,9 @@ app.get('/api/callerid/status', (req, res) => {
 
 // Test / Simülasyon çağrısı fırlatır (Hat 1 veya Hat 2)
 app.post('/api/callerid/simulate', (req, res) => {
+  if (app.get('env') === 'production' || !process.env.VITE_DEV_SERVER_URL) {
+    return res.status(404).json({ success: false, error: 'Üretimde kapalı' });
+  }
   const line = req.body.line === 2 ? 2 : 1;
   const phone = req.body.phone || '05321234567';
   const event = gCallerIdDriver.handleHttpWebhook(line, phone);
@@ -280,7 +326,8 @@ app.post('/api/callerid/simulate', (req, res) => {
 });
 
 export function startLocalServer(port: number = 4545) {
-  httpServer.listen(port, '0.0.0.0', () => {
+  // Yalnızca bu bilgisayar: yerel ağdaki başka cihazlar yazıcı/çağrı servisine erişemez.
+  httpServer.listen(port, '127.0.0.1', () => {
     console.log(`📡 Restoran Yerel Sunucusu Calisiyor: http://${getLocalIPAddress()}:${port}`);
     // Otomatik olarak GCallerID portunu dinlemeye başla
     gCallerIdDriver.connect('AUTO').catch(err => {

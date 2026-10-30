@@ -1,5 +1,10 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, IpcMainEvent } from 'electron';
+import { isPrivateOrLoopbackIp } from './netGuard';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// package.json "type":"module" olduğu için __dirname yoktur; ESM karşılığı kullanılır.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { startLocalServer } from './server';
 import {
   generateKitchenReceipt,
@@ -13,6 +18,33 @@ import {
 
 let mainWindow: BrowserWindow | null = null;
 
+/** IPC yalnızca uygulamanın kendi sayfasından (file:// veya geliştirme sunucusu) kabul edilir. */
+function isTrustedSender(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
+  const url = event.senderFrame?.url || '';
+  const dev = process.env.VITE_DEV_SERVER_URL;
+  return url.startsWith('file://') || (!!dev && url.startsWith(dev));
+}
+function secureHandle(channel: string, fn: (event: IpcMainInvokeEvent, arg: any) => any) {
+  ipcMain.handle(channel, (event, arg) => {
+    if (!isTrustedSender(event)) return { success: false, error: 'İzinsiz kaynak' };
+    return fn(event, arg);
+  });
+}
+function secureOn(channel: string, fn: () => void) {
+  ipcMain.on(channel, (event) => {
+    if (isTrustedSender(event)) fn();
+  });
+}
+function escapeHtml(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function validNetTarget(ip: any, port: any): string | null {
+  if (typeof ip !== 'string' || !isPrivateOrLoopbackIp(ip)) return 'Yazıcı adresi yerel ağ (özel IP) olmalıdır.';
+  const p = Number(port || 9100);
+  if (!Number.isInteger(p) || p < 1 || p > 65535) return 'Geçersiz port.';
+  return null;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -23,9 +55,19 @@ function createWindow() {
     autoHideMenuBar: true,
     title: 'Gaziantepli Taha Usta - Restoran Otomasyon Sistemi',
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      // Güvenli Electron: sayfa Node.js'e doğrudan erişemez; yalnızca preload'daki izinli köprü kullanılır.
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
+  });
+
+  // Uygulama dışına gezinme ve yeni pencere açma engellenir.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    const dev = process.env.VITE_DEV_SERVER_URL;
+    if (!(url.startsWith('file://') || (dev && url.startsWith(dev)))) e.preventDefault();
   });
 
   mainWindow.maximize();
@@ -42,7 +84,7 @@ function createWindow() {
 }
 
 // WINDOWS İŞLETİM SİSTEMİNE BAĞLI USB / SPOOLER YAZICILARI GETİR
-ipcMain.handle('get-system-usb-printers', async () => {
+secureHandle('get-system-usb-printers', async () => {
   if (mainWindow) {
     try {
       const list = await mainWindow.webContents.getPrintersAsync();
@@ -61,8 +103,10 @@ ipcMain.handle('get-system-usb-printers', async () => {
 });
 
 // AĞ YAZICISINA DOĞRUDAN ELEKTRON ARACILIĞIYLA YAZDIRMA (Port 9100)
-ipcMain.handle('print-network-ticket', async (event, { ip, port, ticketType, data }) => {
+secureHandle('print-network-ticket', async (event, { ip, port, ticketType, data }) => {
   try {
+    const bad = validNetTarget(ip, port);
+    if (bad) return { success: false, error: bad };
     let buffer: Buffer;
     if (ticketType === 'BILL') {
       buffer = generateBillReceipt(data);
@@ -81,7 +125,7 @@ ipcMain.handle('print-network-ticket', async (event, { ip, port, ticketType, dat
 });
 
 // USB / WINDOWS YAZICISINA SESSİZ FİŞ DÖKÜMÜ & WIN32 RAW SPOOLER
-ipcMain.handle('print-usb-receipt', async (event, { printerName, rawText, buffer, html }) => {
+secureHandle('print-usb-receipt', async (event, { printerName, rawText, buffer, html }) => {
   try {
     if (buffer) {
       const spoolRes = await sendToWindowsSpooler(printerName, Buffer.from(buffer));
@@ -97,8 +141,9 @@ ipcMain.handle('print-usb-receipt', async (event, { printerName, rawText, buffer
       width: 320,
       height: 600,
       webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
       },
     });
 
@@ -112,7 +157,7 @@ ipcMain.handle('print-usb-receipt', async (event, { printerName, rawText, buffer
           body { font-family: monospace, 'Courier New', Courier; font-size: 12px; margin: 2mm; padding: 0; white-space: pre-wrap; word-break: break-all; color: #000; }
         </style>
       </head>
-      <body>${rawText ? rawText.replace(/\n/g, '<br/>') : ''}</body>
+      <body>${rawText ? escapeHtml(String(rawText)).replace(/\n/g, '<br/>') : ''}</body>
       </html>
     `;
 
@@ -137,8 +182,12 @@ ipcMain.handle('print-usb-receipt', async (event, { printerName, rawText, buffer
 });
 
 // DONANIM TEST YAZDIRMASI (Afanda 892E & Win32 Spooler)
-ipcMain.handle('print-hardware-test', async (event, { printerName, type, ip, port }) => {
+secureHandle('print-hardware-test', async (event, { printerName, type, ip, port }) => {
   try {
+    if (type === 'NETWORK') {
+      const bad = validNetTarget(ip, port);
+      if (bad) return { success: false, error: bad };
+    }
     const testBuf = generateHardwareTestReceipt(printerName);
     if (type === 'NETWORK' && ip) {
       const ok = await sendToNetworkPrinter(ip, port || 9100, testBuf);
@@ -151,11 +200,11 @@ ipcMain.handle('print-hardware-test', async (event, { printerName, type, ip, por
   }
 });
 
-ipcMain.on('window-minimize', () => {
+secureOn('window-minimize', () => {
   if (mainWindow) mainWindow.minimize();
 });
 
-ipcMain.on('window-toggle-fullscreen', () => {
+secureOn('window-toggle-fullscreen', () => {
   if (mainWindow) {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize();
@@ -165,7 +214,7 @@ ipcMain.on('window-toggle-fullscreen', () => {
   }
 });
 
-ipcMain.on('window-close', () => {
+secureOn('window-close', () => {
   if (mainWindow) mainWindow.close();
 });
 

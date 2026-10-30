@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import electron from 'vite-plugin-electron';
-import renderer from 'vite-plugin-electron-renderer';
 
 // Cloud web sandbox ortamında (ekran/X11 bulunmayan headless container) Electron başlatmayı engelle,
 // ancak kullanıcının yerel Windows/Mac/Linux masaüstünde 'npm run dev' çalıştırıldığında masaüstü penceresini aç
@@ -39,8 +38,20 @@ export default defineConfig({
                 },
               },
             },
+            {
+              // Güvenli köprü (contextBridge). Sandbox'lı pencere için CommonJS çıktı gerekir.
+              entry: 'electron/preload.ts',
+              vite: {
+                build: {
+                  lib: { entry: 'electron/preload.ts', formats: ['cjs'], fileName: () => 'preload.cjs' },
+                  rollupOptions: { external: ['electron'] },
+                },
+              },
+              onstart(options) {
+                options.reload();
+              },
+            },
           ]),
-          renderer(),
         ]
       : []),
   ],
