@@ -140,20 +140,12 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
     );
   };
 
-  // Teslimat Modeli Kontrolü (RESTAURANT_COURIER vs. PLATFORM_COURIER)
-  const handleSetDeliveryModel = async (code: OnlinePlatformCode, model: DeliveryModel) => {
-    await onlinePlatformService.setDeliveryModel(code, model);
-    setPlatforms(onlinePlatformService.getPlatforms());
-    const modelLabel = model === 'RESTAURANT_COURIER' ? 'Restoran Kuryesi (Kendi Kuryemiz)' : 'Platform Kuryesi (Trendyol GO / Vale / Getir)';
-    restaurantDataService.playAudioAlert('melody');
-    notify.success('Teslimat Modeli Güncellendi', `${code} teslimatı artık '${modelLabel}' olarak yönetilecek.`);
-  };
 
   // API Bağlantı Testi
   const handleTestConnection = async (code: OnlinePlatformCode) => {
     setTestingConnection(code);
     try {
-      const result = await onlinePlatformService.testConnection(code);
+      const result = await onlinePlatformService.testConnection(code, platforms.find(x => x.code === code)?.credentials);
       setConnectionStatus(prev => ({
         ...prev,
         [code]: {
@@ -309,21 +301,6 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
                   </span>
                 )}
               </div>
-
-              {/* Teslimat Modeli Bilgisi */}
-              <div className="flex items-center justify-between pt-2.5 border-t border-[#2C2C34]/70">
-                <span className="text-[10px] text-slate-400 flex items-center gap-1 font-medium">
-                  <Bike className="w-3 h-3 text-[#F5C877]" />
-                  <span>Lojistik:</span>
-                </span>
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                  p.deliveryModel === 'PLATFORM_COURIER'
-                    ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
-                    : 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-                }`}>
-                  {p.deliveryModel === 'PLATFORM_COURIER' ? 'Platform Kuryesi' : 'Restoran Kuryesi'}
-                </span>
-              </div>
             </div>
           );
         })}
@@ -422,96 +399,6 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
                 <span className="w-2 h-2 rounded-full bg-rose-400"></span>
                 <span>Siparişe Kapalı</span>
               </button>
-            </div>
-          </div>
-        </div>
-
-        {/* TESLİMAT MODELİ SEÇİMİ (RESTORAN KURYESİ vs. PLATFORM KURYESİ) */}
-        <div className="bg-[#141416] p-5 rounded-2xl border border-[#2C2C34] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h4 className="text-xs font-black text-white flex items-center gap-2">
-                <Bike className="w-4 h-4 text-[#F5C877]" />
-                <span>Teslimat Modeli (Lojistik Tercihi)</span>
-              </h4>
-              <p className="text-[11px] text-[#8E8E98]">
-                {currentPlatform.name} siparişlerinin teslimatını restoranın kendi personeli mi yapacak yoksa platformun kuryesi mi teslim alacak?
-              </p>
-            </div>
-            <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
-              currentPlatform.deliveryModel === 'PLATFORM_COURIER'
-                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-            }`}>
-              {currentPlatform.deliveryModel === 'PLATFORM_COURIER' ? 'Platform Kuryesi Aktif' : 'Restoran Kuryesi Aktif'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* 1. Restoran Kuryesi (Kendi Kuryemiz) */}
-            <div
-              onClick={() => handleSetDeliveryModel(currentPlatform.code, 'RESTAURANT_COURIER')}
-              className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
-                (currentPlatform.deliveryModel || 'RESTAURANT_COURIER') === 'RESTAURANT_COURIER'
-                  ? 'bg-blue-950/30 border-blue-500/60 shadow-lg shadow-blue-500/5'
-                  : 'bg-[#1C1C20] border-[#2C2C34] hover:border-[#3C3C48]'
-              }`}
-            >
-              <div className="pt-0.5">
-                <input
-                  type="radio"
-                  name={`delivery-model-${currentPlatform.code}`}
-                  checked={(currentPlatform.deliveryModel || 'RESTAURANT_COURIER') === 'RESTAURANT_COURIER'}
-                  onChange={() => handleSetDeliveryModel(currentPlatform.code, 'RESTAURANT_COURIER')}
-                  className="w-4 h-4 text-blue-500 bg-[#282830] border-[#383844] cursor-pointer"
-                />
-              </div>
-              <div className="space-y-1.5 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-white">Restoran Kuryesi</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-md">Kendi Kuryemiz</span>
-                </div>
-                <p className="text-[11px] text-[#8E8E98] leading-relaxed">
-                  Siparişi onaylarken kurye personeli seçilir. Kurye yazıcısından müşteri açık adresi, telefon ve yol tarifiyle <b>Kurye Yol Fişi</b> basılır. Kapıda nakit / POS tahsilatları kurye zimmetine kaydedilir.
-                </p>
-                <div className="pt-1 text-[10px] text-blue-400 font-medium">
-                  • Buton Akışı: Onayla & Kurye Ata → Yola Çıktı → Teslim Edildi
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Platform Kuryesi (Trendyol GO / Vale / Getir) */}
-            <div
-              onClick={() => handleSetDeliveryModel(currentPlatform.code, 'PLATFORM_COURIER')}
-              className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
-                currentPlatform.deliveryModel === 'PLATFORM_COURIER'
-                  ? 'bg-purple-950/30 border-purple-500/60 shadow-lg shadow-purple-500/5'
-                  : 'bg-[#1C1C20] border-[#2C2C34] hover:border-[#3C3C48]'
-              }`}
-            >
-              <div className="pt-0.5">
-                <input
-                  type="radio"
-                  name={`delivery-model-${currentPlatform.code}`}
-                  checked={currentPlatform.deliveryModel === 'PLATFORM_COURIER'}
-                  onChange={() => handleSetDeliveryModel(currentPlatform.code, 'PLATFORM_COURIER')}
-                  className="w-4 h-4 text-purple-500 bg-[#282830] border-[#383844] cursor-pointer"
-                />
-              </div>
-              <div className="space-y-1.5 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-white">Platform Kuryesi</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-md">
-                    {currentPlatform.code === 'TRENDYOL' ? 'Trendyol GO' : currentPlatform.code === 'GETIR' ? 'Getir Kuryesi' : 'Yemeksepeti Vale'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-[#8E8E98] leading-relaxed">
-                  Teslimatı platform kuryesi yapar. Yol fişi yerine paket üzerine zımbalanacak <b>4 Haneli Teslimat Kodu & Paket Etiketi</b> basılır. Kuryenin adı, telefonu ve tahmini varış süresi canlı izlenir.
-                </p>
-                <div className="pt-1 text-[10px] text-purple-400 font-medium">
-                  • Buton Akışı: Siparişi Onayla → Sipariş Hazır → Kuryeye Teslim Edildi
-                </div>
-              </div>
             </div>
           </div>
         </div>

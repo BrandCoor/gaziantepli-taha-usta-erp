@@ -110,9 +110,6 @@ export const OnlineOrdersView: React.FC = () => {
   const [activeStatusTab, setActiveStatusTab] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
   const [rejectModalOrder, setRejectModalOrder] = useState<OnlineOrder | null>(null);
   const [selectedRejectReason, setSelectedRejectReason] = useState('Mutfak Kapasitesi Dolu');
-  const [assignCourierModalOrder, setAssignCourierModalOrder] = useState<OnlineOrder | null>(null);
-  const [selectedCourierName, setSelectedCourierName] = useState<string>('');
-  const [customCourierName, setCustomCourierName] = useState<string>('');
   const [isAlarmMuted, setIsAlarmMuted] = useState(false);
   const [apiProcessingId, setApiProcessingId] = useState<string | null>(null);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
@@ -273,32 +270,19 @@ export const OnlineOrdersView: React.FC = () => {
     }
   };
 
-  // PLATFORM SİPARİŞİ KABUL VE ONAYLAMA (Kurye Modeline Göre Akıllı Akış)
+  // PLATFORM SİPARİŞİ KABUL VE ONAYLAMA (kurye/teslimat modeli seçimi yoktur)
   const handleInitiateAcceptOrder = (order: OnlineOrder) => {
-    const isRest = order.deliveryModel === 'RESTAURANT' || order.deliveryModel === 'RESTAURANT_COURIER';
-    if (isRest && !order.assignedCourierName) {
-      // Kendi kuryemiz ise kurye seçim modalını aç
-      setAssignCourierModalOrder(order);
-      const staffList = restaurantDataService.getWaiters();
-      const defaultName = staffList.length > 0 ? staffList[0].name : 'Ahmet (Kurye 1)';
-      setSelectedCourierName(defaultName);
-      setCustomCourierName('');
-      return;
-    }
-    // Platform kuryesi veya kuryesi önceden atanmış ise doğrudan onayla
     executeAcceptOrder(order);
   };
 
-  const executeAcceptOrder = async (order: OnlineOrder, courierNameToAssign?: string) => {
+  const executeAcceptOrder = async (order: OnlineOrder) => {
     setApiProcessingId(order.id);
     const prepMinutes =
       order.platform === 'TRENDYOL' ? platformConfig.trendyol.preparationTimeMinutes || 25 :
       order.platform === 'GETIR' ? platformConfig.getir.preparationTimeMinutes || 25 :
       platformConfig.yemeksepeti.preparationTimeMinutes || 25;
 
-    const assignedName = courierNameToAssign || order.assignedCourierName;
-    const isRest = order.deliveryModel === 'RESTAURANT' || order.deliveryModel === 'RESTAURANT_COURIER';
-    const deliveryModel = isRest ? 'RESTAURANT_COURIER' : 'PLATFORM_COURIER';
+    const deliveryModel = 'RESTAURANT_COURIER' as const;
 
     // 1. Sunucuya (ve oradan platforma) iletilir. Sunucu onaylamazsa HİÇBİR yerel değişiklik yapılmaz.
     const result = await onlinePlatformService.acceptOrder({
@@ -315,10 +299,6 @@ export const OnlineOrdersView: React.FC = () => {
       status: 'BEKLIYOR',
       createdAt: order.createdAt,
       deliveryModel,
-      assignedCourierName: assignedName,
-      platformCourierName: order.platformCourierName,
-      platformCourierPhone: order.platformCourierPhone,
-      handoverCode: order.handoverCode,
     });
 
     if (!result.success) {
@@ -327,15 +307,9 @@ export const OnlineOrdersView: React.FC = () => {
       return;
     }
 
-    if (assignedName && isRest) {
-      const ac = await onlinePlatformService.assignCourier(order.id, 'courier-' + assignedName, assignedName, order.platform);
-      if (!ac.success) notify.warning('Kurye Atanamadı', ac.message);
-    }
-
     setOrders(prev => prev.map(o => o.id === order.id ? {
       ...o,
       status: 'PREPARING',
-      assignedCourierName: assignedName || o.assignedCourierName,
       preparationTimeMinutes: prepMinutes,
       platformSync: result.platformSync,
       platformSyncMessage: result.platformSyncMessage,
@@ -358,10 +332,6 @@ export const OnlineOrdersView: React.FC = () => {
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
         deliveryModel,
-        assignedCourierName: assignedName,
-        platformCourierName: order.platformCourierName,
-        platformCourierPhone: order.platformCourierPhone,
-        handoverCode: order.handoverCode,
       });
       if (!pr.success) printNote = ' Fişler yazdırma kuyruğunda bekliyor (sağ alttaki Yazdırma Kuyruğu).';
     } catch (pErr) {
@@ -371,7 +341,7 @@ export const OnlineOrdersView: React.FC = () => {
     const syncOk = result.platformSync === 'OK';
     (syncOk ? notify.success : notify.warning)(
       syncOk ? 'Sipariş Onaylandı' : 'Sipariş Onaylandı — platform bildirimi eksik',
-      `[${order.platform} ${order.platformCode}] ${isRest ? `kurye ${assignedName || 'atanmadı'}` : 'platform kuryesi'}.${result.message.replace(/^\[[^\]]*\][^.]*\./, '')}${printNote}`
+      `[${order.platform} ${order.platformCode}] .${result.message.replace(/^\[[^\]]*\][^.]*\./, '')}${printNote}`
     );
   };
 
@@ -399,20 +369,6 @@ export const OnlineOrdersView: React.FC = () => {
     (result.platformSync === 'OK' ? notify.success : notify.warning)('Sipariş İptal Edildi', `[${order.platform} ${order.platformCode}] ${result.message}`);
   };
 
-  // KURYE TESLİMAT MODELİNİ DEĞİŞTİRME (Kullanıcının Kolayca Seçebilmesi)
-  const handleToggleDeliveryModel = (orderId: string) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        const isCurrentlyRest = o.deliveryModel === 'RESTAURANT' || o.deliveryModel === 'RESTAURANT_COURIER';
-        const nextModel: OrderDeliveryModel = isCurrentlyRest ? 'PLATFORM_COURIER' : 'RESTAURANT_COURIER';
-        const label = nextModel === 'RESTAURANT_COURIER' ? 'Restoran Kuryesi (Kendi Kuryemiz)' : 'Platform Kuryesi';
-        notify.info('Teslimat Modeli Güncellendi', `Sipariş teslimat yöntemi "${label}" olarak güncellendi.`);
-        return { ...o, deliveryModel: nextModel };
-      }
-      return o;
-    }));
-  };
-
   const filteredOrders = orders.filter(o => {
     // 1. Görünürlük Kuralı: Pasif duruma getirilen platformlar sipariş listesinden TAMAMEN gizlenir
     if (!enabledPlatformCodes.has(o.platform)) return false;
@@ -429,7 +385,6 @@ export const OnlineOrdersView: React.FC = () => {
 
   const handlePrintReceipt = (order: OnlineOrder) => {
     restaurantDataService.playAudioAlert('register');
-    const isRest = order.deliveryModel === 'RESTAURANT' || order.deliveryModel === 'RESTAURANT_COURIER';
     printerService.printOnlineOrder({
       platform: order.platform,
       platformOrderId: order.platformCode || order.id,
@@ -440,17 +395,10 @@ export const OnlineOrdersView: React.FC = () => {
       items: order.items,
       totalAmount: order.totalAmount,
       paymentMethod: order.paymentMethod,
-      deliveryModel: isRest ? 'RESTAURANT_COURIER' : 'PLATFORM_COURIER',
-      assignedCourierName: order.assignedCourierName,
-      platformCourierName: order.platformCourierName,
-      platformCourierPhone: order.platformCourierPhone,
-      handoverCode: order.handoverCode,
+      deliveryModel: 'RESTAURANT_COURIER',
     }).then(res => {
       if (res.success) {
-        notify.success(
-          'Yazıcıya Gönderildi',
-          `[${order.platform} ${order.platformCode}] ${isRest ? 'Kurye Yol Fişi ve Mutfak' : 'Paket Etiketi (#4 Hane) ve Mutfak'} fişleri basıldı.`
-        );
+        notify.success('Yazıcıya Gönderildi', `[${order.platform} ${order.platformCode}] mutfak ve teslimat fişleri basıldı.`);
       } else {
         notify.warning('Yazıcı Uyarısı', res.details[0] || 'Yazıcı çıktısı gönderilemedi.');
       }
@@ -458,21 +406,14 @@ export const OnlineOrdersView: React.FC = () => {
   };
 
   const handleAdvanceStatus = async (order: OnlineOrder) => {
-    const isRest = order.deliveryModel === 'RESTAURANT' || order.deliveryModel === 'RESTAURANT_COURIER';
     setApiProcessingId(order.id);
 
     if (order.status === 'PREPARING') {
       const r = await onlinePlatformService.dispatchOrder(order.id, order.platform);
       setApiProcessingId(null);
       if (!r.success) { notify.error('Durum Güncellenemedi', r.message); return; }
-      if (isRest) {
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'ON_WAY', platformSync: r.platformSync, platformSyncMessage: r.platformSyncMessage } : o));
-        (r.platformSync === 'OK' ? notify.info : notify.warning)('Kuryeye Teslim Edildi', r.message);
-      } else {
-        // Platform kuryesi teslim aldı (Handover): restoran tarafı tamamlandı
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'DELIVERED', platformSync: r.platformSync, platformSyncMessage: r.platformSyncMessage } : o));
-        (r.platformSync === 'OK' ? notify.success : notify.warning)('Platform Kuryesine Devredildi', r.message);
-      }
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'ON_WAY', platformSync: r.platformSync, platformSyncMessage: r.platformSyncMessage } : o));
+      (r.platformSync === 'OK' ? notify.info : notify.warning)('Sipariş Yola Çıktı', r.message);
     } else if (order.status === 'ON_WAY') {
       const r = await onlinePlatformService.deliverOrder(order.id, order.platform);
       setApiProcessingId(null);
@@ -602,10 +543,6 @@ export const OnlineOrdersView: React.FC = () => {
             const isBusy = p.storeStatus === 'BUSY';
             const isClosed = p.storeStatus === 'CLOSED';
             const brandColor = p.badgeColor?.pill || (p.code === 'TRENDYOL' ? '#f97316' : p.code === 'GETIR' ? '#9333ea' : '#e11d48');
-            const deliveryLabel = 
-              p.code === 'TRENDYOL' ? (platformConfig.trendyol.deliveryModel === 'RESTAURANT' ? 'Restoran Kuryesi' : 'Trendyol GO') :
-              p.code === 'GETIR' ? (platformConfig.getir.deliveryModel === 'RESTAURANT' ? 'Restoran Getirsin' : 'Getir Kuryesi') :
-              (platformConfig.yemeksepeti.deliveryModel === 'RESTAURANT' ? 'Kendi Kuryem' : 'Vale');
 
             return (
               <div 
@@ -629,9 +566,6 @@ export const OnlineOrdersView: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-black text-white">{p.name}</span>
-                        <span className="text-[10px] font-semibold text-[#8E8E98]">
-                          ({deliveryLabel})
-                        </span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1.5">
                         {isOpen ? (
@@ -776,8 +710,6 @@ export const OnlineOrdersView: React.FC = () => {
             const isNew = ord.status === 'NEW';
             const isPreparing = ord.status === 'PREPARING';
             const isOnWay = ord.status === 'ON_WAY';
-            const isRestaurantCourier = ord.deliveryModel === 'RESTAURANT' || ord.deliveryModel === 'RESTAURANT_COURIER';
-            const handoverCode = ord.handoverCode || ord.platformCode?.replace(/[^0-9]/g, '').slice(-4) || '';
 
             return (
               <div 
@@ -812,113 +744,18 @@ export const OnlineOrdersView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 🛵 TESLİMAT MODELİ ETİKETİ VE DEĞİŞTİRME SEÇENEĞİ */}
-                  <div className="flex items-center justify-between bg-[#141416] p-2.5 rounded-2xl border border-[#2C2C34] mb-3 text-xs">
-                    <div className="flex items-center gap-2">
-                      {isRestaurantCourier ? (
-                        <span className="px-2.5 py-1 bg-blue-500/15 text-blue-400 border border-blue-500/30 rounded-xl text-[10px] font-black flex items-center gap-1.5">
-                          <Bike className="w-3.5 h-3.5" />
-                          <span>Restoran Kuryesi (Kendi Personelimiz)</span>
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-1 bg-purple-500/15 text-purple-300 border border-purple-500/30 rounded-xl text-[10px] font-black flex items-center gap-1.5">
-                          <Building2 className="w-3.5 h-3.5" />
-                          <span>Platform Kuryesi ({ord.platform === 'TRENDYOL' ? 'Trendyol GO' : ord.platform === 'GETIR' ? 'Getir' : 'Vale'})</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {isNew && (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleDeliveryModel(ord.id)}
-                        className="text-[10px] font-bold text-[#8E8E98] hover:text-[#F5C877] flex items-center gap-1 cursor-pointer transition-colors px-2 py-1 rounded-lg hover:bg-[#202026]"
-                        title="Kurye modelini işletme veya platform kuryesi olarak değiştir"
-                      >
-                        <ArrowRightLeft className="w-3 h-3" />
-                        <span>Değiştir</span>
-                      </button>
-                    )}
+                  <div className="mb-3">
+                {/* Kapıda Tahsilat ve Kurye Zimmet Uyarısı */}
+                {(ord.paymentMethod.toLowerCase().includes('nakit') || ord.paymentMethod.toLowerCase().includes('pos') || ord.paymentMethod.toLowerCase().includes('kapı')) && (
+                  <div className="px-3 py-2 bg-amber-950/40 border border-amber-500/40 rounded-2xl text-[11px] text-amber-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Kapıda Tahsil Edilecek ({ord.paymentMethod}):</span>
+                    </span>
+                    <span className="font-mono font-black text-amber-200">{formatMoney(ord.totalAmount)}</span>
                   </div>
-
-                  {/* PLATFORM KURYESİ: 4 HANELİ TESLİMAT KODU & CANLI KURYE BİLGİSİ */}
-                  {!isRestaurantCourier && (
-                    <div className="mb-3 space-y-2">
-                      <div className="flex items-center gap-3 bg-purple-950/40 border border-purple-500/40 p-2.5 rounded-2xl">
-                        <div className="w-10 h-10 rounded-xl bg-purple-600/40 text-purple-200 border border-purple-400/40 flex flex-col items-center justify-center font-black text-sm tracking-wider">
-                          <span className="text-[8px] uppercase tracking-normal font-medium text-purple-300">KOD</span>
-                          <span>#{handoverCode}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[10px] font-black text-purple-300 uppercase tracking-wide flex items-center gap-1">
-                            <span>4 Haneli Teslimat Kodu</span>
-                            <span className="text-[9px] font-normal px-1.5 py-0.2 bg-purple-500/20 text-purple-200 rounded">Etiket Basıldı</span>
-                          </div>
-                          <div className="text-[11px] text-slate-300 truncate">
-                            Platform kuryesine teslim ederken teyit ediniz.
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Canlı Platform Kuryesi Bilgisi (Atandıysa) */}
-                      {ord.platformCourierName && (
-                        <div className="flex items-center justify-between bg-[#141416] p-2.5 rounded-2xl border border-purple-500/30 text-xs">
-                          <div className="flex items-center gap-2">
-                            <Bike className="w-4 h-4 text-purple-400" />
-                            <div>
-                              <div className="font-bold text-white flex items-center gap-1.5">
-                                <span>{ord.platformCourierName}</span>
-                                {ord.platformCourierEtaMinutes && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.2 bg-purple-500/20 text-purple-300 rounded">
-                                    {ord.platformCourierEtaMinutes} dk sonra kapıda
-                                  </span>
-                                )}
-                              </div>
-                              {ord.platformCourierPhone && (
-                                <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                                  <Phone className="w-2.5 h-2.5" />
-                                  <span>{ord.platformCourierPhone}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* RESTORAN KURYESİ: ATANAN PERSONEL & ZİMMET BİLGİSİ */}
-                  {isRestaurantCourier && (
-                    <div className="mb-3 space-y-2">
-                      <div className="flex items-center justify-between bg-[#141416] p-2.5 rounded-2xl border border-blue-500/30 text-xs">
-                        <div className="flex items-center gap-2">
-                          <Bike className="w-4 h-4 text-blue-400" />
-                          <div>
-                            <div className="font-bold text-white flex items-center gap-1.5">
-                              <span>Atanan Kurye:</span>
-                              <span className={ord.assignedCourierName ? "text-blue-300 font-black" : "text-[#8E8E98] italic"}>
-                                {ord.assignedCourierName || 'Henüz Atanmadı'}
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-[#8E8E98]">
-                              {ord.assignedCourierName ? 'Kurye Yol Fişi & Zimmet Kaydı Basıldı' : 'Sipariş onaylanırken kurye seçilecektir'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Kapıda Tahsilat ve Kurye Zimmet Uyarısı */}
-                      {(ord.paymentMethod.toLowerCase().includes('nakit') || ord.paymentMethod.toLowerCase().includes('pos') || ord.paymentMethod.toLowerCase().includes('kapı')) && (
-                        <div className="px-3 py-2 bg-amber-950/40 border border-amber-500/40 rounded-2xl text-[11px] text-amber-300 flex items-center justify-between">
-                          <span className="flex items-center gap-1.5">
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span>Kapıda Tahsil Edilecek ({ord.paymentMethod}):</span>
-                          </span>
-                          <span className="font-mono font-black text-amber-200">{formatMoney(ord.totalAmount)}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                )}
+                  </div>
 
                   {/* Durum Göstergesi */}
                   <div className="mb-3">
@@ -1008,22 +845,14 @@ export const OnlineOrdersView: React.FC = () => {
                         <button
                           disabled={apiProcessingId === ord.id}
                           onClick={() => handleInitiateAcceptOrder(ord)}
-                          className={`flex-1 py-3 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg cursor-pointer active:scale-95 transition-all ${
-                            isRestaurantCourier
-                              ? 'bg-gradient-to-r from-blue-600 to-blue-500 hover:brightness-110 shadow-blue-600/25'
-                              : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 shadow-purple-600/25'
-                          }`}
+                          className="flex-1 py-3 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg cursor-pointer active:scale-95 transition-all bg-gradient-to-r from-emerald-600 to-emerald-500 hover:brightness-110 shadow-emerald-600/25"
                         >
                           {apiProcessingId === ord.id ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : isRestaurantCourier ? (
-                            <Bike className="w-4 h-4" />
                           ) : (
                             <Check className="w-4 h-4" />
                           )}
-                          <span>
-                            {isRestaurantCourier ? 'ONAYLA & KURYE ATA' : 'ONAYLA & PAKET ETİKETİ BAS'}
-                          </span>
+                          <span>ONAYLA & FİŞLERİ BAS</span>
                         </button>
                         <button
                           disabled={apiProcessingId === ord.id}
@@ -1039,35 +868,25 @@ export const OnlineOrdersView: React.FC = () => {
                         <button
                           onClick={() => handlePrintReceipt(ord)}
                           className="p-3 bg-[#282830] hover:bg-[#32323D] text-[#F5C877] border border-[#2C2C34] rounded-xl cursor-pointer"
-                          title={isRestaurantCourier ? "Kurye Yol Fişini Tekrar Yazdır" : "4 Haneli Paket Etiketini Tekrar Yazdır"}
+                          title="Fişleri Tekrar Yazdır"
                         >
                           <Printer className="w-4 h-4" />
                         </button>
                         
-                        {isRestaurantCourier ? (
-                          <button
-                            onClick={() => handleAdvanceStatus(ord)}
-                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
-                          >
-                            <Bike className="w-4 h-4" />
-                            <span>Yola Çıktı (Kurye Çıktı)</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleAdvanceStatus(ord)}
-                            className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
-                          >
-                            <Building2 className="w-4 h-4" />
-                            <span>Platform Kuryesine Teslim Edildi (#{handoverCode})</span>
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleAdvanceStatus(ord)}
+                          className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>Hazır / Yola Çıktı</span>
+                        </button>
                       </>
                     ) : isOnWay ? (
                       <>
                         <button
                           onClick={() => handlePrintReceipt(ord)}
                           className="p-3 bg-[#282830] hover:bg-[#32323D] text-[#F5C877] border border-[#2C2C34] rounded-xl cursor-pointer"
-                          title="Kurye Fişini Yazdır"
+                          title="Fişleri Tekrar Yazdır"
                         >
                           <Printer className="w-4 h-4" />
                         </button>
@@ -1158,143 +977,6 @@ export const OnlineOrdersView: React.FC = () => {
 
       {/* MODAL 3: MANUEL TELEFON / DOĞRUDAN SİPARİŞ GİRİŞİ */}
       
-
-      {/* MODAL 4: KURYE ATAMA & ONAY MODALI (Restoran Kuryesi İçin) */}
-      {assignCourierModalOrder && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#18181C] border border-blue-500/40 rounded-3xl max-w-lg w-full shadow-2xl p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
-                  <Bike className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white">Kurye Personeli Seçimi & Sipariş Onayı</h3>
-                  <p className="text-xs text-[#8E8E98]">
-                    {assignCourierModalOrder.platform} {assignCourierModalOrder.platformCode} siparişini teslim edecek personeli belirleyin.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setAssignCourierModalOrder(null)}
-                className="w-8 h-8 bg-[#282830] hover:bg-[#34343E] text-[#8E8E98] hover:text-white rounded-full flex items-center justify-center text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Sipariş ve Müşteri Özeti */}
-            <div className="bg-[#141416] p-3.5 rounded-2xl border border-[#2C2C34] space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-white text-sm">{assignCourierModalOrder.customerName}</span>
-                <span className="font-mono font-black text-sm text-[#F5C877]">{formatMoney(assignCourierModalOrder.totalAmount)}</span>
-              </div>
-              <div className="text-[11px] text-[#8E8E98] flex items-start gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
-                <span>{assignCourierModalOrder.address}</span>
-              </div>
-              <div className="flex items-center justify-between pt-1 border-t border-[#2C2C34] text-[11px]">
-                <span className="text-[#8E8E98]">Ödeme Şekli:</span>
-                <span className="font-bold text-white">{assignCourierModalOrder.paymentMethod}</span>
-              </div>
-            </div>
-
-            {/* Kapıda Ödeme & Zimmet Uyarısı */}
-            {(assignCourierModalOrder.paymentMethod.toLowerCase().includes('nakit') ||
-              assignCourierModalOrder.paymentMethod.toLowerCase().includes('pos') ||
-              assignCourierModalOrder.paymentMethod.toLowerCase().includes('kapı')) && (
-              <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-2xl text-xs text-amber-300 space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-amber-400" />
-                  <span>Kurye Tahsilat Zimmeti Kaydedilecek</span>
-                </div>
-                <p className="text-[11px] text-amber-300/80 leading-relaxed">
-                  Sipariş kapıda ödemelidir ({assignCourierModalOrder.paymentMethod}). Toplam <b>{formatMoney(assignCourierModalOrder.totalAmount)}</b> tutarındaki tahsilat sorumluluğu atanan kuryenin zimmetine işlenecektir.
-                </p>
-              </div>
-            )}
-
-            {/* Kurye Personeli Listesi */}
-            <div className="space-y-2">
-              <label className="block text-[11px] font-black text-[#8E8E98] uppercase">
-                Teslimat Yapacak Personel (Kurye) Seçiniz:
-              </label>
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
-                {(() => {
-                  const waiters = restaurantDataService.getWaiters();
-                  const courierList = [
-                    ...waiters.map(w => w.name),
-                    'Ahmet (Kurye 1)',
-                    'Mehmet (Kurye 2)',
-                    'Mustafa (Paketçi)',
-                    'Ali (Kurye 3)'
-                  ].filter((val, idx, self) => self.indexOf(val) === idx);
-
-                  return courierList.map(name => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCourierName(name);
-                        setCustomCourierName('');
-                      }}
-                      className={`p-3 rounded-2xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
-                        selectedCourierName === name && !customCourierName
-                          ? 'bg-blue-600/30 border-blue-500 text-white font-bold shadow-md'
-                          : 'bg-[#141416] border-[#2C2C34] text-[#C4C4CC] hover:border-[#3C3C48]'
-                      }`}
-                    >
-                      <Bike className={`w-4 h-4 shrink-0 ${selectedCourierName === name && !customCourierName ? 'text-blue-400' : 'text-slate-500'}`} />
-                      <span className="text-xs truncate">{name}</span>
-                    </button>
-                  ));
-                })()}
-              </div>
-
-              {/* Farklı / Manuel Kurye Adı Girişi */}
-              <div className="pt-2">
-                <input
-                  type="text"
-                  value={customCourierName}
-                  onChange={(e) => {
-                    setCustomCourierName(e.target.value);
-                    if (e.target.value) {
-                      setSelectedCourierName(e.target.value);
-                    }
-                  }}
-                  placeholder="Veya başka bir kurye adı yazınız..."
-                  className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            {/* Onay Butonları */}
-            <div className="pt-3 border-t border-[#2C2C34] flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAssignCourierModalOrder(null)}
-                className="flex-1 py-3 bg-[#282830] hover:bg-[#34343E] text-[#8E8E98] hover:text-white rounded-xl text-xs font-bold cursor-pointer transition-all"
-              >
-                Vazgeç
-              </button>
-              <button
-                type="button"
-                disabled={!selectedCourierName && !customCourierName}
-                onClick={() => {
-                  const courier = customCourierName.trim() || selectedCourierName.trim() || 'Ahmet (Kurye 1)';
-                  const ord = assignCourierModalOrder;
-                  setAssignCourierModalOrder(null);
-                  executeAcceptOrder(ord, courier);
-                }}
-                className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:brightness-110 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-600/25 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
-              >
-                <Check className="w-4 h-4" />
-                <span>Kuryeyi Ata, Onayla & Yol Fişi Bas</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

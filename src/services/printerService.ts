@@ -1814,13 +1814,13 @@ class PrinterService {
 
       const billData: BillReceiptData = {
         tableName: `${pTitle} (#${order.platformOrderId})`,
-        waiterName: isPlatformCourier ? 'Platform Kuryesi' : (order.assignedCourierName || 'Kendi Kuryemiz'),
+        waiterName: '',
         orderTime: nowTime,
         orderNumber: order.platformOrderId,
         platformName: pTitle,
         isCourierTicket: !isPlatformCourier,
         isHandoverTicket: isPlatformCourier,
-        courierName: isPlatformCourier ? (order.platformCourierName || `${pTitle} Kuryesi`) : (order.assignedCourierName || 'Kendi Kuryemiz'),
+        courierName: order.assignedCourierName || '',
         handoverCode: cleanHandoverCode,
         paymentMethod: order.paymentMethod,
         showPrices: !!kuryePrinter.isBillPrinter,

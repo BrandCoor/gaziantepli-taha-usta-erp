@@ -14,6 +14,16 @@ Biçim: [Keep a Changelog](https://keepachangelog.com/tr/). Sürümleme: package
 - Webhook yedeği olarak **periyodik sorgulama** (Getir), ayarlarda webhook adresleri + gizli anahtar üretici.
 - **Demo/test kalıntıları kaldırıldı:** sahte test siparişi, sahte bağlantı testi, demo menü/salon/garson, kullanılmayan tohum veri üreticileri; para çekmecesi hata durumunda artık başarı yalanı söylemez.
 
+### Mali analiz düzeltmeleri
+- **İptal edilen adisyonlar X/Z raporunda ciro, adet ve ürün satışı olarak sayılıyordu** → artık satış sayılmaz; iptal tutarı kalem kayıtlarından bir kez toplanır (filtreli raporda iptal çift sayılıyordu).
+- **Net ciro** artık brüt − indirim − *ikram ödemesi*; ödeme dağılımının toplamına eşit (eskiden ikram ödemesi net ciroda kalıyordu).
+- İkram kalemler ürün/kategori ciro toplamından çıkarıldı (adet sayılır); bölüm/garson/saat dağılımları net tutar üzerinden (toplamları net ciroya eşit); ortalama adisyon net ciro üzerinden; filtreli rapor tutarları kuruşa yuvarlanır.
+- Gece 00:00–05:00 arası kapanan adisyonlar önceki iş günü tarihiyle arşivlenir; "Bugün/Bu hafta/Bu ay…" aralıkları iş gününe göre hesaplanır; "Son 30 gün" bugün dahil 30 gün.
+- Z kapanışında girilmeyen açılış avansı için uydurma 1000 ₺ varsayımı kaldırıldı (0).
+### Diğer
+- Yemek platformlarında kurye/teslimat modeli seçimi ve kurye atama kaldırıldı.
+- Platform bağlantı testi, ekranda yazılmış ama kaydedilmemiş anahtarları da gönderir.
+
 ### Güvenlik
 - **Gizli bilgiler koddan çıkarıldı:** veritabanı parolası, yemek platformu anahtarları, bir API anahtarı içeren araç dosyası. DB ayarları `config.local.php` / ortam değişkenine taşındı. *(Eski sırlar Git geçmişinde durur → iptal edilmeli, bkz. docs/security.md.)*
 - **PHP API'ye varsayılan-reddet yetki kapısı** (`security.php`): kasa anahtarı, cihaz anahtarı + PIN oturumu, imzalı patron oturumu, masa QR belirteci, webhook doğrulaması. Kimliksiz erişim kapatıldı.

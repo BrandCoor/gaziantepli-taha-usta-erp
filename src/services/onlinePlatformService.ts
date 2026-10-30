@@ -342,9 +342,10 @@ class OnlinePlatformService {
   /**
    * GERÇEK bağlantı testi: sunucu platforma gerçekten istek atar. Platform yanıtı gelmedikçe "başarılı" denmez.
    */
-  public async testConnection(code: OnlinePlatformCode): Promise<{ success: boolean; message: string }> {
+  public async testConnection(code: OnlinePlatformCode, credentials?: PlatformCredentials): Promise<{ success: boolean; message: string }> {
     const p = this.platforms[code];
-    const r = await this.callServer('test_online_connection', { platform: code, credentials: p.credentials });
+    // Ekranda yazılmış ama henüz kaydedilmemiş bilgiler de test edilir (eskiden yalnızca kayıtlı olanlar gidiyordu).
+    const r = await this.callServer('test_online_connection', { platform: code, credentials: credentials || p.credentials });
     if (r.ok) return { success: Boolean(r.data.success), message: r.data.message || 'Bağlantı doğrulandı.' };
     // Sunucu yanıtı var ama doğrulama başarısızsa asıl mesajı göster
     const msg = r.data?.message || r.error;

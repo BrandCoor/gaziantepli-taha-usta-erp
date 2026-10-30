@@ -1242,7 +1242,7 @@ class RestaurantDataService {
 
     if (table.order && table.order.items && table.order.items.length > 0) {
       const now = new Date();
-      const todayDate = formatLocalDate(now);
+      const todayDate = getBusinessDate(now);
       const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
       const orderAmount = Number(table.order.totalAmount) || table.order.items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
       const section = this.getSections().find(s => s.id === table.sectionId);
@@ -1330,7 +1330,7 @@ class RestaurantDataService {
     }
 
     const now = new Date();
-    const todayDate = formatLocalDate(now);
+    const todayDate = getBusinessDate(now);
     const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
     const completedOrders: CompletedOrderArchive[] = this.getAllCompletedOrders();
@@ -1380,7 +1380,8 @@ class RestaurantDataService {
   // GİDERLER & TOPTANCILARI İÇEREN KAPSAMLI X VE Z RAPORU MOTORU
   // =========================================================================
   public getCurrentXReport() {
-    const orders = this.getCompletedOrdersCurrentSession();
+    // İptal edilen adisyonlar arşivde durur ama SATIŞ DEĞİLDİR: ciro, adet, ürün ve dağılımlara girmez.
+    const orders = this.getCompletedOrdersCurrentSession().filter((o) => o.status !== 'CANCELLED');
     // Z ile kapatılmış iptal kayıtları arşivde kalır; X raporu yalnızca açık olanları sayar.
     const allCancelLogs = JSON.parse(localStorage.getItem(STORAGE_KEYS.CANCEL_LOGS) || '[]');
     const cancelLogs = allCancelLogs.filter((c: any) => !c.zReportId);
@@ -1409,7 +1410,8 @@ class RestaurantDataService {
 
     let grossTotal = 0;
     let discountTotal = 0;
-    let giftTotal = 0;
+    let giftTotal = 0; // ikram edilen toplam değer (ödeme türü + ikram işaretli kalemler)
+    let giftPaymentTotal = 0; // yalnızca brüt ciro İÇİNDE kalan 'İkram (Tutar Düş)' ödemeleri
     const paymentBreakdown: { [type: string]: number } = {};
     const cariDetails: { [customerName: string]: number } = {};
     const productSales: { [prod: string]: { quantity: number; total: number } } = {};
@@ -1417,9 +1419,8 @@ class RestaurantDataService {
     const sectionBreakdown: { [sec: string]: number } = {};
 
     orders.forEach(ord => {
-      grossTotal += Number(ord.totalAmount) || 0;
-      sectionBreakdown[ord.sectionName || 'Diğer'] = (sectionBreakdown[ord.sectionName || 'Diğer'] || 0) + (Number(ord.totalAmount) || 0);
-      waiterBreakdown[ord.waiterName || 'Garson'] = (waiterBreakdown[ord.waiterName || 'Garson'] || 0) + (Number(ord.totalAmount) || 0);
+      const ordGross = Number(ord.totalAmount) || 0;
+      let ordReduction = 0; // bu adisyonda indirim + ikram ödemesi (tahsil edilmeyen kısım)
 
       (ord.payments || []).forEach(p => {
         const pType = p.type || 'Nakit';
@@ -1427,8 +1428,11 @@ class RestaurantDataService {
 
         if (pType.includes('İndirim') || pType.includes('İskonto')) {
           discountTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('İkram')) {
           giftTotal += pAmount;
+          giftPaymentTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('Cari')) {
           paymentBreakdown['Cari (Veresiye)'] = (paymentBreakdown['Cari (Veresiye)'] || 0) + pAmount;
           const custName = p.customerName || pType.replace('Cari (', '').replace(')', '').trim();
@@ -1438,14 +1442,28 @@ class RestaurantDataService {
         }
       });
 
+      grossTotal += ordGross;
+      // Dağılımlar (bölüm/garson) NET tutar üzerinden: toplamları net ciroya eşit olur.
+      const ordNet = ordGross - ordReduction;
+      sectionBreakdown[ord.sectionName || 'Diğer'] = (sectionBreakdown[ord.sectionName || 'Diğer'] || 0) + ordNet;
+      waiterBreakdown[ord.waiterName || 'Garson'] = (waiterBreakdown[ord.waiterName || 'Garson'] || 0) + ordNet;
+
       (ord.items || []).forEach(item => {
         if (!productSales[item.productName]) {
           productSales[item.productName] = { quantity: 0, total: 0 };
         }
-        productSales[item.productName].quantity += Number(item.quantity) || 1;
-        productSales[item.productName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+        const qty = Number(item.quantity) || 1;
+        productSales[item.productName].quantity += qty;
+        if (item.isGift) {
+          giftTotal += (Number(item.price) || 0) * qty; // ikram kalem: adet sayılır, ciroya girmez
+        } else {
+          productSales[item.productName].total += (Number(item.price) || 0) * qty;
+        }
       });
     });
+    Object.keys(sectionBreakdown).forEach((k) => { sectionBreakdown[k] = round2(sectionBreakdown[k]); });
+    Object.keys(waiterBreakdown).forEach((k) => { waiterBreakdown[k] = round2(waiterBreakdown[k]); });
+    Object.keys(productSales).forEach((k) => { productSales[k].total = round2(productSales[k].total); });
 
     const cancelTotal = round2(cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0));
     const cashSales = round2(paymentBreakdown['Nakit'] || 0);
@@ -1456,9 +1474,11 @@ class RestaurantDataService {
     grossTotal = round2(grossTotal);
     discountTotal = round2(discountTotal);
     giftTotal = round2(giftTotal);
+    giftPaymentTotal = round2(giftPaymentTotal);
     Object.keys(paymentBreakdown).forEach((k) => { paymentBreakdown[k] = round2(paymentBreakdown[k]); });
 
-    const netTotal = round2(grossTotal - discountTotal);
+    // NET CİRO = brüt - indirim - ikram ödemesi = fiilen tahsil edilen + cariye yazılan (ödeme dağılımının toplamı)
+    const netTotal = round2(grossTotal - discountTotal - giftPaymentTotal);
     const vatRate = 10; // Mevcut kapsamda ürün bazlı KDV yok; tek oran (yiyecek %10). Bkz. docs/known-limitations.
     const vatBase = round2(netTotal / 1.10);
     const vatAmount = round2(netTotal - vatBase);
@@ -1467,7 +1487,7 @@ class RestaurantDataService {
       grossTotal,
       netTotal,
       totalOrders: orders.length,
-      avgOrderAmount: orders.length > 0 ? grossTotal / orders.length : 0,
+      avgOrderAmount: orders.length > 0 ? round2(netTotal / orders.length) : 0,
       paymentBreakdown,
       cariDetails,
       sectionBreakdown,
@@ -1505,7 +1525,7 @@ class RestaurantDataService {
     const nextZNo = zReports.length > 0 ? Math.max(...zReports.map(z => z.zNo)) + 1 : 1;
 
     const netCash = xData.netCashInRegister;
-    const openingFloat = countData?.openingCashFloat ?? 1000;
+    const openingFloat = countData?.openingCashFloat ?? 0; // girilmediyse varsayım yapılmaz
     const counted = countData?.countedCash ?? (netCash + openingFloat);
     const diff = countData?.cashDifference ?? (counted - (netCash + openingFloat));
     const transferred = countData?.transferredCash ?? openingFloat;
@@ -1674,6 +1694,7 @@ class RestaurantDataService {
     let grossTotal = 0;
     let discountTotal = 0;
     let giftTotal = 0;
+    let giftPaymentTotal = 0; // brüt ciro içindeki 'İkram (Tutar Düş)' ödemeleri
     const paymentBreakdown: { [key: string]: number } = {};
     const cariDetails: { [customerName: string]: number } = {};
     const sectionBreakdown: { [key: string]: { count: number; total: number } } = {};
@@ -1705,68 +1726,77 @@ class RestaurantDataService {
       const ordAmt = Number(ord.totalAmount) || 0;
       grossTotal += ordAmt;
 
-      const secKey = ord.sectionName || 'Diğer';
-      if (!sectionBreakdown[secKey]) sectionBreakdown[secKey] = { count: 0, total: 0 };
-      sectionBreakdown[secKey].count += 1;
-      sectionBreakdown[secKey].total += ordAmt;
-
-      const waitKey = ord.waiterName || 'Garson';
-      if (!waiterBreakdown[waitKey]) waiterBreakdown[waitKey] = { count: 0, total: 0 };
-      waiterBreakdown[waitKey].count += 1;
-      waiterBreakdown[waitKey].total += ordAmt;
-
-      const hourKey = `${String(getOrderHour(ord)).padStart(2, '0')}:00`;
-      if (!hourlySales[hourKey]) hourlySales[hourKey] = { count: 0, total: 0 };
-      hourlySales[hourKey].count += 1;
-      hourlySales[hourKey].total += Number(ord.totalAmount) || 0;
-
+      // Bu adisyonun indirim + ikram ödemeleri (tahsil edilmeyen kısım) → net tutar
+      let ordReduction = 0;
       (ord.payments || []).forEach(p => {
         const pType = p.type || 'Nakit';
         const pAmount = Number(p.amount) || 0;
         if (pType.includes('İndirim') || pType.includes('İskonto')) {
           discountTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('İkram')) {
           giftTotal += pAmount;
+          giftPaymentTotal += pAmount;
+          ordReduction += pAmount;
         } else if (pType.includes('Cari')) {
-          paymentBreakdown['Cari'] = (paymentBreakdown['Cari'] || 0) + pAmount;
+          paymentBreakdown['Cari (Veresiye)'] = (paymentBreakdown['Cari (Veresiye)'] || 0) + pAmount;
           const custName = p.customerName || pType.replace('Cari (', '').replace(')', '').trim();
           cariDetails[custName] = (cariDetails[custName] || 0) + pAmount;
         } else {
           paymentBreakdown[pType] = (paymentBreakdown[pType] || 0) + pAmount;
         }
       });
+      const ordNet = ordAmt - ordReduction;
+
+      const secKey = ord.sectionName || 'Diğer';
+      if (!sectionBreakdown[secKey]) sectionBreakdown[secKey] = { count: 0, total: 0 };
+      sectionBreakdown[secKey].count += 1;
+      sectionBreakdown[secKey].total += ordNet;
+
+      const waitKey = ord.waiterName || 'Garson';
+      if (!waiterBreakdown[waitKey]) waiterBreakdown[waitKey] = { count: 0, total: 0 };
+      waiterBreakdown[waitKey].count += 1;
+      waiterBreakdown[waitKey].total += ordNet;
+
+      const hourKey = `${String(getOrderHour(ord)).padStart(2, '0')}:00`;
+      if (!hourlySales[hourKey]) hourlySales[hourKey] = { count: 0, total: 0 };
+      hourlySales[hourKey].count += 1;
+      hourlySales[hourKey].total += ordNet;
 
       (ord.items || []).forEach(item => {
         const catName = prodCategoryMap[item.productName] || 'Genel Menü';
-        
-        if (item.isGift) {
-          const itemVal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
-          giftTotal += itemVal;
-          giftLogs.push({
-            tableName: ord.tableName || 'Masa',
-            productName: item.productName,
-            quantity: Number(item.quantity) || 1,
-            amount: itemVal,
-            waiterName: ord.waiterName || 'Kasiyer',
-            orderNumber: ord.orderNumber,
-          });
-        }
+        const qty = Number(item.quantity) || 1;
+        const itemVal = (Number(item.price) || 0) * qty;
 
         if (!productSales[item.productName]) {
           productSales[item.productName] = { quantity: 0, total: 0, categoryName: catName };
         }
-        productSales[item.productName].quantity += Number(item.quantity) || 1;
-        productSales[item.productName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
-
         if (!categorySales[catName]) categorySales[catName] = { quantity: 0, total: 0 };
-        categorySales[catName].quantity += Number(item.quantity) || 1;
-        categorySales[catName].total += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+        productSales[item.productName].quantity += qty;
+        categorySales[catName].quantity += qty;
+
+        if (item.isGift) {
+          // İkram kalem: adet sayılır, ciroya GİRMEZ (adisyon toplamında da yoktur)
+          giftTotal += itemVal;
+          giftLogs.push({
+            tableName: ord.tableName || 'Masa',
+            productName: item.productName,
+            quantity: qty,
+            amount: itemVal,
+            waiterName: ord.waiterName || 'Kasiyer',
+            orderNumber: ord.orderNumber,
+          });
+        } else {
+          productSales[item.productName].total += itemVal;
+          categorySales[catName].total += itemVal;
+        }
       });
     });
 
-    const netTotal = grossTotal - discountTotal;
+    // NET CİRO = brüt - indirim - ikram ödemesi (ödeme dağılımının toplamına eşittir)
+    const netTotal = grossTotal - discountTotal - giftPaymentTotal;
     const totalOrders = paidOrders.length;
-    const avgOrderAmount = totalOrders > 0 ? grossTotal / totalOrders : 0;
+    const avgOrderAmount = totalOrders > 0 ? netTotal / totalOrders : 0;
 
     const allExpenses = dataService.getExpenses() || [];
     const filteredExpenses = allExpenses.filter(e => {
@@ -1797,11 +1827,12 @@ class RestaurantDataService {
     });
     const cancelLogsTotal = cancelLogs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0);
     const cancelledOrdersTotal = cancelledOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
-    const cancelTotal = cancelLogsTotal + cancelledOrdersTotal;
+    // Masa iptalinde de kalem iptal kayıtları yazıldığı için yalnızca bu kayıtlar toplanır (çift sayım olmaz).
+    const cancelTotal = cancelLogsTotal;
 
     const vatRate = 10;
-    const vatBase = netTotal / 1.10;
-    const vatAmount = netTotal - vatBase;
+    const vatBase = round2(netTotal / 1.10);
+    const vatAmount = round2(netTotal - vatBase);
 
     // Nakit Hasılat
     const cashSales = paymentBreakdown['Nakit'] || 0;
@@ -1810,29 +1841,34 @@ class RestaurantDataService {
     // Dönem Faaliyet Kârı = Net Ciro - İşletme Giderleri - Alış Faturaları
     const operatingProfit = netTotal - totalExpenses - supplierInvoicesTotal;
 
+    const r2 = round2;
+    const r2map = <T extends { total: number }>(m: { [k: string]: T }) => { Object.keys(m).forEach((k) => { m[k].total = r2(m[k].total); }); return m; };
+    Object.keys(paymentBreakdown).forEach((k) => { paymentBreakdown[k] = r2(paymentBreakdown[k]); });
+    Object.keys(cariDetails).forEach((k) => { cariDetails[k] = r2(cariDetails[k]); });
+
     return {
-      grossTotal,
-      netTotal,
-      discountTotal,
-      giftTotal,
-      cancelTotal,
+      grossTotal: r2(grossTotal),
+      netTotal: r2(netTotal),
+      discountTotal: r2(discountTotal),
+      giftTotal: r2(giftTotal),
+      cancelTotal: r2(cancelTotal),
       totalOrders,
-      avgOrderAmount,
+      avgOrderAmount: r2(avgOrderAmount),
       paymentBreakdown,
       cariDetails,
-      sectionBreakdown,
-      waiterBreakdown,
-      vatBreakdown: [{ rate: vatRate, baseAmount: vatBase, vatAmount, total: netTotal }],
-      productSales,
-      categorySales,
-      hourlySales,
-      totalExpenses,
-      cashExpenses,
-      supplierInvoicesTotal,
-      supplierPaymentsTotal,
-      supplierCashPayments,
-      netCashFlow,
-      operatingProfit,
+      sectionBreakdown: r2map(sectionBreakdown),
+      waiterBreakdown: r2map(waiterBreakdown),
+      vatBreakdown: [{ rate: vatRate, baseAmount: vatBase, vatAmount, total: r2(netTotal) }],
+      productSales: r2map(productSales),
+      categorySales: r2map(categorySales),
+      hourlySales: r2map(hourlySales),
+      totalExpenses: r2(totalExpenses),
+      cashExpenses: r2(cashExpenses),
+      supplierInvoicesTotal: r2(supplierInvoicesTotal),
+      supplierPaymentsTotal: r2(supplierPaymentsTotal),
+      supplierCashPayments: r2(supplierCashPayments),
+      netCashFlow: r2(netCashFlow),
+      operatingProfit: r2(operatingProfit),
       orders,
       cancelledOrders,
       cancelLogs,
