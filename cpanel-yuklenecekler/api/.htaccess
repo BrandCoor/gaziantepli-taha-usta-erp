@@ -23,3 +23,15 @@ Options -Indexes
   Header always set Strict-Transport-Security "max-age=31536000"
   Header always set Permissions-Policy "camera=(self), microphone=(), geolocation=()"
 </IfModule>
+
+# ---- Platform webhook adresleri ----
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Yemeksepeti (Delivery Hero POS Plugin): sipariş gönderimi  POST /order/{remoteId}
+  RewriteRule ^order/([^/]+)/?$ online/webhook.php?platform=YEMEKSEPETI&remoteId=$1 [QSA,L]
+  # Yemeksepeti: durum güncelleme  PUT /remoteId/{remoteId}/remoteOrder/{orderId}/posOrderStatus
+  RewriteRule ^remoteId/([^/]+)/remoteOrder/([^/]+)/posOrderStatus/?$ online/webhook.php?platform=YEMEKSEPETI&kind=status&remoteId=$1&orderId=$2 [QSA,L]
+  # Eski adres düzeni (api alt klasörü ile) geriye dönük uyum
+  RewriteRule ^api/online/webhook\.php$ online/webhook.php [QSA,L]
+  RewriteRule ^api/index\.php$ index.php [QSA,L]
+</IfModule>

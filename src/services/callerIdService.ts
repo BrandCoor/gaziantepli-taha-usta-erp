@@ -284,13 +284,6 @@ class CallerIdService {
   }
 
   /**
-   * Test amacıyla Hat 1 veya Hat 2 çağrısı simüle eder
-   */
-  public simulateCall(line: 1 | 2 = 1, phone: string = '05321234567') {
-    this.handleIncomingCall(line, phone);
-  }
-
-  /**
    * Donanım COM portlarını sorgular
    */
   public async getAvailablePorts(): Promise<any[]> {

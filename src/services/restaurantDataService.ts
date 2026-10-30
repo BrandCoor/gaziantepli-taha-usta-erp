@@ -228,59 +228,18 @@ export interface ProductConfig {
   description?: string;
 }
 
-export const FOOD_IMAGE_PRESETS = [
-  { name: 'Adana / Urfa Kebap', url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kuzu Şiş / Izgara', url: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Ali Nazik / Yoğurtlu Kebap', url: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Antep Lahmacun', url: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kıymalı Kaşarlı Pide', url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kuşbaşılı Kaşarlı Pide', url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Günün Çorbası / Beyran', url: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Antep Meze & Salata', url: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Açık Yayık Ayranı', url: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Kutu Meşrubat / Şalgam', url: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Antep Fıstıklı Künefe', url: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=500&auto=format&fit=crop&q=80' },
-  { name: 'Fıstıklı Baklava / Katmer', url: 'https://images.unsplash.com/photo-1519869325930-281384150729?w=500&auto=format&fit=crop&q=80' }
-];
+/** Hazır/stok yemek fotoğrafı YOKTUR: ürün görselini işletme kendisi yükler. */
+export const FOOD_IMAGE_PRESETS: Array<{ name: string; url: string }> = [];
 
-export function getProductFallbackImage(name: string, categoryId: string = ''): string {
-  const n = (name || '').toLowerCase();
-  const c = (categoryId || '').toLowerCase();
-
-  if (n.includes('adana') || n.includes('urfa') || n.includes('kıyma kebap')) {
-    return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('şiş') || n.includes('pirzola') || n.includes('ızgara')) {
-    return 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('ali nazik') || n.includes('yoğurt') || n.includes('beyti')) {
-    return 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('lahmacun')) {
-    return 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('pide')) {
-    return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('çorba') || n.includes('beyran') || n.includes('paça')) {
-    return 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('ayran')) {
-    return 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('kola') || n.includes('fanta') || n.includes('şalgam') || n.includes('su') || n.includes('soda') || c.includes('icecek')) {
-    return 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('künefe') || n.includes('kadayıf')) {
-    return 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=500&auto=format&fit=crop&q=80';
-  }
-  if (n.includes('baklava') || n.includes('katmer') || c.includes('tatli')) {
-    return 'https://images.unsplash.com/photo-1519869325930-281384150729?w=500&auto=format&fit=crop&q=80';
-  }
-  if (c.includes('kebap')) {
-    return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
-  }
-  return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&auto=format&fit=crop&q=80';
+/** Görsel yoksa ağ gerektirmeyen, nötr bir yer tutucu (tabak simgesi). Demo fotoğraf kullanılmaz. */
+export function getProductFallbackImage(_name: string = '', _categoryId: string = ''): string {
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'>" +
+    "<rect width='400' height='300' fill='#24242A'/>" +
+    "<circle cx='200' cy='150' r='62' fill='none' stroke='#4A4A56' stroke-width='6'/>" +
+    "<circle cx='200' cy='150' r='36' fill='none' stroke='#4A4A56' stroke-width='4'/>" +
+    "</svg>";
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
 export interface WaiterConfig {
@@ -567,122 +526,10 @@ export const setPublicBaseUrl = (url: string): void => {
 
 const DEFAULT_PRINTERS: PrinterConfig[] = [];
 
-const DEFAULT_CATEGORIES: CategoryConfig[] = [
-  { id: 'cat-kebap', name: 'Kebaplar & Izgaralar', color: '#ef4444' },
-  { id: 'cat-firin', name: 'Pide & Lahmacun', color: '#f97316' },
-  { id: 'cat-corba', name: 'Çorbalar & Mezeler', color: '#eab308' },
-  { id: 'cat-icecek', name: 'İçecekler & Meşrubat', color: '#06b6d4' },
-  { id: 'cat-tatli', name: 'Tatlılar & Meyve', color: '#ec4899' },
-];
-
-const DEFAULT_PRODUCTS: ProductConfig[] = [
-  { 
-    id: 'p1', 
-    categoryId: 'cat-kebap', 
-    name: 'Adana Kebap (Porsiyon)', 
-    price: 320, 
-    preparationMin: 15, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&auto=format&fit=crop&q=80',
-    description: 'Zırhla çekilmiş kuzu eti, pul biber ve özel baharatlarla kömür ateşinde pişirilir. Közlenmiş biber, domates ve lavaş ile sunulur.'
-  },
-  { 
-    id: 'p2', 
-    categoryId: 'cat-kebap', 
-    name: 'Urfa Kebap (Porsiyon)', 
-    price: 320, 
-    preparationMin: 15, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80',
-    description: 'Acısız, zırhta çekilmiş taze kuzu kıyması. Közde garnitürler ve taze yeşilliklerle servis edilir.'
-  },
-  { 
-    id: 'p3', 
-    categoryId: 'cat-kebap', 
-    name: 'Kuzu Şiş Kebap', 
-    price: 380, 
-    preparationMin: 18, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=600&auto=format&fit=crop&q=80',
-    description: 'Marine edilmiş yumuşacık kuzu but etleri, odun kömüründe özel şişlerde lokum kıvamında pişirilir.'
-  },
-  { 
-    id: 'p4', 
-    categoryId: 'cat-kebap', 
-    name: 'Ali Nazik Kebap', 
-    price: 390, 
-    preparationMin: 20, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=600&auto=format&fit=crop&q=80',
-    description: 'Közlenmiş patlıcanlı süzme yoğurt yatağında tereyağlı kuzu eti veya kebap parçaları ve kızgın tereyağı.'
-  },
-  { 
-    id: 'p5', 
-    categoryId: 'cat-firin', 
-    name: 'Gaziantep Lahmacun', 
-    price: 110, 
-    preparationMin: 8, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=600&auto=format&fit=crop&q=80',
-    description: 'İncecik çıtır Antep hamuru, zırh kıyması, sarımsak, maydanoz ve Antep baharatları. Taş fırında pişer.'
-  },
-  { 
-    id: 'p6', 
-    categoryId: 'cat-firin', 
-    name: 'Kuşbaşılı Kaşarlı Pide', 
-    price: 280, 
-    preparationMin: 12, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&auto=format&fit=crop&q=80',
-    description: 'Marine kuşbaşı kuzu eti, domates, biber ve eriyen leziz kaşar peyniriyle fırınlanmış gevrek pide.'
-  },
-  { 
-    id: 'p7', 
-    categoryId: 'cat-firin', 
-    name: 'Kıymalı Kaşarlı Pide', 
-    price: 260, 
-    preparationMin: 10, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&auto=format&fit=crop&q=80',
-    description: 'Geleneksel kıymalı iç harç ve bol kaşar peyniri ile taş fırında tereyağlı çıtır lezzet.'
-  },
-  { 
-    id: 'p8', 
-    categoryId: 'cat-icecek', 
-    name: 'Açık Yayık Ayranı', 
-    price: 40, 
-    preparationMin: 1, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=600&auto=format&fit=crop&q=80',
-    description: 'Bol köpüklü, doğal köy yoğurdundan taze çalkalanmış enfes soğuk yayık ayranı.'
-  },
-  { 
-    id: 'p9', 
-    categoryId: 'cat-icecek', 
-    name: 'Kutu Meşrubat / Şalgam', 
-    price: 45, 
-    preparationMin: 1, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=600&auto=format&fit=crop&q=80',
-    description: 'Buz gibi kutu içecekler, acılı/acısız Adana şalgamı veya maden suyu.'
-  },
-  { 
-    id: 'p10', 
-    categoryId: 'cat-tatli', 
-    name: 'Antep Fıstıklı Künefe', 
-    price: 180, 
-    preparationMin: 12, 
-    isAvailable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=600&auto=format&fit=crop&q=80',
-    description: 'Hatay peyniri ve taze kadayıfla közde pişen çıtır künefe, bol Antep boz fıstığı ile sıcak servis edilir.'
-  },
-];
-
-const DEFAULT_SECTIONS: SectionConfig[] = [
-  { id: 'sec-salon', name: 'Ana Salon', tableCount: 12, capacityPerTable: 4 },
-  { id: 'sec-bahce', name: 'Bahçe', tableCount: 10, capacityPerTable: 6 },
-  { id: 'sec-paket', name: 'Paket Servis', tableCount: 8, capacityPerTable: 1 },
-];
+// Hazır (demo) kategori, ürün veya salon YOKTUR: işletme kendi menüsünü ve masa düzenini oluşturur.
+const DEFAULT_CATEGORIES: CategoryConfig[] = [];
+const DEFAULT_PRODUCTS: ProductConfig[] = [];
+const DEFAULT_SECTIONS: SectionConfig[] = [];
 
 const DEFAULT_WAITERS: WaiterConfig[] = [];
 
@@ -776,7 +623,6 @@ class RestaurantDataService {
   }
 
   constructor() {
-    this.purgeDemoData();
     this.initRealtimeSyncListener();
     setTimeout(() => this.pushStateToCloud(), 1000);
     setInterval(() => this.pullPendingOrdersFromCloud(), 1500);
@@ -813,107 +659,6 @@ class RestaurantDataService {
         this.listeners.forEach((l) => l());
       }
     });
-  }
-
-  private purgeDemoData() {
-    try {
-      // Purge demo waiters
-      const rawWaiters = localStorage.getItem(STORAGE_KEYS.WAITERS);
-      if (rawWaiters) {
-        const waiters: WaiterConfig[] = JSON.parse(rawWaiters);
-        const demoWaiterIds = ['w-1', 'w-2', 'w-admin'];
-        const filtered = waiters.filter(w => !demoWaiterIds.includes(w.id) && !w.name.includes('Ahmet Yılmaz') && !w.name.includes('Mehmet Demir'));
-        if (filtered.length !== waiters.length) {
-          localStorage.setItem(STORAGE_KEYS.WAITERS, JSON.stringify(filtered));
-        }
-      }
-
-      // Clean and purge demo printers from PRINTERS
-      const rawPrinters = localStorage.getItem(STORAGE_KEYS.PRINTERS);
-      const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-paket', 'pr-mutfak'];
-      if (rawPrinters) {
-        try {
-          const printers: PrinterConfig[] = JSON.parse(rawPrinters);
-          const filteredPrinters = printers.filter(p => 
-            !demoPrinterIds.includes(p.id) &&
-            !p.name.includes('Kasa & Hesap Yazıcısı') &&
-            !p.name.includes('Fırın Yazıcısı') &&
-            !p.name.includes('Ocak & Izgara Yazıcısı') &&
-            !p.name.includes('Paket Servis Yazıcısı')
-          );
-          if (filteredPrinters.length !== printers.length) {
-            localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(filteredPrinters));
-          }
-        } catch {
-          localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify([]));
-        }
-      } else {
-        localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify([]));
-      }
-
-      // Clean demo calls from CALL_LOGS
-      const rawCalls = localStorage.getItem(STORAGE_KEYS.CALL_LOGS);
-      if (rawCalls) {
-        try {
-          const calls: CallLogItem[] = JSON.parse(rawCalls);
-          const filteredCalls = calls.filter(c => 
-            !c.phone?.includes('0532 999 88 77') && 
-            !c.phone?.includes('05329998877') && 
-            !c.phone?.includes('05325554141') && 
-            !c.customerName?.includes('Müdavim Müşteri')
-          );
-          if (filteredCalls.length !== calls.length) {
-            localStorage.setItem(STORAGE_KEYS.CALL_LOGS, JSON.stringify(filteredCalls));
-          }
-        } catch (e) {}
-      }
-
-      // Purge demo printerId bindings from categories
-      const rawCategories = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-      if (rawCategories) {
-        const categories: CategoryConfig[] = JSON.parse(rawCategories);
-        const demoPrinterIds = ['pr-kasa', 'pr-firin', 'pr-ocak', 'pr-mutfak'];
-        let catChanged = false;
-        const cleanedCategories = categories.map(c => {
-          if (c.printerId && demoPrinterIds.includes(c.printerId)) {
-            catChanged = true;
-            const { printerId, ...rest } = c;
-            return rest;
-          }
-          return c;
-        });
-        if (catChanged) {
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(cleanedCategories));
-        }
-      }
-
-      // Purge seed orders
-      const rawOrders = localStorage.getItem(STORAGE_KEYS.COMPLETED_ORDERS);
-      if (rawOrders) {
-        const orders: CompletedOrderArchive[] = JSON.parse(rawOrders);
-        const filtered = orders.filter(o => !o.id.startsWith('ord-seed-'));
-        if (filtered.length !== orders.length) {
-          localStorage.setItem(STORAGE_KEYS.COMPLETED_ORDERS, JSON.stringify(filtered));
-        }
-      }
-
-      // Purge seed z-reports
-      const rawZ = localStorage.getItem(STORAGE_KEYS.Z_REPORTS);
-      if (rawZ) {
-        const zReports: ZReport[] = JSON.parse(rawZ);
-        const filtered = zReports.filter(z => !z.id.startsWith('z-seed-'));
-        if (filtered.length !== zReports.length) {
-          localStorage.setItem(STORAGE_KEYS.Z_REPORTS, JSON.stringify(filtered));
-        }
-      }
-    } catch (e) {
-      console.warn('RestaurantDataService demo purge error:', e);
-    }
-
-    // İlk açılışta merkezi MySQL veritabanından tüm canlı verileri çek
-    setTimeout(() => {
-      this.pullAllErpDataFromCloud();
-    }, 100);
   }
 
   public subscribe(listener: ChangeListener): () => void {

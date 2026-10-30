@@ -1,9 +1,10 @@
 <?php
 /**
- * GAZİANTEPLİ TAHA USTA ERP - Online Platform Aksiyon ve Sipariş Yönetim API'si
- * --------------------------------------------------------------------------------
- * Kasa üzerinden tetiklenen accept, reject, dispatch, update_store_status ve
- * ayar değişikliklerini ilgili platformun REST API'sine ve MySQL veritabanına iletir.
+ * Online platform işlemleri (YALNIZCA kasa): onay/ret/yolda/teslim, ayar kaydı, GERÇEK bağlantı testi,
+ * sipariş çekme (polling), tanı günlüğü.
+ *
+ * Dürüstlük kuralı: platforma iletilemeyen/otomatik olmayan işlem "başarılı" gösterilmez;
+ * yanıtta `platformSync` = OK | FAILED | MANUAL ve açıklaması döner.
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -11,481 +12,213 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Platform, X-Kasa-Key');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../security.php';
-// Bu uç yalnızca kasa içindir; merkezi kapıyı atlamasın diye burada da zorunlu kılınır.
+require_once __DIR__ . '/lib.php';
 if (!sec_is_kasa()) { sec_json_exit(401, ['success' => false, 'error' => 'Yetkisiz istek.', 'code' => 'UNAUTHORIZED']); }
 
 $pdo = getDbConnection();
-if ($pdo) {
-    ensureDatabaseTables($pdo);
-}
+if (!$pdo) { sec_json_exit(503, ['success' => false, 'error' => 'Veritabanı yapılandırılmamış.']); }
+ensureDatabaseTables($pdo);
 
-// Request payload
 $raw = file_get_contents('php://input');
 $body = json_decode($raw, true) ?: [];
 $action = $_GET['action'] ?? $body['action'] ?? '';
 
-// Yardımcı: Platform Bilgilerini Çek
-function getPlatformRow($pdo, $platformCode) {
-    if (!$pdo) return null;
-    try {
-        $stmt = $pdo->prepare("SELECT * FROM `online_platforms` WHERE `platform_code` = ? LIMIT 1");
-        $stmt->execute([$platformCode]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        return null;
-    }
-}
+function out(array $a, int $code = 200): void { http_response_code($code); echo json_encode($a, JSON_UNESCAPED_UNICODE); exit; }
+function plat(array $body): string { return strtoupper(trim((string)($body['platform'] ?? ''))); }
 
-// 1. SİPARİŞİ ONAYLA (ACCEPT & PREPARING)
-if ($action === 'accept_order' || $action === 'accept_online_order') {
-    $orderId = $body['orderId'] ?? $body['id'] ?? '';
-    if (empty($orderId)) {
-        echo json_encode(['success' => false, 'error' => 'Sipariş ID belirtilmedi.']);
-        exit;
-    }
+/* ---------------- 1-4. SİPARİŞ İŞLEMLERİ ---------------- */
+$orderActions = [
+    'accept_order' => 'accept', 'accept_online_order' => 'accept',
+    'reject_order' => 'reject', 'cancel_order' => 'reject', 'reject_online_order' => 'reject', 'cancel_online_order' => 'reject',
+    'dispatch_order' => 'dispatch', 'dispatch_online_order' => 'dispatch',
+    'deliver_order' => 'deliver', 'deliver_online_order' => 'deliver',
+];
+if (isset($orderActions[$action])) {
+    $op = $orderActions[$action];
+    $orderId = (string)($body['orderId'] ?? $body['id'] ?? '');
+    if ($orderId === '') { out(['success' => false, 'error' => 'Sipariş ID belirtilmedi.'], 400); }
+    $order = op_find_order($pdo, $orderId);
+    if (!$order) { out(['success' => false, 'error' => 'Sipariş bulunamadı.'], 404); }
 
-    $order = null;
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("SELECT * FROM `online_orders` WHERE `id` = ? OR `platform_order_id` = ? LIMIT 1");
-            $stmt->execute([$orderId, $orderId]);
-            $order = $stmt->fetch(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {}
-    }
+    $reason = trim((string)($body['cancelReason'] ?? $body['reason'] ?? ''));
+    if ($op === 'reject' && $reason === '') { $reason = 'Restoran tarafından iptal edildi'; }
 
-    $platformCode = $order['platform_code'] ?? ($body['platform'] ?? 'TRENDYOL');
-    $platformOrderId = $order['platform_order_id'] ?? $orderId;
+    // 1) Platforma ilet (gerçek HTTP) — sonuç dürüstçe raporlanır
+    $sync = op_platform_action($pdo, $order, $op, ['reason' => $reason]);
+    op_set_sync($pdo, (int)$order['id'], $sync['status'], $sync['message']);
 
-    // Platform REST API Çağrısı (cURL simülasyonu / gerçek uç nokta)
-    $apiResult = ['status' => 'SUCCESS', 'message' => 'Platform API sipariş onayı kabul etti.'];
-    $platformRow = getPlatformRow($pdo, $platformCode);
-    $creds = json_decode($platformRow['credentials_json'] ?? '{}', true) ?: [];
-
-    // Trendyol / Getir / Yemeksepeti API çağrısı
-    if ($platformCode === 'TRENDYOL' && !empty($creds['apiKey']) && !empty($creds['supplierId'])) {
-        // Gerçek API uç noktası: https://api.trendyol.com/sapigw/suppliers/{supplierId}/orders/{packageId}/picking
-        $ch = curl_init("https://api.trendyol.com/sapigw/suppliers/" . urlencode($creds['supplierId']) . "/orders/" . urlencode($platformOrderId) . "/picking");
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_TIMEOUT => 5,
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Basic ' . base64_encode($creds['apiKey'] . ':' . ($creds['secretKey'] ?? '')),
-                'Content-Type: application/json'
-            ]
-        ]);
-        $resp = curl_exec($ch);
-        curl_close($ch);
-    }
-
-    // MySQL Durum Güncelleme
-    if ($pdo) {
-        try {
-            $assignedCourierId = $body['assignedCourierId'] ?? null;
-            $deliveryModel = $body['deliveryModel'] ?? null;
-            $handoverCode = $body['handoverCode'] ?? null;
-
-            $updateSql = "UPDATE `online_orders` SET `local_status` = 'HAZIRLANIYOR', `platform_status` = 'PREPARING', `updated_at` = NOW()";
-            $updateParams = [];
-
-            if (!empty($assignedCourierId)) {
-                $updateSql .= ", `assigned_courier_id` = ?";
-                $updateParams[] = $assignedCourierId;
-            }
-            if (!empty($deliveryModel)) {
-                $updateSql .= ", `delivery_model` = ?";
-                $updateParams[] = $deliveryModel;
-            }
-            if (!empty($handoverCode)) {
-                $updateSql .= ", `handover_code` = ?";
-                $updateParams[] = $handoverCode;
-            }
-
-            $updateSql .= " WHERE `id` = ? OR `platform_order_id` = ?";
-            $updateParams[] = $orderId;
-            $updateParams[] = $orderId;
-
-            $stmt = $pdo->prepare($updateSql);
-            $stmt->execute($updateParams);
-        } catch (Exception $e) {}
-    }
-
-    // Akıllı Yazıcı Yönlendirme Verisi Hazırla
-    $items = json_decode($order['items_json'] ?? '[]', true) ?: [];
-    $firinItems = [];
-    $ocakItems = [];
-    $kuryeItems = [];
-
-    foreach ($items as $item) {
-        $nameLower = mb_strtolower($item['name'] ?? '', 'UTF-8');
-        if (strpos($nameLower, 'lahmacun') !== false || strpos($nameLower, 'pide') !== false || strpos($nameLower, 'borek') !== false) {
-            $firinItems[] = $item;
-        } elseif (strpos($nameLower, 'kebap') !== false || strpos($nameLower, 'kofte') !== false || strpos($nameLower, 'durum') !== false || strpos($nameLower, 'tavuk') !== false || strpos($nameLower, 'pirzola') !== false) {
-            $ocakItems[] = $item;
-        }
-        $kuryeItems[] = $item;
-    }
-
-    echo json_encode([
-        'success' => true,
-        'message' => "[{$platformCode}] Siparişi (#{$platformOrderId}) onaylandı ve mutfağa iletildi.",
-        'newStatus' => 'HAZIRLANIYOR',
-        'printJobs' => [
-            'firin' => count($firinItems) > 0 ? $firinItems : null,
-            'ocak' => count($ocakItems) > 0 ? $ocakItems : null,
-            'kurye' => $kuryeItems
-        ],
-        'customerName' => $order['customer_name'] ?? 'Müşteri',
-        'address' => $order['delivery_address'] ?? '',
-        'totalAmount' => $order['total_amount'] ?? 0
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 2. SİPARİŞİ İPTAL ET / REDDET (CANCEL & REJECT)
-if ($action === 'reject_order' || $action === 'cancel_order' || $action === 'reject_online_order' || $action === 'cancel_online_order') {
-    $orderId = $body['orderId'] ?? $body['id'] ?? '';
-    $reason = trim($body['cancelReason'] ?? $body['reason'] ?? 'Restoran Yoğunluğu');
-
-    if (empty($orderId)) {
-        echo json_encode(['success' => false, 'error' => 'Sipariş ID belirtilmedi.']);
-        exit;
-    }
-
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("UPDATE `online_orders` SET `local_status` = 'IPTAL', `platform_status` = 'REJECTED', `cancel_reason` = ?, `updated_at` = NOW() WHERE `id` = ? OR `platform_order_id` = ?");
-            $stmt->execute([$reason, $orderId, $orderId]);
-        } catch (Exception $e) {}
-    }
-
-    echo json_encode([
-        'success' => true,
-        'message' => "Sipariş (#{$orderId}) iptal edildi. Sebep: {$reason}",
-        'newStatus' => 'IPTAL',
-        'reason' => $reason
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 3. KURYEYE VERİLDİ / YOLA ÇIKTI (DISPATCHED)
-if ($action === 'dispatch_order' || $action === 'dispatch_online_order') {
-    $orderId = $body['orderId'] ?? $body['id'] ?? '';
-    if (empty($orderId)) {
-        echo json_encode(['success' => false, 'error' => 'Sipariş ID belirtilmedi.']);
-        exit;
-    }
-
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("UPDATE `online_orders` SET `local_status` = 'YOLA_CIKTI', `platform_status` = 'DISPATCHED', `updated_at` = NOW() WHERE `id` = ? OR `platform_order_id` = ?");
-            $stmt->execute([$orderId, $orderId]);
-        } catch (Exception $e) {}
-    }
-
-    echo json_encode([
-        'success' => true,
-        'message' => "Sipariş (#{$orderId}) kuryeye teslim edildi ve yola çıktı olarak işaretlendi.",
-        'newStatus' => 'YOLA_CIKTI'
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 4. TESLİM EDİLDİ (DELIVERED)
-if ($action === 'deliver_order' || $action === 'deliver_online_order') {
-    $orderId = $body['orderId'] ?? $body['id'] ?? '';
-    if (empty($orderId)) {
-        echo json_encode(['success' => false, 'error' => 'Sipariş ID belirtilmedi.']);
-        exit;
-    }
-
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("UPDATE `online_orders` SET `local_status` = 'TESLIM_EDILDI', `platform_status` = 'DELIVERED', `updated_at` = NOW() WHERE `id` = ? OR `platform_order_id` = ?");
-            $stmt->execute([$orderId, $orderId]);
-        } catch (Exception $e) {}
-    }
-
-    echo json_encode([
-        'success' => true,
-        'message' => "Sipariş (#{$orderId}) başarıyla teslim edildi olarak kapatıldı.",
-        'newStatus' => 'TESLIM_EDILDI'
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 5. RESTORAN SİPARİŞ DURUM KONTROLÜ (OPEN / BUSY / CLOSED)
-if ($action === 'update_store_status' || $action === 'update_online_store_status') {
-    $platformCode = strtoupper(trim($body['platform'] ?? 'ALL'));
-    $status = strtoupper(trim($body['status'] ?? 'OPEN'));
-
-    if (!in_array($status, ['OPEN', 'BUSY', 'CLOSED'])) {
-        $status = 'OPEN';
-    }
-
-    if ($pdo) {
-        try {
-            if ($platformCode === 'ALL') {
-                $stmt = $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ?, `updated_at` = NOW()");
-                $stmt->execute([$status]);
-            } else {
-                $stmt = $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ?, `updated_at` = NOW() WHERE `platform_code` = ?");
-                $stmt->execute([$status, $platformCode]);
-            }
-        } catch (Exception $e) {
-            error_log("Platform durum güncelleme hatası: " . $e->getMessage());
-        }
-    }
-
-    $statusLabels = [
-        'OPEN' => 'Siparişe Açık 🟢',
-        'BUSY' => 'Yoğun Mod 🟡 (+20 dk)',
-        'CLOSED' => 'Siparişe Kapalı 🔴'
+    // 2) Yerel durum
+    $map = [
+        'accept' => ['HAZIRLANIYOR', 'PREPARING'], 'dispatch' => ['YOLA_CIKTI', 'DISPATCHED'],
+        'deliver' => ['TESLIM_EDILDI', 'DELIVERED'], 'reject' => ['IPTAL', 'REJECTED'],
     ];
-
-    echo json_encode([
-        'success' => true,
-        'platform' => $platformCode,
-        'storeStatus' => $status,
-        'message' => "Platform ({$platformCode}) durumu [{$statusLabels[$status]}] olarak güncellendi ve merkez sunucuya iletildi."
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 5.1. BASİT AÇIK/KAPALI DURUM (Kasa "Restoranı Aç/Kapat" kısayolu: isOpen boolean)
-if ($action === 'update_platform_store_status') {
-    $platformCode = strtoupper(trim($body['platform'] ?? 'ALL'));
-    $isOpen = !empty($body['isOpen']);
-    $status = $isOpen ? 'OPEN' : 'CLOSED';
-
-    if ($pdo) {
-        try {
-            if ($platformCode === 'ALL') {
-                $stmt = $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ?, `updated_at` = NOW()");
-                $stmt->execute([$status]);
-            } else {
-                $stmt = $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ?, `updated_at` = NOW() WHERE `platform_code` = ?");
-                $stmt->execute([$status, $platformCode]);
-            }
-        } catch (Exception $e) {}
+    [$local, $platformStatus] = $map[$op];
+    $sql = "UPDATE `online_orders` SET `local_status` = ?, `platform_status` = ?";
+    $params = [$local, $platformStatus];
+    if ($op === 'reject') { $sql .= ", `cancel_reason` = ?"; $params[] = mb_substr($reason, 0, 250); }
+    if ($op === 'accept') {
+        foreach (['assignedCourierId' => 'assigned_courier_id', 'deliveryModel' => 'delivery_model', 'handoverCode' => 'handover_code'] as $k => $col) {
+            if (!empty($body[$k])) { $sql .= ", `{$col}` = ?"; $params[] = (string)$body[$k]; }
+        }
     }
+    $sql .= " WHERE `id` = ?";
+    $params[] = $order['id'];
+    $pdo->prepare($sql)->execute($params);
 
-    echo json_encode([
+    $labels = ['accept' => 'onaylandı', 'reject' => 'iptal edildi', 'dispatch' => 'yola çıktı olarak işaretlendi', 'deliver' => 'teslim edildi olarak kapatıldı'];
+    $resp = [
         'success' => true,
-        'platform' => $platformCode,
-        'isOpen' => $isOpen,
-        'message' => "Platform ({$platformCode}) " . ($isOpen ? 'siparişe açıldı.' : 'siparişe kapatıldı.')
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
+        'message' => "Sipariş (#{$order['platform_order_id']}) {$labels[$op]}.",
+        'newStatus' => $local,
+        'platformSync' => $sync['status'],
+        'platformSyncMessage' => $sync['message'],
+    ];
+    if ($op === 'accept') {
+        // Mutfak fişi için kalemler (yazıcı yönlendirmesi kasada, ürün/kategori eşlemesiyle yapılır)
+        $items = json_decode($order['items_json'] ?? '[]', true) ?: [];
+        $resp['printJobs'] = ['kurye' => $items, 'items' => $items];
+        $resp['customerName'] = $order['customer_name'];
+        $resp['address'] = $order['delivery_address'];
+        $resp['totalAmount'] = (float)$order['total_amount'];
+    }
+    out($resp);
 }
 
-// Not: 'get_platform_store_status' isteği index.php tarafından online/orders.php'e
-// yönlendirilir (bkz. o dosyadaki karşılığı); burada tekrar tanımlanmaz.
+/* ---------------- 5. MAĞAZA DURUMU ---------------- */
+if ($action === 'update_store_status' || $action === 'update_online_store_status' || $action === 'update_platform_store_status') {
+    $code = plat($body) ?: 'ALL';
+    if ($action === 'update_platform_store_status') { $status = !empty($body['isOpen']) ? 'OPEN' : 'CLOSED'; }
+    else { $status = strtoupper(trim((string)($body['status'] ?? 'OPEN'))); if (!in_array($status, ['OPEN', 'BUSY', 'CLOSED'], true)) { $status = 'OPEN'; } }
+    $targets = $code === 'ALL' ? OP_PLATFORMS : [$code];
+    $results = [];
+    foreach ($targets as $t) {
+        if (!in_array($t, OP_PLATFORMS, true)) continue;
+        $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ? WHERE `platform_code` = ?")->execute([$status, $t]);
+        $row = op_platform($pdo, $t);
+        $res = ['platform' => $t, 'sync' => 'MANUAL', 'message' => 'Kasa kaydı güncellendi; platformun mağaza durumu otomatik değiştirilmedi — platform panelinden de açıp kapatın.'];
+        if ($t === 'YEMEKSEPETI' && !empty($row['is_enabled']) && op_str($row['creds']['chainId'] ?? '') !== '' && op_str($row['creds']['vendorId'] ?? '') !== '') {
+            $tk = op_ys_token($row);
+            if ($tk['ok']) {
+                $url = 'https://yemeksepeti.partner.deliveryhero.io/v2/chains/' . rawurlencode($row['creds']['chainId']) . '/vendors/' . rawurlencode($row['creds']['vendorId']) . '/status';
+                $payload = $status === 'CLOSED' ? ['status' => 'CLOSED_TODAY', 'closed_reason' => 'TOO_BUSY_KITCHEN'] : ['status' => 'OPEN'];
+                $r = op_http('PUT', $url, ['Authorization' => 'Bearer ' . $tk['token'], 'Content-Type' => 'application/json'], $payload);
+                $res = ['platform' => $t, 'sync' => $r['ok'] ? 'OK' : 'FAILED', 'message' => $r['ok'] ? 'Yemeksepeti mağaza durumu güncellendi.' : ('Yemeksepeti: ' . op_brief($r))];
+            } else { $res = ['platform' => $t, 'sync' => 'FAILED', 'message' => $tk['message']]; }
+        }
+        $results[] = $res;
+    }
+    out(['success' => true, 'platform' => $code, 'storeStatus' => $status, 'isOpen' => $status !== 'CLOSED', 'results' => $results,
+        'message' => 'Mağaza durumu kaydedildi: ' . implode(' | ', array_map(fn($r) => $r['platform'] . ': ' . $r['message'], $results))]);
+}
 
-// 6. DİNAMİK AÇMA/KAPAMA (FEATURE TOGGLE: is_enabled)
+/* ---------------- 6-7. AYARLAR ---------------- */
 if ($action === 'toggle_platform' || $action === 'toggle_online_platform') {
-    $platformCode = strtoupper(trim($body['platform'] ?? ''));
-    $isEnabled = !empty($body['isEnabled']) ? 1 : 0;
-
-    if (empty($platformCode)) {
-        echo json_encode(['success' => false, 'error' => 'Platform kodu belirtilmedi.']);
-        exit;
-    }
-
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("UPDATE `online_platforms` SET `is_enabled` = ?, `updated_at` = NOW() WHERE `platform_code` = ?");
-            $stmt->execute([$isEnabled, $platformCode]);
-        } catch (Exception $e) {}
-    }
-
-    echo json_encode([
-        'success' => true,
-        'platform' => $platformCode,
-        'isEnabled' => $isEnabled,
-        'message' => "Platform ({$platformCode}) entegrasyonu " . ($isEnabled ? 'AKTİF' : 'PASİF') . " duruma getirildi."
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
+    $code = plat($body);
+    if (!in_array($code, OP_PLATFORMS, true)) { out(['success' => false, 'error' => 'Geçersiz platform.'], 400); }
+    $en = !empty($body['isEnabled']) ? 1 : 0;
+    $pdo->prepare("UPDATE `online_platforms` SET `is_enabled` = ? WHERE `platform_code` = ?")->execute([$en, $code]);
+    out(['success' => true, 'platform' => $code, 'isEnabled' => $en, 'message' => "Platform ({$code}) " . ($en ? 'AKTİF' : 'PASİF') . ' yapıldı.']);
 }
 
-// 7. PLATFORM AYARLARINI KAYDET (SAVE CREDENTIALS)
 if ($action === 'save_platform_config' || $action === 'save_online_platform_config') {
-    $platformCode = strtoupper(trim($body['platform'] ?? ''));
-    $creds = $body['credentials'] ?? [];
-    $webhookSecret = $body['webhookSecret'] ?? null;
-    $isEnabled = isset($body['isEnabled']) ? ($body['isEnabled'] ? 1 : 0) : null;
-    $storeStatus = $body['storeStatus'] ?? null;
-    $deliveryModel = $body['deliveryModel'] ?? null;
-
-    if (empty($platformCode)) {
-        echo json_encode(['success' => false, 'error' => 'Platform kodu belirtilmedi.']);
-        exit;
-    }
-
-    $credsJson = json_encode($creds, JSON_UNESCAPED_UNICODE);
-
-    if ($pdo) {
-        try {
-            $sql = "UPDATE `online_platforms` SET `credentials_json` = :creds";
-            $params = [':creds' => $credsJson, ':platform' => $platformCode];
-
-            if ($webhookSecret !== null) {
-                $sql .= ", `webhook_secret` = :secret";
-                $params[':secret'] = $webhookSecret;
-            }
-            if ($isEnabled !== null) {
-                $sql .= ", `is_enabled` = :enabled";
-                $params[':enabled'] = $isEnabled;
-            }
-            if ($storeStatus !== null && in_array($storeStatus, ['OPEN', 'BUSY', 'CLOSED'])) {
-                $sql .= ", `store_status` = :store_status";
-                $params[':store_status'] = $storeStatus;
-            }
-            if ($deliveryModel !== null && in_array($deliveryModel, ['RESTAURANT_COURIER', 'PLATFORM_COURIER'])) {
-                $sql .= ", `delivery_model` = :delivery_model";
-                $params[':delivery_model'] = $deliveryModel;
-            }
-
-            $sql .= ", `updated_at` = NOW() WHERE `platform_code` = :platform";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-            exit;
-        }
-    }
-
-    echo json_encode([
-        'success' => true,
-        'platform' => $platformCode,
-        'deliveryModel' => $deliveryModel,
-        'message' => "Platform ({$platformCode}) API ve kimlik doğrulama parametreleri başarıyla kaydedildi."
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
+    $code = plat($body);
+    if (!in_array($code, OP_PLATFORMS, true)) { out(['success' => false, 'error' => 'Geçersiz platform.'], 400); }
+    $creds = is_array($body['credentials'] ?? null) ? $body['credentials'] : [];
+    $sets = ["`credentials_json` = :creds"];
+    $params = [':creds' => json_encode($creds, JSON_UNESCAPED_UNICODE), ':p' => $code];
+    if (isset($body['webhookSecret'])) { $sets[] = "`webhook_secret` = :sec"; $params[':sec'] = mb_substr((string)$body['webhookSecret'], 0, 100); }
+    if (isset($body['isEnabled'])) { $sets[] = "`is_enabled` = :en"; $params[':en'] = $body['isEnabled'] ? 1 : 0; }
+    if (isset($body['storeStatus']) && in_array($body['storeStatus'], ['OPEN', 'BUSY', 'CLOSED'], true)) { $sets[] = "`store_status` = :ss"; $params[':ss'] = $body['storeStatus']; }
+    if (isset($body['deliveryModel']) && in_array($body['deliveryModel'], ['RESTAURANT_COURIER', 'PLATFORM_COURIER'], true)) { $sets[] = "`delivery_model` = :dm"; $params[':dm'] = $body['deliveryModel']; }
+    // Anahtarlar değiştiyse önbellekteki oturum anahtarı geçersiz sayılır
+    $sets[] = "`token_cache` = NULL"; $sets[] = "`token_expires_at` = NULL";
+    $st = $pdo->prepare("UPDATE `online_platforms` SET " . implode(', ', $sets) . " WHERE `platform_code` = :p");
+    $st->execute($params);
+    out(['success' => true, 'platform' => $code, 'message' => "Platform ({$code}) ayarları sunucuya kaydedildi. (Kaydetmek bağlantıyı DOĞRULAMAZ — 'Bağlantıyı Test Et' kullanın.)"]);
 }
 
-// 7.1. PLATFORM TESLİMAT MODELİ GÜNCELLE (RESTAURANT_COURIER vs PLATFORM_COURIER)
 if ($action === 'update_delivery_model') {
-    $platformCode = strtoupper(trim($body['platform'] ?? ''));
-    $model = strtoupper(trim($body['deliveryModel'] ?? $body['model'] ?? 'RESTAURANT_COURIER'));
-    if (!in_array($model, ['RESTAURANT_COURIER', 'PLATFORM_COURIER'])) {
-        $model = 'RESTAURANT_COURIER';
-    }
-
-    if (empty($platformCode)) {
-        echo json_encode(['success' => false, 'error' => 'Platform kodu belirtilmedi.']);
-        exit;
-    }
-
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("UPDATE `online_platforms` SET `delivery_model` = ?, `updated_at` = NOW() WHERE `platform_code` = ?");
-            $stmt->execute([$model, $platformCode]);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-            exit;
-        }
-    }
-
-    $modelLabel = $model === 'RESTAURANT_COURIER' ? 'Restoran Kuryesi (Kendi Kuryemiz)' : 'Platform Kuryesi (Trendyol GO / Vale / Getir)';
-    echo json_encode([
-        'success' => true,
-        'platform' => $platformCode,
-        'deliveryModel' => $model,
-        'message' => "{$platformCode} teslimat modeli '{$modelLabel}' olarak güncellendi."
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
+    $code = plat($body);
+    $model = strtoupper(trim((string)($body['deliveryModel'] ?? $body['model'] ?? 'RESTAURANT_COURIER')));
+    if (!in_array($code, OP_PLATFORMS, true) || !in_array($model, ['RESTAURANT_COURIER', 'PLATFORM_COURIER'], true)) { out(['success' => false, 'error' => 'Geçersiz istek.'], 400); }
+    $pdo->prepare("UPDATE `online_platforms` SET `delivery_model` = ? WHERE `platform_code` = ?")->execute([$model, $code]);
+    out(['success' => true, 'platform' => $code, 'deliveryModel' => $model, 'message' => "{$code} teslimat modeli güncellendi."]);
 }
 
-// 7.2. KURYE ATAMA (ASSIGN COURIER)
 if ($action === 'assign_courier') {
-    $orderId = $body['orderId'] ?? $body['id'] ?? '';
-    $courierId = $body['courierId'] ?? $body['assignedCourierId'] ?? '';
-    $courierName = $body['courierName'] ?? '';
-
-    if (empty($orderId) || empty($courierId)) {
-        echo json_encode(['success' => false, 'error' => 'Sipariş ID veya Kurye ID eksik.']);
-        exit;
-    }
-
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("UPDATE `online_orders` SET `assigned_courier_id` = ?, `updated_at` = NOW() WHERE `id` = ? OR `platform_order_id` = ?");
-            $stmt->execute([$courierId, $orderId, $orderId]);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-            exit;
-        }
-    }
-
-    echo json_encode([
-        'success' => true,
-        'orderId' => $orderId,
-        'courierId' => $courierId,
-        'courierName' => $courierName,
-        'message' => "Sipariş (#{$orderId}) kurye personeline ({$courierName}) atandı."
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
+    $orderId = (string)($body['orderId'] ?? $body['id'] ?? '');
+    $courierId = (string)($body['courierId'] ?? $body['assignedCourierId'] ?? '');
+    if ($orderId === '' || $courierId === '') { out(['success' => false, 'error' => 'Sipariş veya kurye eksik.'], 400); }
+    $order = op_find_order($pdo, $orderId);
+    if (!$order) { out(['success' => false, 'error' => 'Sipariş bulunamadı.'], 404); }
+    $pdo->prepare("UPDATE `online_orders` SET `assigned_courier_id` = ?, `assigned_courier_name` = ? WHERE `id` = ?")->execute([$courierId, (string)($body['courierName'] ?? ''), $order['id']]);
+    out(['success' => true, 'orderId' => $orderId, 'courierId' => $courierId, 'message' => 'Kurye atandı.']);
 }
 
-// 8. BAĞLANTI TESTİ (TEST CONNECTION)
+/* ---------------- 8. GERÇEK BAĞLANTI TESTİ ---------------- */
 if ($action === 'test_connection' || $action === 'test_online_connection') {
-    $platformCode = strtoupper(trim($body['platform'] ?? 'TRENDYOL'));
-    $platformRow = getPlatformRow($pdo, $platformCode);
-    $creds = json_decode($platformRow['credentials_json'] ?? '{}', true) ?: [];
+    $code = plat($body);
+    if (!in_array($code, OP_PLATFORMS, true)) { out(['success' => false, 'error' => 'Geçersiz platform.'], 400); }
+    $row = op_platform($pdo, $code);
+    // Henüz kaydedilmemiş alanlar test isteğiyle gelebilir
+    if (is_array($body['credentials'] ?? null) && $body['credentials']) { $row['creds'] = array_merge($row['creds'], $body['credentials']); }
 
-    $isConfigured = false;
-    $details = '';
-
-    if ($platformCode === 'TRENDYOL') {
-        $supplierId = $creds['supplierId'] ?? $body['supplierId'] ?? '';
-        $apiKey = $creds['apiKey'] ?? $body['apiKey'] ?? '';
-        if (!empty($supplierId) && !empty($apiKey)) {
-            $isConfigured = true;
-            $details = "Trendyol Meal API Gateway doğrulandı (Supplier ID: {$supplierId}). Webhook dinleme hazır.";
+    $lines = [];
+    $verified = false;
+    if ($code === 'GETIR') {
+        $t = op_getir_token($pdo, $row, true);
+        if (!$t['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $t['message']]); }
+        $r = op_getir_call($pdo, $row, 'GET', '/food-orders/active');
+        if ($r['ok']) { $verified = true; $lines[] = 'Getir girişi başarılı ve aktif sipariş sorgusu çalışıyor (HTTP ' . $r['status'] . ').'; }
+        else { $lines[] = 'Getir girişi başarılı ancak aktif sipariş sorgusu başarısız: ' . op_brief($r); }
+    } elseif ($code === 'YEMEKSEPETI') {
+        $t = op_ys_token($row);
+        if (!$t['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $t['message']]); }
+        $verified = true; $lines[] = 'Yemeksepeti OAuth kimlik doğrulaması başarılı (client_id/client_secret geçerli).';
+    } else { // TRENDYOL
+        $c = $row['creds'];
+        $url = op_str($c['ordersUrl'] ?? '');
+        if ($url === '') {
+            out(['success' => false, 'verified' => false, 'platform' => $code,
+                'message' => 'Trendyol anahtarları kaydedildi ancak DOĞRULANAMADI: "Sipariş okuma adresi" tanımlı değil. Trendyol dokümanındaki paket/sipariş listeleme adresini "Gelişmiş adresler"e girip tekrar test edin.']);
         }
-    } elseif ($platformCode === 'GETIR') {
-        $secretKey = $creds['secretKey'] ?? $body['secretKey'] ?? '';
-        $appKey = $creds['appKey'] ?? $body['appKey'] ?? '';
-        $restaurantId = $creds['restaurantId'] ?? $body['restaurantId'] ?? '';
-        if (!empty($secretKey) || (!empty($appKey) && !empty($restaurantId))) {
-            $isConfigured = true;
-            $details = "Getir Yemek Partner Gateway doğrulandı. Sipariş kuyruğu aktif.";
-        }
-    } else { // YEMEKSEPETI
-        $vendorId = $creds['vendorId'] ?? $body['vendorId'] ?? '';
-        $clientId = $creds['clientId'] ?? $body['clientId'] ?? '';
-        $clientSecret = $creds['clientSecret'] ?? $body['clientSecret'] ?? '';
-        if (!empty($vendorId) || (!empty($clientId) && !empty($clientSecret))) {
-            $isConfigured = true;
-            $details = "Delivery Hero / Yemeksepeti Partner Gateway yetkilendirmesi doğrulandı.";
-        }
+        $url = op_tpl($url, ['supplierId' => op_str($c['supplierId'] ?? '')]);
+        $r = op_http('GET', $url, op_ty_headers($c));
+        if (!$r['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => 'Trendyol yanıtı: ' . op_brief($r)]); }
+        $verified = true; $lines[] = 'Trendyol sipariş sorgusu başarılı (HTTP ' . $r['status'] . ').';
     }
 
-    if ($isConfigured) {
-        echo json_encode([
-            'success' => true,
-            'platform' => $platformCode,
-            'message' => "Bağlantı Başarılı! {$details}",
-            'httpStatus' => 200,
-            'timestamp' => date('c')
-        ], JSON_UNESCAPED_UNICODE);
-    } else {
-        echo json_encode([
-            'success' => false,
-            'platform' => $platformCode,
-            'message' => "Eksik parametre! Lütfen {$platformCode} için zorunlu API kimlik bilgilerini eksiksiz doldurunuz.",
-            'httpStatus' => 400
-        ], JSON_UNESCAPED_UNICODE);
-    }
-    exit;
+    $hook = '';
+    if (!empty($row['last_webhook_at'])) { $hook = ' Son webhook: ' . $row['last_webhook_at'] . '.'; }
+    elseif (empty($row['secret'])) { $hook = ' UYARI: Webhook gizli anahtarı yok.'; }
+    else { $hook = ' Henüz bu platformdan webhook GELMEDİ (adresi platforma kaydettiniz mi?).'; }
+    out(['success' => $verified, 'verified' => $verified, 'platform' => $code, 'message' => implode(' ', $lines) . $hook, 'timestamp' => date('c')]);
 }
 
-echo json_encode(['success' => false, 'error' => 'Geçersiz action parametresi']);
+/* ---------------- 9. SİPARİŞ ÇEKME (kasa belirli aralıkla çağırır) ---------------- */
+if ($action === 'poll_online_orders') {
+    out(['success' => true, 'results' => op_poll_all($pdo), 'timestamp' => date('c')]);
+}
+
+/* ---------------- 10. TANI ---------------- */
+if ($action === 'get_online_diagnostics') {
+    $platforms = [];
+    foreach (OP_PLATFORMS as $code) {
+        $row = op_platform($pdo, $code);
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM `online_orders` WHERE `platform_code` = ?"); $cnt->execute([$code]);
+        $platforms[] = [
+            'platform' => $code, 'enabled' => (bool)$row['is_enabled'], 'hasSecret' => strlen($row['secret']) >= 8,
+            'configured' => !empty($row['creds']), 'lastWebhookAt' => $row['last_webhook_at'] ?? null, 'orderCount' => (int)$cnt->fetchColumn(),
+        ];
+    }
+    $hidden = (int)$pdo->query("SELECT COUNT(*) FROM `online_orders` WHERE `platform_code` IN (SELECT `platform_code` FROM `online_platforms` WHERE `is_enabled` = 0)")->fetchColumn();
+    $limit = max(1, min(100, (int)($_GET['limit'] ?? 40)));
+    $log = $pdo->query("SELECT `id`, `created_at`, `platform`, `source`, `result`, `http_code`, `reason`, `header_names`, `order_ref`, LEFT(`body_sample`, 4000) AS body_sample FROM `online_webhook_log` ORDER BY `id` DESC LIMIT {$limit}")->fetchAll(PDO::FETCH_ASSOC);
+    out(['success' => true, 'platforms' => $platforms, 'hiddenOrders' => $hidden, 'log' => $log]);
+}
+
+out(['success' => false, 'error' => 'Geçersiz action parametresi'], 400);

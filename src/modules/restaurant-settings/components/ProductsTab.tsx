@@ -565,26 +565,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                       </div>
                     </div>
 
-                    {/* Hızlı Antep Yemek Görselleri Hazır Şablonları */}
-                    <div className="space-y-1">
-                      <div className="text-[10px] text-[#A0A0AA] font-bold flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-[#F5C877]" />
-                        <span>Hızlı Hazır Antep Fotoğrafı Seç:</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
-                        {FOOD_IMAGE_PRESETS.map((preset, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setForm({ ...form, imageUrl: preset.url })}
-                            className="px-2 py-0.5 rounded-lg bg-[#141416] hover:bg-[#282830] text-[10px] text-[#C4C4CC] hover:text-white border border-[#2C2C34] transition-colors"
-                          >
-                            {preset.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                                      </div>
                 </div>
               </div>
 

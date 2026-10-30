@@ -88,6 +88,10 @@ if ($action === 'list' || $action === 'get_orders' || $action === 'get_online_or
     $platformFilter = $_GET['platform'] ?? 'ALL'; // ALL, YEMEKSEPETI, TRENDYOL, GETIR
     $orders = [];
     $pendingCount = 0;
+    $hiddenCount = 0;
+    if ($pdo) {
+        try { $hiddenCount = (int)$pdo->query("SELECT COUNT(*) FROM `online_orders` WHERE `local_status` IN ('BEKLIYOR','HAZIRLANIYOR','YOLA_CIKTI') AND `platform_code` IN (SELECT `platform_code` FROM `online_platforms` WHERE `is_enabled` = 0)")->fetchColumn(); } catch (Throwable $e) {}
+    }
 
     if ($pdo) {
         try {
@@ -146,7 +150,10 @@ if ($action === 'list' || $action === 'get_orders' || $action === 'get_online_or
                     'assignedCourierId' => $row['assigned_courier_id'] ?? null,
                     'platformCourierName' => $row['platform_courier_name'] ?? null,
                     'platformCourierPhone' => $row['platform_courier_phone'] ?? null,
-                    'handoverCode' => $row['handover_code'] ?? null
+                    'handoverCode' => $row['handover_code'] ?? null,
+                    'platformSync' => $row['platform_sync_status'] ?? null,
+                    'platformSyncMessage' => $row['platform_sync_message'] ?? null,
+                    'displayCode' => (json_decode($row['raw_json'] ?? 'null', true)['confirmationId'] ?? null)
                 ];
 
                 if ($row['local_status'] === 'BEKLIYOR') {
@@ -158,98 +165,13 @@ if ($action === 'list' || $action === 'get_orders' || $action === 'get_online_or
         }
     }
 
-    // Eğer DB yoksa veya boştaysa dosya kuyruğundan oku
-    if (empty($orders)) {
-        $queueFile = __DIR__ . '/online_orders_queue.json';
-        if (file_exists($queueFile)) {
-            $queue = json_decode(file_get_contents($queueFile), true) ?: [];
-            foreach ($queue as $q) {
-                $orders[] = [
-                    'id' => strval($q['id'] ?? ('onl-' . rand(100, 999))),
-                    'platform' => $q['platform'] ?? 'TRENDYOL',
-                    'platformCode' => $q['platform'] ?? 'TRENDYOL',
-                    'platformOrderId' => $q['platform_order_id'] ?? ('ORD-' . rand(1000, 9999)),
-                    'customerName' => $q['customer_name'] ?? 'Müşteri',
-                    'customerPhone' => $q['customer_phone'] ?? '',
-                    'address' => $q['delivery_address'] ?? 'Adres',
-                    'orderNote' => $q['order_note'] ?? '',
-                    'items' => $q['items'] ?? [],
-                    'totalAmount' => floatval($q['total_amount'] ?? 0),
-                    'paymentMethod' => $q['payment_method'] ?? 'Online',
-                    'platformStatus' => $q['platform_status'] ?? 'NEW',
-                    'status' => $q['local_status'] ?? 'BEKLIYOR',
-                    'cancelReason' => $q['cancel_reason'] ?? '',
-                    'createdAt' => $q['created_at'] ?? date('Y-m-d H:i:s'),
-                    'deliveryModel' => 'RESTAURANT'
-                ];
-                if (($q['local_status'] ?? '') === 'BEKLIYOR') {
-                    $pendingCount++;
-                }
-            }
-        }
-    }
-
     echo json_encode([
         'success' => true,
         'orders' => $orders,
         'count' => count($orders),
         'pendingCount' => $pendingCount,
+        'hiddenCount' => $hiddenCount,
         'timestamp' => date('c')
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// 3. SİPARİŞ TEST ENJEKSİYONU (Manuel / Test Amaçlı)
-if ($action === 'create_test_order' || $action === 'create_test_online_order') {
-    $rawPayload = file_get_contents('php://input');
-    $data = json_decode($rawPayload, true) ?: [];
-
-    $platformCode = $data['platform'] ?? 'TRENDYOL';
-    $customerName = $data['customerName'] ?? 'Mehmet Taha Gümüş';
-    $customerPhone = $data['customerPhone'] ?? '0532 555 1234';
-    $deliveryAddress = $data['address'] ?? 'Fenerbahçe Mah. Bağdat Cad. No: 184 D: 5 Kadıköy/İstanbul';
-    $orderNote = $data['orderNote'] ?? 'Lütfen acılı ezme ve sıcak pide bol olsun. Zili çalmayın bebek uyuyor.';
-    $items = $data['items'] ?? [
-        ['name' => 'Antep Usulü Özel Lahmacun', 'quantity' => 4, 'price' => 110, 'note' => 'Çıtır olsun'],
-        ['name' => 'Küşleme Kebap Porsiyon', 'quantity' => 1, 'price' => 420, 'note' => 'Orta pişmiş'],
-        ['name' => 'Fıstıklı Havuç Dilim Baklava', 'quantity' => 1, 'price' => 240, 'note' => 'Kaymaklı']
-    ];
-    $totalAmount = 0;
-    foreach ($items as $it) {
-        $totalAmount += ($it['quantity'] * $it['price']);
-    }
-
-    $platformOrderId = 'TEST-' . strtoupper(substr($platformCode, 0, 2)) . '-' . rand(10000, 99999);
-    $itemsJson = json_encode($items, JSON_UNESCAPED_UNICODE);
-
-    $insertId = null;
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("
-                INSERT INTO `online_orders` (
-                    `platform_code`, `platform_order_id`, `customer_name`, `customer_phone`,
-                    `delivery_address`, `order_note`, `items_json`, `total_amount`,
-                    `payment_method`, `platform_status`, `local_status`, `created_at`
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, 'Online Kredi Kartı', 'NEW', 'BEKLIYOR', NOW()
-                )
-            ");
-            $stmt->execute([
-                $platformCode, $platformOrderId, $customerName, $customerPhone,
-                $deliveryAddress, $orderNote, $itemsJson, $totalAmount
-            ]);
-            $insertId = $pdo->lastInsertId();
-        } catch (Exception $e) {
-            error_log("Test order oluşturma hatası: " . $e->getMessage());
-        }
-    }
-
-    echo json_encode([
-        'success' => true,
-        'message' => "Test siparişi [{$platformCode}] başarıyla oluşturuldu.",
-        'orderId' => $insertId ?: ('test-' . time()),
-        'platformOrderId' => $platformOrderId,
-        'totalAmount' => $totalAmount
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }

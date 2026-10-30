@@ -187,54 +187,6 @@ class DataService {
   private listeners: Set<() => void> = new Set();
 
   constructor() {
-    this.purgeDemoData();
-  }
-
-  private purgeDemoData() {
-    try {
-      const demoSupIds = ['sup-1', 'sup-2', 'sup-3'];
-      const demoCustIds = ['cust-1', 'cust-2'];
-      const demoEmpIds = ['emp-1', 'emp-2', 'emp-3', 'emp-4', 'emp-5'];
-
-      const rawCust = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-      if (rawCust) {
-        const custs: Customer[] = JSON.parse(rawCust);
-        const filtered = custs.filter(c => !demoCustIds.includes(c.id));
-        if (filtered.length !== custs.length) {
-          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(filtered));
-        }
-      }
-
-      const rawSup = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-      if (rawSup) {
-        const sups: Supplier[] = JSON.parse(rawSup);
-        const filtered = sups.filter(s => !demoSupIds.includes(s.id));
-        if (filtered.length !== sups.length) {
-          localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(filtered));
-        }
-      }
-
-      const rawEmp = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
-      if (rawEmp) {
-        const emps: Employee[] = JSON.parse(rawEmp);
-        const filtered = emps.filter(e => !demoEmpIds.includes(e.id));
-        if (filtered.length !== emps.length) {
-          localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(filtered));
-        }
-      }
-
-      // Purge demo payments
-      const rawPay = localStorage.getItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS);
-      if (rawPay) {
-        const pays: EmployeePayment[] = JSON.parse(rawPay);
-        const filtered = pays.filter(p => !demoEmpIds.includes(p.employeeId));
-        if (filtered.length !== pays.length) {
-          localStorage.setItem(STORAGE_KEYS.EMPLOYEE_PAYMENTS, JSON.stringify(filtered));
-        }
-      }
-    } catch (e) {
-      console.warn('Demo purge error:', e);
-    }
   }
 
   public subscribe(listener: () => void): () => void {

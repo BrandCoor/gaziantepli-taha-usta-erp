@@ -22,6 +22,8 @@ export async function freshServices() {
   const store = stubBrowser();
   const rds = (await import('../../src/services/restaurantDataService')).restaurantDataService;
   const ds = (await import('../../src/services/dataService')).dataService;
+  // Üründe hazır salon/masa YOKTUR; testler kendi (izole) düzenini kurar.
+  (rds as any).addSection({ name: 'Test Salon', tableCount: 12, capacityPerTable: 4 });
   return { store, rds: rds as any, ds: ds as any };
 }
 

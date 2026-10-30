@@ -320,16 +320,6 @@ app.get('/api/callerid/status', (req, res) => {
 });
 
 // Test / Simülasyon çağrısı fırlatır (Hat 1 veya Hat 2)
-app.post('/api/callerid/simulate', (req, res) => {
-  if (app.get('env') === 'production' || !process.env.VITE_DEV_SERVER_URL) {
-    return res.status(404).json({ success: false, error: 'Üretimde kapalı' });
-  }
-  const line = req.body.line === 2 ? 2 : 1;
-  const phone = req.body.phone || '05321234567';
-  const event = gCallerIdDriver.handleHttpWebhook(line, phone);
-  res.json({ success: true, event });
-});
-
 export function startLocalServer(port: number = 4545) {
   // Yalnızca bu bilgisayar: yerel ağdaki başka cihazlar yazıcı/çağrı servisine erişemez.
   httpServer.listen(port, '127.0.0.1', () => {

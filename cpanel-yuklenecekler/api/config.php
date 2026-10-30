@@ -673,6 +673,37 @@ function runSchemaMigrations($pdo) {
             "ALTER TABLE `personeller` ADD COLUMN `pairing_code_hash` VARCHAR(64) NULL DEFAULT NULL",
             "CREATE TABLE IF NOT EXISTS `rate_limits` (`k` VARCHAR(190) NOT NULL, `hits` INT NOT NULL DEFAULT 0, `window_start` INT NOT NULL, PRIMARY KEY (`k`)) ENGINE=InnoDB",
         ],
+        // 2: Online platform entegrasyonu — eksik sütunlar (önceki sürümde kodda kullanılıyor ama tabloda yoktu) + tanı günlüğü
+        2 => [
+            "ALTER TABLE `online_platforms` ADD COLUMN `delivery_model` VARCHAR(30) NOT NULL DEFAULT 'RESTAURANT_COURIER'",
+            "ALTER TABLE `online_platforms` ADD COLUMN `last_webhook_at` DATETIME NULL",
+            "ALTER TABLE `online_platforms` ADD COLUMN `token_cache` TEXT NULL",
+            "ALTER TABLE `online_platforms` ADD COLUMN `token_expires_at` DATETIME NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `raw_json` LONGTEXT NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `callback_urls_json` TEXT NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `delivery_model` VARCHAR(30) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `assigned_courier_id` VARCHAR(60) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `assigned_courier_name` VARCHAR(100) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_courier_name` VARCHAR(100) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_courier_phone` VARCHAR(30) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `handover_code` VARCHAR(30) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_sync_status` VARCHAR(20) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_sync_message` VARCHAR(255) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `platform_sync_at` DATETIME NULL",
+            "CREATE TABLE IF NOT EXISTS `online_webhook_log` (
+                `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `platform` VARCHAR(20) NOT NULL,
+                `source` VARCHAR(10) NOT NULL,
+                `result` VARCHAR(12) NOT NULL,
+                `http_code` INT NOT NULL DEFAULT 0,
+                `reason` VARCHAR(255) NULL,
+                `header_names` TEXT NULL,
+                `body_sample` MEDIUMTEXT NULL,
+                `order_ref` VARCHAR(100) NULL,
+                INDEX `idx_owl_created` (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        ],
     ];
     try {
         $cur = (int)$pdo->query("SELECT `deger` FROM `ayarlar` WHERE `anahtar` = 'schema_version'")->fetchColumn();

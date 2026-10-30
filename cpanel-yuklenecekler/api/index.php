@@ -96,7 +96,7 @@ if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_d
 }
 
 // Online Yemek Platformları (Yemeksepeti, Trendyol Yemek, GetirYemek)
-if (in_array($action, ['get_online_orders', 'list_online_orders', 'get_online_platforms', 'create_test_online_order'])) {
+if (in_array($action, ['get_online_orders', 'list_online_orders', 'get_online_platforms'])) {
     require __DIR__ . '/online/orders.php';
     exit;
 }
@@ -104,7 +104,8 @@ if (in_array($action, [
     'online_action', 'accept_online_order', 'reject_online_order', 'cancel_online_order',
     'dispatch_online_order', 'deliver_online_order', 'update_online_store_status',
     'update_platform_store_status', 'get_platform_store_status',
-    'toggle_online_platform', 'save_online_platform_config', 'test_online_connection'
+    'toggle_online_platform', 'save_online_platform_config', 'test_online_connection',
+    'update_delivery_model', 'assign_courier', 'poll_online_orders', 'get_online_diagnostics'
 ])) {
     // get_platform_store_status desteği
     if ($action === 'get_platform_store_status') {
@@ -2527,10 +2528,6 @@ if ($action === 'get_printer_routes') {
     exit;
 }
 
-// Varsayılan Yanıt
-echo json_encode([
-    'success' => true, 
-    'status' => 'ONLINE', 
-    'mode' => $useMysql ? 'MYSQL' : 'JSON_FALLBACK',
-    'version' => '3.3.0'
-]);
+// Bilinmeyen eylem: asla "başarılı" dönülmez (yazım hatası/eski istemci sessizce başarı sanılmasın).
+http_response_code(404);
+echo json_encode(['success' => false, 'error' => 'Bilinmeyen eylem', 'code' => 'UNKNOWN_ACTION']);

@@ -714,7 +714,7 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({ printers, onRefresh })
           <div>
             <h3 className="text-sm font-black text-white">Tanımlı veya Bağlı Yazıcı Bulunmuyor</h3>
             <p className="text-xs text-[#8E8E98] mt-1 leading-relaxed">
-              Tüm demo yazıcılar temizlendi. İşletmenizin fiziksel yazıcısını bağlamak için yukarıdaki &quot;+ Manuel Ekle&quot; veya &quot;🔍 USB ve Ağ Yazıcılarını Tara&quot; butonunu kullanabilirsiniz.
+              Henüz yazıcı tanımlı değil. İşletmenizin fiziksel yazıcısını bağlamak için yukarıdaki &quot;+ Manuel Ekle&quot; veya &quot;🔍 USB ve Ağ Yazıcılarını Tara&quot; butonunu kullanabilirsiniz.
             </p>
           </div>
           <div className="pt-2 flex items-center justify-center gap-3">

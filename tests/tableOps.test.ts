@@ -24,6 +24,7 @@ describe('masa taşıma / birleştirme', () => {
     stubBrowser();
     const mod = await import('../src/services/restaurantDataService');
     svc = mod.restaurantDataService;
+    svc.addSection({ name: 'Test Salon', tableCount: 12, capacityPerTable: 4 });
   });
 
   const item = (n: string, price: number, qty = 1) => ({ id: 'i-' + n, productId: n, productName: n, price, quantity: qty, status: 'SENT_TO_KITCHEN' });

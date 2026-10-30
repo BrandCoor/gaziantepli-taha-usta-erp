@@ -70,35 +70,6 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
     }
   };
 
-  // 2. Terazi Testi
-  const handleTestScaleRead = () => {
-    setIsTestingScale(true);
-    restaurantDataService.playAudioAlert('beep');
-    setTimeout(() => {
-      // Simüle edilen hassas terazi değeri
-      const simulatedWeights = [0.450, 0.725, 1.150, 0.980, 1.840, 2.300];
-      const randomWeight = simulatedWeights[Math.floor(Math.random() * simulatedWeights.length)];
-      setTestScaleWeight(randomWeight);
-      setIsTestingScale(false);
-      notify.success('Terazi Okundu', `RS-232 portundan net ağırlık: ${randomWeight.toFixed(3)} ${config.scale.unit}`);
-    }, 450);
-  };
-
-  // 3. Caller ID Testi
-  const handleTestCallerId = () => {
-    setIsTestingCallerId(true);
-    restaurantDataService.playAudioAlert('phone', config.soundAlerts.repeatCount || 2);
-    setTimeout(() => {
-      restaurantDataService.addRecentCall('05321002030', {
-        name: 'Gelen Çağrı (Hat 1)',
-        phone: '0532 100 20 30',
-        address: 'Telefon arayanı için paket adisyonu açılabilir',
-      });
-      setIsTestingCallerId(false);
-      notify.info('Gelen Çağrı Algılandı', '0532 100 20 30 numaralı telefondan çağrı sinyali alındı. Paket servis açılabilir.');
-    }, 600);
-  };
-
   return (
     <div className="space-y-6">
       {/* ÜST BİLGİ & KAYDET BUTONU */}
@@ -334,30 +305,13 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
                     {testScaleWeight !== null ? `${testScaleWeight.toFixed(3)} ${config.scale.unit}` : `0.000 ${config.scale.unit}`}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={!config.scale.enabled}
-                    onClick={() => setTestScaleWeight(0)}
-                    className="px-2.5 py-1 bg-slate-800 text-slate-300 text-[10px] font-black rounded-lg hover:text-white cursor-pointer disabled:opacity-50"
-                  >
-                    Dara / Sıfırla
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!config.scale.enabled || isTestingScale}
-                    onClick={handleTestScaleRead}
-                    className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black rounded-lg cursor-pointer disabled:opacity-50"
-                  >
-                    {isTestingScale ? 'Tartılıyor...' : 'Tartım Oku'}
-                  </button>
-                </div>
+                
               </div>
             </div>
           </div>
 
           <div className="p-2.5 bg-[#141416] rounded-xl text-[11px] text-[#A0A0AA] border border-[#2C2C34]">
-            Gramajlı ürün kasada seçildiğinde ağırlık otomatik okunup çarpılır.
+            Not: Seri port (RS-232) terazi okuyucu bu sürümde entegre DEĞİLDİR; gramajlı ürünlerde ağırlık elle girilir. Donanım testi yapılmadan 'bağlı' gösterilmez.
           </div>
         </div>
 
@@ -582,31 +536,7 @@ export const HardwarePeripheralsTab: React.FC<HardwarePeripheralsTabProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={!config.callerId.enabled}
-              onClick={() => {
-                callerIdService.simulateCall(1, '05321002030');
-                notify.info('Hat 1 Çağrı Testi', '🟢 HAT 1 gelen arama bildirimi tetiklendi.');
-              }}
-              className="py-2.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-            >
-              <span>🟢 Hat 1 Test Et</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={!config.callerId.enabled}
-              onClick={() => {
-                callerIdService.simulateCall(2, '05422003040');
-                notify.info('Hat 2 Çağrı Testi', '🔵 HAT 2 gelen arama bildirimi tetiklendi.');
-              }}
-              className="py-2.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-400 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-            >
-              <span>🔵 Hat 2 Test Et</span>
-            </button>
-          </div>
+          
         </div>
 
       </div>
