@@ -1,5 +1,7 @@
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, IpcMainEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, IpcMainEvent } from 'electron';
+import * as fs from 'fs';
 import { isPrivateOrLoopbackIp } from './netGuard';
+import { BackupStore } from './backupStore';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -82,6 +84,48 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// ===================== YEDEKLEME =====================
+// Veri konumu: Electron `userData` (güncelleme/yeniden kurulumda silinmez). Yedekler ayrı klasörde tutulur.
+const backupStore = new BackupStore([]);
+const backupSettingsFile = () => path.join(app.getPath('userData'), 'backup-settings.json');
+function readBackupSettings(): { secondaryDir?: string } {
+  try { return JSON.parse(fs.readFileSync(backupSettingsFile(), 'utf8')); } catch { return {}; }
+}
+function applyBackupDirs() {
+  const primary = process.env.GTU_BACKUP_DIR || path.join(app.getPath('documents'), 'GaziantepliTahaUsta-Yedekler');
+  const { secondaryDir } = readBackupSettings();
+  backupStore.setDirs([primary, ...(secondaryDir ? [secondaryDir] : [])]);
+}
+
+secureHandle('app-info', async () => ({
+  version: app.getVersion(),
+  userData: app.getPath('userData'),
+  backupDir: backupStore.primaryDir(),
+  secondaryDir: readBackupSettings().secondaryDir || null,
+}));
+secureHandle('backup-save', async (_e, { label, json }) => backupStore.save(String(label || 'elle'), String(json || '')));
+secureHandle('backup-list', async () => ({ success: true, items: backupStore.list(), dir: backupStore.primaryDir(), secondaryDir: readBackupSettings().secondaryDir || null }));
+secureHandle('backup-read', async (_e, { name }) => backupStore.read(String(name || '')));
+secureHandle('backup-open-folder', async () => {
+  fs.mkdirSync(backupStore.primaryDir(), { recursive: true });
+  const err = await shell.openPath(backupStore.primaryDir());
+  return { success: !err, error: err || undefined };
+});
+secureHandle('backup-choose-secondary', async () => {
+  const res = await dialog.showOpenDialog(mainWindow!, { title: 'İkinci yedek klasörü (ör. USB bellek / ikinci disk)', properties: ['openDirectory', 'createDirectory'] });
+  if (res.canceled || !res.filePaths[0]) return { success: false, error: 'İptal edildi' };
+  fs.writeFileSync(backupSettingsFile(), JSON.stringify({ ...readBackupSettings(), secondaryDir: res.filePaths[0] }), 'utf8');
+  applyBackupDirs();
+  return { success: true, secondaryDir: res.filePaths[0] };
+});
+secureHandle('backup-clear-secondary', async () => {
+  const cur = readBackupSettings();
+  delete cur.secondaryDir;
+  fs.writeFileSync(backupSettingsFile(), JSON.stringify(cur), 'utf8');
+  applyBackupDirs();
+  return { success: true };
+});
 
 // WINDOWS İŞLETİM SİSTEMİNE BAĞLI USB / SPOOLER YAZICILARI GETİR
 secureHandle('get-system-usb-printers', async () => {
@@ -219,6 +263,7 @@ secureOn('window-close', () => {
 });
 
 app.whenReady().then(() => {
+  applyBackupDirs();
   startLocalServer(4545);
   createWindow();
 

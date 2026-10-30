@@ -1,3 +1,5 @@
+import { FullBackupPanel } from './FullBackupPanel';
+import { fullBackupService } from '../../../services/fullBackupService';
 import { getBusinessDate } from '../../../utils/businessDate';
 import React, { useState, useEffect } from 'react';
 import { 
@@ -183,7 +185,13 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
       title: 'Fabrika Ayarlarına Sıfırla',
       message: 'Tüm yazıcılar, menü, masalar ve donanım yapılandırması varsayılan ayarlara döndürülecektir. Bu işlem geri alınamaz! Devam edilsin mi?',
       type: 'danger',
-      onConfirm: () => {
+      onConfirm: async () => {
+        // Güvenlik: sıfırlamadan önce otomatik tam yedek
+        const pre = await fullBackupService.backupNow('fabrika-oncesi');
+        if (fullBackupService.isAvailable() && !pre.success) {
+          notify.error('Sıfırlama İptal', 'Önce yedek alınamadı: ' + (pre.error || ''));
+          return;
+        }
         localStorage.removeItem('gtu_pos_sections');
         localStorage.removeItem('gtu_pos_categories');
         localStorage.removeItem('gtu_pos_products');
@@ -200,6 +208,8 @@ export const SystemBackupTab: React.FC<SystemBackupTabProps> = ({ onRefresh }) =
 
   return (
     <div className="space-y-6">
+      <FullBackupPanel />
+
       {/* ÜST BİLGİ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1C1C20] p-5 rounded-3xl border border-[#2C2C34] shadow-sm">
         <div>

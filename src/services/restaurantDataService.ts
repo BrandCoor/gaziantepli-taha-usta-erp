@@ -1972,6 +1972,9 @@ class RestaurantDataService {
       (dataService.getSupplierTransactions() || []).filter(t => t.date <= bizToday && !alreadyReported.supplierTxs.has(t.id)).map(t => t.id)
     );
 
+    // Z kapanışı sonrası otomatik dosya yedeği (arka planda; sonucu raporu engellemez)
+    try { void this.autoBackupHook?.('z-kapanis'); } catch {}
+
     this.notify();
     return zReport;
   }
