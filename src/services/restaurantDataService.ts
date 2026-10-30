@@ -433,7 +433,7 @@ export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
   getir: {
     enabled: false,
     isOpen: true,
-    restaurantName: 'Gaziantepli Taha Usta (Eğitim Mah.)',
+    restaurantName: 'Gaziantepli Taha Usta',
     secretKey: '',
     restaurantId: '',
     autoPrintReceipt: true,
@@ -1376,172 +1376,6 @@ class RestaurantDataService {
     return all.filter(o => !o.zReportId);
   }
 
-  private generateSeedCompletedOrders(): CompletedOrderArchive[] {
-    return [];
-    /*
-    const today = getBusinessDate();
-    const yesterday = formatLocalDate(new Date(Date.now() - 86400000));
-    const twoDaysAgo = formatLocalDate(new Date(Date.now() - 172800000));
-
-    return [
-      {
-        id: 'ord-seed-1',
-        orderNumber: 101,
-        tableName: 'Salon - Masa 1',
-        sectionName: 'Ana Salon',
-        waiterName: 'Ahmet Garson',
-        orderTime: `${today} 12:15`,
-        closedTime: `${today} 13:05`,
-        date: today,
-        totalAmount: 900,
-        items: [
-          { id: 'i1', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 2, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i2', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-          { id: 'i3', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 1, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p1', type: 'Kredi Kartı', amount: 900, time: '13:05' }],
-      },
-      {
-        id: 'ord-seed-2',
-        orderNumber: 102,
-        tableName: 'Salon - Masa 3',
-        sectionName: 'Ana Salon',
-        waiterName: 'Taha Usta',
-        orderTime: `${today} 12:40`,
-        closedTime: `${today} 13:30`,
-        date: today,
-        totalAmount: 1400,
-        items: [
-          { id: 'i4', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 3, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i5', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 4, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p2', type: 'Nakit', amount: 1400, time: '13:30' }],
-      },
-      {
-        id: 'ord-seed-3',
-        orderNumber: 103,
-        tableName: 'Bahçe - Masa 2',
-        sectionName: 'Bahçe',
-        waiterName: 'İbrahim',
-        orderTime: `${today} 13:10`,
-        closedTime: `${today} 14:00`,
-        date: today,
-        totalAmount: 650,
-        items: [
-          { id: 'i6', productId: 'p6', productName: 'Kuşbaşılı Kaşarlı Pide', price: 280, quantity: 2, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-          { id: 'i7', productId: 'p9', productName: 'Kutu Meşrubat / Şalgam', price: 45, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p3', type: 'Nakit', amount: 650, time: '14:00' }],
-      },
-      {
-        id: 'ord-seed-4',
-        orderNumber: 104,
-        tableName: 'Paket Servis - P1',
-        sectionName: 'Paket Servis',
-        waiterName: 'Ahmet Garson',
-        orderTime: `${today} 13:30`,
-        closedTime: `${today} 14:15`,
-        date: today,
-        totalAmount: 580,
-        items: [
-          { id: 'i8', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 1, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i9', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 2, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-          { id: 'i10', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 1, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p4', type: 'Kredi Kartı', amount: 580, time: '14:15' }],
-      },
-      {
-        id: 'ord-seed-5',
-        orderNumber: 105,
-        tableName: 'Bahçe - Masa 5',
-        sectionName: 'Bahçe',
-        waiterName: 'İbrahim',
-        orderTime: `${today} 14:00`,
-        closedTime: `${today} 14:50`,
-        date: today,
-        totalAmount: 1140,
-        items: [
-          { id: 'i11', productId: 'p4', productName: 'Ali Nazik Kebap', price: 390, quantity: 2, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i12', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p5', type: 'Sodexo', amount: 1140, time: '14:50' }],
-      },
-      {
-        id: 'ord-seed-6',
-        orderNumber: 106,
-        tableName: 'Salon - Masa 6',
-        sectionName: 'Ana Salon',
-        waiterName: 'Taha Usta',
-        orderTime: `${today} 14:30`,
-        closedTime: `${today} 15:20`,
-        date: today,
-        totalAmount: 1020,
-        items: [
-          { id: 'i13', productId: 'p3', productName: 'Kuzu Şiş Kebap', price: 380, quantity: 2, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i14', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 1, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-          { id: 'i15', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 2, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p6', type: 'Cari (Mehmet Kaya)', customerName: 'Mehmet Kaya', amount: 1020, time: '15:20' }],
-      },
-      // Dünkü Siparişler (Z-25'e ait)
-      {
-        id: 'ord-seed-y1',
-        orderNumber: 90,
-        tableName: 'Salon - Masa 2',
-        sectionName: 'Ana Salon',
-        waiterName: 'Ahmet Garson',
-        orderTime: `${yesterday} 18:00`,
-        closedTime: `${yesterday} 19:10`,
-        date: yesterday,
-        totalAmount: 2200,
-        items: [
-          { id: 'iy1', productId: 'p3', productName: 'Kuzu Şiş Kebap', price: 380, quantity: 4, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy2', productId: 'p10', productName: 'Antep Fıstıklı Künefe', price: 180, quantity: 3, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy3', productId: 'p8', productName: 'Açık Yayık Ayranı', price: 40, quantity: 4, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'py1', type: 'Kredi Kartı', amount: 2200, time: '19:10' }],
-        zReportId: 'z-seed-25',
-      },
-      {
-        id: 'ord-seed-y2',
-        orderNumber: 91,
-        tableName: 'Bahçe - Masa 1',
-        sectionName: 'Bahçe',
-        waiterName: 'İbrahim',
-        orderTime: `${yesterday} 19:30`,
-        closedTime: `${yesterday} 20:45`,
-        date: yesterday,
-        totalAmount: 1840,
-        items: [
-          { id: 'iy4', productId: 'p1', productName: 'Adana Kebap (Porsiyon)', price: 320, quantity: 4, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy5', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 4, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-          { id: 'iy6', productId: 'p9', productName: 'Kutu Meşrubat / Şalgam', price: 45, quantity: 4, targetPrinter: 'pr-kasa', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'py2', type: 'Nakit', amount: 1840, time: '20:45' }],
-        zReportId: 'z-seed-25',
-      },
-      // 2 gün önceki sipariş (Z-24'e ait)
-      {
-        id: 'ord-seed-2d1',
-        orderNumber: 75,
-        tableName: 'Salon - Masa 4',
-        sectionName: 'Ana Salon',
-        waiterName: 'Taha Usta',
-        orderTime: `${twoDaysAgo} 13:00`,
-        closedTime: `${twoDaysAgo} 14:10`,
-        date: twoDaysAgo,
-        totalAmount: 1560,
-        items: [
-          { id: 'i2d1', productId: 'p2', productName: 'Urfa Kebap (Porsiyon)', price: 320, quantity: 3, targetPrinter: 'pr-ocak', status: 'SENT_TO_KITCHEN' },
-          { id: 'i2d2', productId: 'p5', productName: 'Gaziantep Lahmacun', price: 110, quantity: 4, targetPrinter: 'pr-firin', status: 'SENT_TO_KITCHEN' },
-        ],
-        payments: [{ id: 'p2d1', type: 'Nakit', amount: 1560, time: '14:10' }],
-        zReportId: 'z-seed-24',
-      },
-    ];
-    */
-  }
-
   // =========================================================================
   // GİDERLER & TOPTANCILARI İÇEREN KAPSAMLI X VE Z RAPORU MOTORU
   // =========================================================================
@@ -1767,88 +1601,6 @@ class RestaurantDataService {
       }
     }
     return [];
-  }
-
-  private generateSeedZReports(): ZReport[] {
-    return [];
-    /*
-    const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('tr-TR');
-    const twoDaysAgo = new Date(Date.now() - 172800000).toLocaleDateString('tr-TR');
-
-    return [
-      {
-        id: 'z-seed-24',
-        zNo: 24,
-        openedAt: `${twoDaysAgo} 09:30`,
-        closedAt: `${twoDaysAgo} 23:45`,
-        closedBy: 'Taha Usta',
-        grossTotal: 19450,
-        netTotal: 18950,
-        totalOrders: 32,
-        paymentBreakdown: { 'Nakit': 8400, 'Kredi Kartı': 9150, 'Sodexo': 1400 },
-        cariDetails: {},
-        totalExpenses: 2100,
-        cashExpenses: 900,
-        bankExpenses: 1200,
-        supplierInvoicesTotal: 4500,
-        supplierPaymentsTotal: 2500,
-        supplierCashPayments: 1500,
-        supplierBankPayments: 1000,
-        netCashInRegister: 6000,
-        openingCashFloat: 1000,
-        countedCash: 7000,
-        cashDifference: 0,
-        transferredCash: 1000,
-        discountTotal: 500,
-        giftTotal: 240,
-        cancelTotal: 0,
-        productSales: {
-          'Adana Kebap (Porsiyon)': { quantity: 28, total: 8960 },
-          'Gaziantep Lahmacun': { quantity: 45, total: 4950 },
-          'Açık Yayık Ayranı': { quantity: 40, total: 1600 },
-          'Antep Fıstıklı Künefe': { quantity: 19, total: 3420 },
-        },
-        vatBreakdown: [{ rate: 10, baseAmount: 17227.27, vatAmount: 1722.73, total: 18950 }],
-        note: 'Normal gün sonu kapanışı, kasa tam denk.',
-      },
-      {
-        id: 'z-seed-25',
-        zNo: 25,
-        openedAt: `${yesterday} 09:15`,
-        closedAt: `${yesterday} 23:55`,
-        closedBy: 'Taha Usta',
-        grossTotal: 24680,
-        netTotal: 24100,
-        totalOrders: 38,
-        paymentBreakdown: { 'Nakit': 11200, 'Kredi Kartı': 10800, 'Sodexo': 1100, 'Cari (Veresiye)': 1000 },
-        cariDetails: { 'Ahmet Yıldız': 1000 },
-        totalExpenses: 2800,
-        cashExpenses: 1100,
-        bankExpenses: 1700,
-        supplierInvoicesTotal: 6200,
-        supplierPaymentsTotal: 3500,
-        supplierCashPayments: 2000,
-        supplierBankPayments: 1500,
-        netCashInRegister: 8100,
-        openingCashFloat: 1000,
-        countedCash: 9150,
-        cashDifference: 50,
-        transferredCash: 1000,
-        discountTotal: 580,
-        giftTotal: 320,
-        cancelTotal: 110,
-        productSales: {
-          'Adana Kebap (Porsiyon)': { quantity: 34, total: 10880 },
-          'Urfa Kebap (Porsiyon)': { quantity: 18, total: 5760 },
-          'Gaziantep Lahmacun': { quantity: 52, total: 5720 },
-          'Antep Fıstıklı Künefe': { quantity: 24, total: 4320 },
-          'Açık Yayık Ayranı': { quantity: 58, total: 2320 },
-        },
-        vatBreakdown: [{ rate: 10, baseAmount: 21909.09, vatAmount: 2190.91, total: 24100 }],
-        note: 'Hafta sonu yoğunluğu, +50 TL kasa fazlası.',
-      },
-    ];
-    */
   }
 
   public getFilteredReport(filters: ReportFilterOptions = {}): DetailedReportResult {
@@ -2515,8 +2267,7 @@ class RestaurantDataService {
       const data = await res.json();
       return { success: true, message: data.message || 'Para çekmecesine açılma darbesi gönderildi.' };
     } catch (e) {
-      // Çekmece sinyali simülasyonu
-      return { success: true, message: 'Para çekmecesi açılma sinyali (ESC p 0 25 250) yazıcı portuna iletildi.' };
+      return { success: false, message: 'Para çekmecesi açılamadı: yazıcı hizmetine ulaşılamadı.' };
     }
   }
 

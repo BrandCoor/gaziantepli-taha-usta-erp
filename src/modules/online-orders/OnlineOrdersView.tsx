@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   Bike, 
   ShoppingBag, 
@@ -39,6 +39,8 @@ import {
 import { printerService } from '../../services/printerService';
 import { notify } from '../../services/notificationService';
 import { PlatformApiSettingsTab } from '../restaurant-settings/components/PlatformApiSettingsTab';
+import { OnlineDiagnosticsPanel } from './OnlineDiagnosticsPanel';
+
 
 export type OrderDeliveryModel = 'RESTAURANT' | 'PLATFORM' | 'RESTAURANT_COURIER' | 'PLATFORM_COURIER';
 
@@ -64,17 +66,52 @@ export interface OnlineOrder {
   createdAt: string;
   preparationTimeMinutes?: number;
   rejectionReason?: string;
-  apiAckId?: string;
+  platformOrderId?: string;
+  platformSync?: 'OK' | 'FAILED' | 'MANUAL';
+  platformSyncMessage?: string;
 }
 
 const STORAGE_KEY_ONLINE_ORDERS = 'gtu_online_orders';
+
+// Sunucu durum sözlüğü (BEKLIYOR…) → ekran durum sözlüğü. (Eskiden eşleşmediği için gelen siparişler hiçbir gruba girmiyor, zil çalmıyordu.)
+const STATUS_FROM_SERVER: Record<string, OnlineOrder['status']> = {
+  BEKLIYOR: 'NEW', HAZIRLANIYOR: 'PREPARING', YOLA_CIKTI: 'ON_WAY', TESLIM_EDILDI: 'DELIVERED', IPTAL: 'CANCELLED',
+};
+
+export function mapServerOrder(o: any): OnlineOrder {
+  const created = o.createdAt ? new Date(String(o.createdAt).replace(' ', 'T')) : null;
+  return {
+    id: String(o.id),
+    platform: o.platform || o.platformCode,
+    platformCode: `#${o.displayCode || o.platformOrderId}`,
+    platformOrderId: String(o.platformOrderId || ''),
+    deliveryModel: (o.deliveryModel === 'PLATFORM_COURIER' || o.deliveryModel === 'PLATFORM') ? 'PLATFORM_COURIER' : 'RESTAURANT_COURIER',
+    assignedCourierId: o.assignedCourierId || undefined,
+    assignedCourierName: o.assignedCourierName || undefined,
+    platformCourierName: o.platformCourierName || undefined,
+    platformCourierPhone: o.platformCourierPhone || undefined,
+    handoverCode: o.handoverCode || undefined,
+    customerName: o.customerName || 'Müşteri',
+    customerPhone: o.customerPhone || '',
+    address: o.address || '',
+    orderNote: o.orderNote || '',
+    items: (o.items || []).map((it: any) => ({ name: it.name, quantity: Number(it.quantity) || 1, price: Number(it.price) || 0, note: [it.note, ...(it.options || [])].filter(Boolean).join(' · ') || undefined })),
+    totalAmount: Number(o.totalAmount) || 0,
+    paymentMethod: o.paymentMethod || 'Online',
+    status: STATUS_FROM_SERVER[o.status] || 'NEW',
+    createdAt: created && !isNaN(created.getTime()) ? created.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '',
+    rejectionReason: o.cancelReason || undefined,
+    platformSync: o.platformSync || undefined,
+    platformSyncMessage: o.platformSyncMessage || undefined,
+  };
+}
+
 
 export const OnlineOrdersView: React.FC = () => {
   const [activePlatformFilter, setActivePlatformFilter] = useState<'ALL' | 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI'>('ALL');
   const [activeDeliveryFilter, setActiveDeliveryFilter] = useState<'ALL' | 'RESTAURANT' | 'PLATFORM'>('ALL');
   const [activeStatusTab, setActiveStatusTab] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [manualOrderModalOpen, setManualOrderModalOpen] = useState(false);
   const [rejectModalOrder, setRejectModalOrder] = useState<OnlineOrder | null>(null);
   const [selectedRejectReason, setSelectedRejectReason] = useState('Mutfak Kapasitesi Dolu');
   const [assignCourierModalOrder, setAssignCourierModalOrder] = useState<OnlineOrder | null>(null);
@@ -83,7 +120,6 @@ export const OnlineOrdersView: React.FC = () => {
   const [isAlarmMuted, setIsAlarmMuted] = useState(false);
   const [apiProcessingId, setApiProcessingId] = useState<string | null>(null);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
-  const [testingOrderPlatform, setTestingOrderPlatform] = useState<OnlinePlatformCode | null>(null);
 
   // Platform Yapılandırması ve Canlı Durumları
   const [platforms, setPlatforms] = useState<PlatformState[]>(() => onlinePlatformService.getPlatforms());
@@ -111,24 +147,20 @@ export const OnlineOrdersView: React.FC = () => {
   const enabledPlatforms = platforms.filter(p => p.isEnabled);
   const enabledPlatformCodes = new Set(enabledPlatforms.map(p => p.code));
 
-  // Sipariş Havuzu (Sadece gerçek veri ve sunucu/yerel kayıt)
+  // Sipariş havuzu: tek kaynak SUNUCUDUR (uydurma/yerel sipariş yok). Son başarılı liste önbellekten yalnızca ilk çizim içindir.
   const [orders, setOrders] = useState<OnlineOrder[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ONLINE_ORDERS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Herhangi bir demo veya sahte kayıt varsa filtrele
-        return parsed.filter((o: OnlineOrder) => !['onl-1', 'onl-2', 'onl-3'].includes(o.id));
-      }
+      if (saved) return (JSON.parse(saved) as OnlineOrder[]).filter((o) => o && o.platformOrderId);
     } catch (e) {}
     return [];
   });
+  const [serverError, setServerError] = useState<string>('');
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [diagOpen, setDiagOpen] = useState(false);
 
-  // Kalıcı Depolama Senkronizasyonu
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_ONLINE_ORDERS, JSON.stringify(orders));
-    } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY_ONLINE_ORDERS, JSON.stringify(orders)); } catch (e) {}
   }, [orders]);
 
   // Ayarlar Değişiklik Aboneliği
@@ -156,44 +188,39 @@ export const OnlineOrdersView: React.FC = () => {
     };
   }, [hasNewOrder, platformConfig.continuousAlarmUntilAction, isAlarmMuted]);
 
-  // GERÇEK ZAMANLI BULUT / SUNUCU WEBHOOK DİNLEYİCİSİ
+  // CANLI SİPARİŞ AKIŞI: sunucudaki tüm siparişler eşitlenir (yeni gelen + durum değişikliği). Hata sessiz geçilmez.
+  const prevNewIds = useRef<Set<string>>(new Set());
   useEffect(() => {
-    let isSubscribed = true;
-    const pollInterval = setInterval(async () => {
+    let alive = true;
+    const sync = async () => {
+      if (!isApiSyncConfigured()) { if (alive) setServerError('Sunucu adresi ayarlanmamış: Restoran & Donanım Ayarları › Bulut & Yedekleme.'); return; }
       try {
-        if (!isApiSyncConfigured()) return;
-        const res = await fetch(`${getApiSyncUrl()}?action=get_online_orders`, {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.success && Array.isArray(data.orders) && data.orders.length > 0 && isSubscribed) {
-            setOrders(prev => {
-              const existingIds = new Set(prev.map(p => p.id));
-              const incomingNew = data.orders.filter((o: OnlineOrder) => !existingIds.has(o.id));
-              if (incomingNew.length > 0) {
-                notify.info('Yeni Platform Siparişi', `${incomingNew.length} yeni sipariş sisteme aktarıldı.`);
-                return [...incomingNew, ...prev];
-              }
-              return prev;
-            });
-          }
+        const res = await fetch(`${getApiSyncUrl()}?action=get_online_orders&status=ALL`, { headers: { Accept: 'application/json' } });
+        if (res.status === 401) { if (alive) setServerError('Sunucu kasa anahtarını kabul etmiyor (401): Bulut & Yedekleme › Kasa API Anahtarı.'); return; }
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || data.success !== true || !Array.isArray(data.orders)) { if (alive) setServerError(`Sipariş listesi alınamadı (HTTP ${res.status}).`); return; }
+        if (!alive) return;
+        setServerError('');
+        setHiddenCount(Number(data.hiddenCount) || 0);
+        const mapped: OnlineOrder[] = data.orders.map(mapServerOrder);
+        const fresh = mapped.filter((o) => o.status === 'NEW' && !prevNewIds.current.has(o.id));
+        if (fresh.length > 0 && prevNewIds.current.size >= 0) {
+          const firstLoad = prevNewIds.current.size === 0 && orders.length === 0 ? false : true;
+          if (firstLoad || fresh.length > 0) { notify.info('Yeni Platform Siparişi', `${fresh.length} yeni sipariş geldi.`); setIsAlarmMuted(false); }
         }
-        // Platform açık/kapalı mağaza durumunu sunucuyla eş zamanla
-        restaurantDataService.fetchPlatformStoreStatus().then(status => {
-          if (status && isSubscribed) {
-            setPlatformConfig(restaurantDataService.getFoodPlatformsConfig());
-          }
-        });
-      } catch (e) {
-        // Ağ kesintilerinde sessiz tolerans
+        prevNewIds.current = new Set(mapped.filter((o) => o.status === 'NEW').map((o) => o.id));
+        setOrders(mapped);
+        restaurantDataService.fetchPlatformStoreStatus().then((status) => { if (status && alive) setPlatformConfig(restaurantDataService.getFoodPlatformsConfig()); });
+      } catch (e: any) {
+        if (alive) setServerError('Sunucuya ulaşılamıyor: siparişler güncellenemiyor (' + (e?.message || 'ağ hatası') + ').');
       }
-    }, 4500);
-
-    return () => {
-      isSubscribed = false;
-      clearInterval(pollInterval);
     };
+    sync();
+    const t = setInterval(sync, 4000);
+    // Yedek yol: webhook gelmezse sunucuya platformları sorgulatır (Getir: aktif siparişler)
+    const poll = setInterval(() => { onlinePlatformService.pollOrders().catch(() => undefined); }, 60000);
+    onlinePlatformService.pollOrders().catch(() => undefined);
+    return () => { alive = false; clearInterval(t); clearInterval(poll); };
   }, []);
 
   // ⚡ TEK TUŞLA YEMEK PLATFORMLARI SİPARİŞ AÇIK/YOĞUN/KAPALI YÖNETİMİ
@@ -269,7 +296,7 @@ export const OnlineOrdersView: React.FC = () => {
 
   const executeAcceptOrder = async (order: OnlineOrder, courierNameToAssign?: string) => {
     setApiProcessingId(order.id);
-    const prepMinutes = 
+    const prepMinutes =
       order.platform === 'TRENDYOL' ? platformConfig.trendyol.preparationTimeMinutes || 25 :
       order.platform === 'GETIR' ? platformConfig.getir.preparationTimeMinutes || 25 :
       platformConfig.yemeksepeti.preparationTimeMinutes || 25;
@@ -278,49 +305,54 @@ export const OnlineOrdersView: React.FC = () => {
     const isRest = order.deliveryModel === 'RESTAURANT' || order.deliveryModel === 'RESTAURANT_COURIER';
     const deliveryModel = isRest ? 'RESTAURANT_COURIER' : 'PLATFORM_COURIER';
 
-    // 1. Sunucu API İsteği (cPanel MySQL ve platform webhook/gateway)
-    try {
-      await onlinePlatformService.acceptOrder({
-        id: order.id,
-        platform: order.platform,
-        platformOrderId: order.platformCode?.replace('#', '') || order.id,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        address: order.address,
-        orderNote: order.orderNote,
-        items: order.items,
-        totalAmount: order.totalAmount,
-        paymentMethod: order.paymentMethod,
-        status: 'BEKLIYOR',
-        createdAt: order.createdAt,
-        deliveryModel,
-        assignedCourierName: assignedName,
-        platformCourierName: order.platformCourierName,
-        platformCourierPhone: order.platformCourierPhone,
-        handoverCode: order.handoverCode,
-      });
+    // 1. Sunucuya (ve oradan platforma) iletilir. Sunucu onaylamazsa HİÇBİR yerel değişiklik yapılmaz.
+    const result = await onlinePlatformService.acceptOrder({
+      id: order.id,
+      platform: order.platform,
+      platformOrderId: order.platformOrderId || order.id,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      address: order.address,
+      orderNote: order.orderNote,
+      items: order.items,
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      status: 'BEKLIYOR',
+      createdAt: order.createdAt,
+      deliveryModel,
+      assignedCourierName: assignedName,
+      platformCourierName: order.platformCourierName,
+      platformCourierPhone: order.platformCourierPhone,
+      handoverCode: order.handoverCode,
+    });
 
-      if (assignedName && isRest) {
-        await onlinePlatformService.assignCourier(order.id, 'courier-' + Date.now(), assignedName, order.platform);
-      }
-    } catch (e) {}
+    if (!result.success) {
+      setApiProcessingId(null);
+      notify.error('Sipariş Onaylanamadı', result.message);
+      return;
+    }
 
-    const ackCode = `ACK-${order.platform.slice(0, 2)}-${Math.floor(10000 + Math.random() * 90000)}`;
+    if (assignedName && isRest) {
+      const ac = await onlinePlatformService.assignCourier(order.id, 'courier-' + assignedName, assignedName, order.platform);
+      if (!ac.success) notify.warning('Kurye Atanamadı', ac.message);
+    }
 
-    setOrders(prev => prev.map(o => o.id === order.id ? { 
-      ...o, 
-      status: 'PREPARING', 
+    setOrders(prev => prev.map(o => o.id === order.id ? {
+      ...o,
+      status: 'PREPARING',
       assignedCourierName: assignedName || o.assignedCourierName,
       preparationTimeMinutes: prepMinutes,
-      apiAckId: ackCode
+      platformSync: result.platformSync,
+      platformSyncMessage: result.platformSyncMessage,
     } : o));
 
     setApiProcessingId(null);
     restaurantDataService.playAudioAlert('register');
 
-    // 2. Akıllı Donanım Fiş Yönlendirmesi (Fırın, Ocak, Kurye)
+    // 2. Mutfak / kurye fişleri (kalıcı yazdırma kuyruğu üzerinden)
+    let printNote = '';
     try {
-      await printerService.printOnlineOrder({
+      const pr = await printerService.printOnlineOrder({
         platform: order.platform,
         platformOrderId: order.platformCode || order.id,
         customerName: order.customerName,
@@ -336,22 +368,16 @@ export const OnlineOrdersView: React.FC = () => {
         platformCourierPhone: order.platformCourierPhone,
         handoverCode: order.handoverCode,
       });
+      if (!pr.success) printNote = ' Fişler yazdırma kuyruğunda bekliyor (sağ alttaki Yazdırma Kuyruğu).';
     } catch (pErr) {
-      console.warn('Otomatik fiş basımı:', pErr);
+      printNote = ' Fiş yazdırılamadı; Yazdırma Kuyruğu\'ndan tekrar deneyin.';
     }
 
-    if (isRest) {
-      const isCashOrPos = order.paymentMethod.toLowerCase().includes('nakit') || order.paymentMethod.toLowerCase().includes('pos') || order.paymentMethod.toLowerCase().includes('kapı');
-      notify.success(
-        'Sipariş Onaylandı & Kurye Atandı',
-        `[${order.platform} ${order.platformCode}] kurye '${assignedName}' personeline zimmetlendi. Kurye Yol Fişi ve mutfak fişleri basıldı.${isCashOrPos ? ` (${formatMoney(order.totalAmount)} tutarı kurye zimmetine yazıldı)` : ''}`
-      );
-    } else {
-      notify.success(
-        'Sipariş Onaylandı (Platform Kuryesi)',
-        `[${order.platform} ${order.platformCode}] onaylandı. Mutfak sipariş fişleri ve paket üzerine zımbalanacak 4 haneli teslimat etiketi (#${order.handoverCode || '1842'}) yazdırıldı.`
-      );
-    }
+    const syncOk = result.platformSync === 'OK';
+    (syncOk ? notify.success : notify.warning)(
+      syncOk ? 'Sipariş Onaylandı' : 'Sipariş Onaylandı — platform bildirimi eksik',
+      `[${order.platform} ${order.platformCode}] ${isRest ? `kurye ${assignedName || 'atanmadı'}` : 'platform kuryesi'}.${result.message.replace(/^\[[^\]]*\][^.]*\./, '')}${printNote}`
+    );
   };
 
   // PLATFORM SİPARİŞİ İPTAL / REDDETME
@@ -360,22 +386,22 @@ export const OnlineOrdersView: React.FC = () => {
     const order = rejectModalOrder;
     setApiProcessingId(order.id);
 
-    try {
-      await onlinePlatformService.rejectOrder(order.id, selectedRejectReason, order.platform);
-    } catch (e) {}
-
-    setOrders(prev => prev.map(o => o.id === order.id ? { 
-      ...o, 
-      status: 'CANCELLED', 
-      rejectionReason: selectedRejectReason 
-    } : o));
-
+    const result = await onlinePlatformService.rejectOrder(order.id, selectedRejectReason, order.platform);
     setApiProcessingId(null);
+    if (!result.success) {
+      notify.error('Sipariş İptal Edilemedi', result.message);
+      return;
+    }
+
+    setOrders(prev => prev.map(o => o.id === order.id ? {
+      ...o,
+      status: 'CANCELLED',
+      rejectionReason: selectedRejectReason,
+      platformSync: result.platformSync,
+      platformSyncMessage: result.platformSyncMessage,
+    } : o));
     setRejectModalOrder(null);
-    notify.warning(
-      'Sipariş İptal Edildi',
-      `[${order.platform} ${order.platformCode}] iptal gerekçesi (${selectedRejectReason}) platform merkezine iletildi.`
-    );
+    (result.platformSync === 'OK' ? notify.success : notify.warning)('Sipariş İptal Edildi', `[${order.platform} ${order.platformCode}] ${result.message}`);
   };
 
   // KURYE TESLİMAT MODELİNİ DEĞİŞTİRME (Kullanıcının Kolayca Seçebilmesi)
@@ -390,107 +416,6 @@ export const OnlineOrdersView: React.FC = () => {
       }
       return o;
     }));
-  };
-
-  // HIZLI TEST SİPARİŞİ OLUŞTURMA
-  const handleCreateFastTestOrder = async (code: OnlinePlatformCode) => {
-    setTestingOrderPlatform(code);
-    try {
-      const order = await onlinePlatformService.createTestOrder(code);
-      if (order) {
-        const isPlatform = order.deliveryModel === 'PLATFORM_COURIER' || order.deliveryModel === 'PLATFORM';
-        const newOrd: OnlineOrder = {
-          id: order.id,
-          platform: order.platform,
-          platformCode: `#${order.platformOrderId}`,
-          deliveryModel: isPlatform ? 'PLATFORM_COURIER' : 'RESTAURANT_COURIER',
-          assignedCourierId: order.assignedCourierId,
-          assignedCourierName: order.assignedCourierName,
-          platformCourierName: order.platformCourierName,
-          platformCourierPhone: order.platformCourierPhone,
-          platformCourierEtaMinutes: order.platformCourierEtaMinutes,
-          handoverCode: order.handoverCode,
-          customerName: order.customerName,
-          customerPhone: order.customerPhone || '0532 000 00 00',
-          address: order.address,
-          orderNote: order.orderNote || '',
-          items: order.items.map(it => ({
-            name: it.name,
-            quantity: it.quantity,
-            price: it.price,
-            note: it.note
-          })),
-          totalAmount: order.totalAmount,
-          paymentMethod: order.paymentMethod,
-          status: 'NEW',
-          createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-        };
-        setOrders(prev => [newOrd, ...prev]);
-        setIsAlarmMuted(false);
-        notify.success('Test Siparişi Düştü!', `[${code}] #${order.platformOrderId} test siparişi oluşturuldu.`);
-      }
-    } finally {
-      setTestingOrderPlatform(null);
-    }
-  };
-
-  // MANUEL DOĞRUDAN SİPARİŞ KAYDI (Telefon / Acil Siparişler İçin)
-  const [formPlatform, setFormPlatform] = useState<'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI'>('TRENDYOL');
-  const [formDeliveryModel, setFormDeliveryModel] = useState<'RESTAURANT' | 'PLATFORM'>('RESTAURANT');
-  const [formCustomerName, setFormCustomerName] = useState('');
-  const [formCustomerPhone, setFormCustomerPhone] = useState('');
-  const [formAddress, setFormAddress] = useState('');
-  const [formItemName, setFormItemName] = useState('');
-  const [formItemPrice, setFormItemPrice] = useState('');
-  const [formItemQty, setFormItemQty] = useState('1');
-  const [formNote, setFormNote] = useState('');
-
-  const handleCreateManualOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formCustomerName.trim() || !formAddress.trim()) {
-      notify.error('Eksik Bilgi', 'Müşteri adı ve teslimat adresi zorunludur.');
-      return;
-    }
-
-    const price = parseFloat(formItemPrice) || 0;
-    const qty = parseInt(formItemQty) || 1;
-    const prefix = formPlatform === 'TRENDYOL' ? '#TY-' : formPlatform === 'GETIR' ? '#GT-' : '#YS-';
-    const code = prefix + Math.floor(1000 + Math.random() * 9000);
-
-    const manualOrder: OnlineOrder = {
-      id: `ord-${Date.now()}`,
-      platform: formPlatform,
-      platformCode: code,
-      deliveryModel: formDeliveryModel,
-      customerName: formCustomerName.trim(),
-      customerPhone: formCustomerPhone.trim() || '0532 000 00 00',
-      address: formAddress.trim(),
-      orderNote: formNote.trim(),
-      items: [
-        {
-          name: formItemName.trim() || 'Sipariş Paketi',
-          quantity: qty,
-          price: price,
-          note: formNote.trim()
-        }
-      ],
-      totalAmount: price * qty,
-      paymentMethod: formPlatform === 'TRENDYOL' ? 'Trendyol Online Ödeme' : formPlatform === 'GETIR' ? 'Getir Online Ödeme' : 'Online Ödeme',
-      status: 'NEW',
-      createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setOrders(prev => [manualOrder, ...prev]);
-    setIsAlarmMuted(false);
-    notify.success('Sipariş Kaydedildi', `${manualOrder.platform} üzerinden ${manualOrder.customerName} siparişi sisteme kaydedildi.`);
-    setManualOrderModalOpen(false);
-
-    setFormCustomerName('');
-    setFormCustomerPhone('');
-    setFormAddress('');
-    setFormItemName('');
-    setFormItemPrice('');
-    setFormNote('');
   };
 
   const filteredOrders = orders.filter(o => {
@@ -544,27 +469,28 @@ export const OnlineOrdersView: React.FC = () => {
 
   const handleAdvanceStatus = async (order: OnlineOrder) => {
     const isRest = order.deliveryModel === 'RESTAURANT' || order.deliveryModel === 'RESTAURANT_COURIER';
+    setApiProcessingId(order.id);
 
     if (order.status === 'PREPARING') {
-      try {
-        await onlinePlatformService.dispatchOrder(order.id, order.platform);
-      } catch (e) {}
-
+      const r = await onlinePlatformService.dispatchOrder(order.id, order.platform);
+      setApiProcessingId(null);
+      if (!r.success) { notify.error('Durum Güncellenemedi', r.message); return; }
       if (isRest) {
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'ON_WAY' } : o));
-        notify.info('Kuryeye Teslim Edildi', `Sipariş kurye ${order.assignedCourierName || 'personeline'} devredildi ve yola çıktı.`);
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'ON_WAY', platformSync: r.platformSync, platformSyncMessage: r.platformSyncMessage } : o));
+        (r.platformSync === 'OK' ? notify.info : notify.warning)('Kuryeye Teslim Edildi', r.message);
       } else {
-        // Platform kuryesi teslim aldı (Handover)
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'DELIVERED' } : o));
-        notify.success('Platform Kuryesine Devredildi', `Paket (#${order.handoverCode || '1842'}) platform kuryesine teslim edildi; teslimat süreci tamamlandı.`);
+        // Platform kuryesi teslim aldı (Handover): restoran tarafı tamamlandı
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'DELIVERED', platformSync: r.platformSync, platformSyncMessage: r.platformSyncMessage } : o));
+        (r.platformSync === 'OK' ? notify.success : notify.warning)('Platform Kuryesine Devredildi', r.message);
       }
     } else if (order.status === 'ON_WAY') {
-      try {
-        await onlinePlatformService.deliverOrder(order.id, order.platform);
-      } catch (e) {}
-
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'DELIVERED' } : o));
-      notify.success('Teslim Edildi', `Kurye teslimatı başarıyla tamamlandı.`);
+      const r = await onlinePlatformService.deliverOrder(order.id, order.platform);
+      setApiProcessingId(null);
+      if (!r.success) { notify.error('Durum Güncellenemedi', r.message); return; }
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'DELIVERED', platformSync: r.platformSync, platformSyncMessage: r.platformSyncMessage } : o));
+      (r.platformSync === 'OK' ? notify.success : notify.warning)('Teslim Edildi', r.message);
+    } else {
+      setApiProcessingId(null);
     }
   };
 
@@ -576,6 +502,17 @@ export const OnlineOrdersView: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1550px] mx-auto select-none font-sans text-[#FAF7F2] bg-[#141416] min-h-screen">
+      {serverError && (
+        <div className="mb-3 p-3 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs font-bold">
+          ⚠ {serverError} Siparişler güncellenemiyor; platformdan gelen siparişleri kaçırmamak için bağlantıyı düzeltin.
+        </div>
+      )}
+      {hiddenCount > 0 && (
+        <div className="mb-3 p-3 rounded-2xl bg-amber-950/60 border border-amber-500/40 text-amber-200 text-xs font-bold">
+          ⚠ {hiddenCount} aktif sipariş, platform "PASİF" olduğu için bu listede GİZLİ. Platformu Ayarlar › Yemek Platformları'ndan aktif edin.
+        </div>
+      )}
+      {diagOpen && <OnlineDiagnosticsPanel onClose={() => setDiagOpen(false)} />}
       
       {/* 🔴 SESLİ BİLDİRİM VE BEKLEYEN SİPARİŞ ÇUBUĞU */}
       {hasNewOrder && (
@@ -635,27 +572,7 @@ export const OnlineOrdersView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* HIZLI TEST SİPARİŞİ BUTONLARI */}
-          {enabledPlatforms.length > 0 && (
-            <div className="flex items-center gap-1 bg-[#141416] p-1 rounded-2xl border border-[#2C2C34]">
-              <span className="text-[10px] font-black uppercase text-[#8E8E98] px-2.5">Test Siparişi:</span>
-              {enabledPlatforms.map(p => (
-                <button
-                  key={p.code}
-                  disabled={testingOrderPlatform === p.code}
-                  onClick={() => handleCreateFastTestOrder(p.code)}
-                  className="px-2.5 py-1.5 bg-[#282830] hover:bg-[#34343E] text-white rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all border border-[#3C3C48]"
-                  title={`${p.name} için anında yeni test siparişi oluşturur ve sesli alarmı başlatır`}
-                >
-                  {testingOrderPlatform === p.code ? (
-                    <RefreshCw className="w-3 h-3 animate-spin text-[#F5C877]" />
-                  ) : (
-                    <span>🧪 {p.code === 'TRENDYOL' ? 'TY' : p.code === 'GETIR' ? 'Getir' : 'YS'}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+          
 
           {/* TÜMÜNÜ AÇ / TÜMÜNÜ KAPAT ANA ŞALTERİ */}
           {enabledPlatforms.length > 0 && (
@@ -683,11 +600,11 @@ export const OnlineOrdersView: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setManualOrderModalOpen(true)}
-            className="px-4 py-2.5 bg-[#1C1C20] hover:bg-[#282830] text-[#8E8E98] hover:text-white border border-[#2C2C34] rounded-2xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+            onClick={() => setDiagOpen(true)}
+            className="px-3 py-2 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer"
+            title="Platformdan gelen tüm istekleri ve neden kabul edilmediklerini gör"
           >
-            <Plus className="w-4 h-4" />
-            <span>Manuel Giriş</span>
+            <span>🔎 Gelen İstekler / Tanı</span>
           </button>
         </div>
       </div>
@@ -770,15 +687,7 @@ export const OnlineOrdersView: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    disabled={testingOrderPlatform === p.code}
-                    onClick={() => handleCreateFastTestOrder(p.code)}
-                    className="px-2.5 py-1 bg-[#282830] hover:bg-[#34343E] text-[#F5C877] rounded-xl text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all border border-[#3C3C48]"
-                    title="Test siparişi oluştur"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Test</span>
-                  </button>
+                  
                 </div>
 
                 {/* 3 KADEMELİ HIZLI DURUM BUTONLARI (AÇIK / YOĞUN / KAPALI) */}
@@ -1134,9 +1043,10 @@ export const OnlineOrdersView: React.FC = () => {
                         <span>Sipariş Notu: {ord.orderNote}</span>
                       </div>
                     )}
-                    {ord.apiAckId && (
-                      <div className="pt-1 text-[10px] text-emerald-400 font-mono">
-                        Platform API Doğrulama Kodu: {ord.apiAckId}
+                    {ord.platformSync && (
+                      <div className={`mt-1 text-[10px] font-bold ${ord.platformSync === 'OK' ? 'text-emerald-400' : ord.platformSync === 'MANUAL' ? 'text-amber-300' : 'text-rose-400'}`}>
+                        {ord.platformSync === 'OK' ? '✔ Platforma iletildi' : ord.platformSync === 'MANUAL' ? '⚠ Platforma otomatik iletilmedi — platform uygulamasında da işlem yapın' : '✖ Platforma İLETİLEMEDİ'}
+                        {ord.platformSyncMessage ? ` — ${ord.platformSyncMessage}` : ''}
                       </div>
                     )}
                   </div>
@@ -1356,164 +1266,7 @@ export const OnlineOrdersView: React.FC = () => {
       )}
 
       {/* MODAL 3: MANUEL TELEFON / DOĞRUDAN SİPARİŞ GİRİŞİ */}
-      {manualOrderModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1C1C20] border border-[#2C2C34] rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#2C2C34] pb-3">
-              <h3 className="text-sm font-black text-white flex items-center gap-2">
-                <Bike className="w-4 h-4 text-[#F5C877]" />
-                <span>Manuel / Telefon Siparişi Kaydı</span>
-              </h3>
-              <button
-                onClick={() => setManualOrderModalOpen(false)}
-                className="w-7 h-7 bg-[#282830] text-[#8E8E98] hover:text-white rounded-full flex items-center justify-center text-xs cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateManualOrder} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">Platform Kanalı</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['TRENDYOL', 'GETIR', 'YEMEKSEPETI'] as const).map(plat => (
-                    <button
-                      key={plat}
-                      type="button"
-                      onClick={() => setFormPlatform(plat)}
-                      className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                        formPlatform === plat 
-                          ? plat === 'TRENDYOL' ? 'bg-orange-500 text-white border-orange-400' :
-                            plat === 'GETIR' ? 'bg-purple-600 text-white border-purple-400' :
-                            'bg-rose-600 text-white border-rose-400'
-                          : 'bg-[#141416] text-[#8E8E98] border-[#2C2C34]'
-                      }`}
-                    >
-                      {plat}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">Teslimat Yöntemi</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFormDeliveryModel('RESTAURANT')}
-                    className={`py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      formDeliveryModel === 'RESTAURANT'
-                        ? 'bg-emerald-600 text-white border-emerald-500'
-                        : 'bg-[#141416] text-[#8E8E98] border-[#2C2C34]'
-                    }`}
-                  >
-                    <Bike className="w-3.5 h-3.5" />
-                    <span>Restoran Kuryesi</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormDeliveryModel('PLATFORM')}
-                    className={`py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      formDeliveryModel === 'PLATFORM'
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-[#141416] text-[#8E8E98] border-[#2C2C34]'
-                    }`}
-                  >
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>Platform Kuryesi</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">Müşteri Ad Soyad *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formCustomerName}
-                    onChange={e => setFormCustomerName(e.target.value)}
-                    placeholder="Müşteri Adı"
-                    className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#F5C877]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">İletişim Telefonu</label>
-                  <input
-                    type="text"
-                    value={formCustomerPhone}
-                    onChange={e => setFormCustomerPhone(e.target.value)}
-                    placeholder="0532..."
-                    className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#F5C877]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">Açık Teslimat Adresi *</label>
-                <textarea
-                  required
-                  rows={2}
-                  value={formAddress}
-                  onChange={e => setFormAddress(e.target.value)}
-                  placeholder="Mahalle, cadde, sokak, kapı/daire no..."
-                  className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#F5C877] resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">Ürün / Menü Adı</label>
-                  <input
-                    type="text"
-                    value={formItemName}
-                    onChange={e => setFormItemName(e.target.value)}
-                    placeholder="Ürün adı"
-                    className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#F5C877]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">Tutar (₺)</label>
-                  <input
-                    type="number"
-                    value={formItemPrice}
-                    onChange={e => setFormItemPrice(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#F5C877]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-[#8E8E98] uppercase mb-1">Sipariş / Mutfak Notu</label>
-                <input
-                  type="text"
-                  value={formNote}
-                  onChange={e => setFormNote(e.target.value)}
-                  placeholder="Müşteri notu veya teslimat detayı..."
-                  className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#F5C877]"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-[#2C2C34] flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setManualOrderModalOpen(false)}
-                  className="flex-1 py-2.5 bg-[#282830] text-[#8E8E98] hover:text-white rounded-xl font-bold cursor-pointer"
-                >
-                  İptal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-gradient-to-r from-[#F5C877] to-[#D4A351] text-[#141416] rounded-xl font-black shadow-lg shadow-[#F5C877]/20 cursor-pointer"
-                >
-                  Siparişi Kaydet
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      
 
       {/* MODAL 4: KURYE ATAMA & ONAY MODALI (Restoran Kuryesi İçin) */}
       {assignCourierModalOrder && (

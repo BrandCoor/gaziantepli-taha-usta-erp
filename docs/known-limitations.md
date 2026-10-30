@@ -5,6 +5,11 @@ Dürüst liste: aşağıdakiler **yapılmadı veya eksik**.
 ## Doğrulanmamış (donanım/ortam gerektirir)
 [testing.md › 5](testing.md) listesindeki 9 madde (fiziksel yazıcı, gerçek telefonlar, gerçek hosting, platform entegrasyonları…).
 
+## Yemek platformu entegrasyonları
+- **Canlı hesapla doğrulanmadı.** Platform anahtarları ve ortamı olmadan gerçek sipariş akışı denenemedi; testler yalnızca yerel taklit sunucuyla (testlerde) yapıldı.
+- Getir uçları (giriş, aktif/onaysız sipariş, onay/hazırla/teslim/iptal) kamuya açık bilgilere göre yazıldı; payload alanları tolerant çözülür, farklıysa tanı ekranındaki ham gövdeden düzeltilmelidir.
+- **Trendyol Go Yemek ve Yemeksepeti** için sipariş okuma/onay/ret/teslim uç adresleri doğrulanamadı; ayarlardaki "gelişmiş adres" alanları doldurulana kadar bu eylemler platforma OTOMATİK iletilmez (ekranda "elle" görünür). Sipariş almak için platformun webhook'u adresimize kaydetmesi gerekir (hesap yöneticisi/partner paneli).
+
 ## Mimari
 - **Veri modeli hâlâ anahtar-değer (JSON) tabanlı.** Dayanıklılık SQLite ile çözüldü; ancak adisyon satırı, ödeme, stok hareketi gibi kayıtlar **ilişkisel tablolara bölünmedi** (SQL ile raporlama, kısıtlar, satır düzeyi denetim yok). Yeni özellikler (stok, çoklu şube) bunu gerektirecek; geçiş için doğrulamalı göç aracı gerekir.
 - **Kasa tek istasyon varsayar.** İkinci bir kasa bilgisayarı aynı veriyi paylaşamaz (tek örnek kilidi iki pencereyi engeller; ağ üzerinden çoklu kasa yok).

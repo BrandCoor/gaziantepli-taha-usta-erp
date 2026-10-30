@@ -54,30 +54,29 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
     setPlatforms(onlinePlatformService.getPlatforms());
   }, []);
 
-  const getWebhookUrl = (code: OnlinePlatformCode) => {
-    // Webhook adresi, işletmenin KENDİ sunucu adresinden türetilir (Restoran & Donanım Ayarları > Bulut & Yedekleme). Başka bir alan adı kullanılmaz.
-    const api = getApiSyncUrl();
-    if (!api) return 'Önce Restoran & Donanım Ayarları > Bulut & Yedekleme bölümünden sunucu adresini girin';
-    return `${api}${api.includes('?') ? '&' : '?'}action=platform_webhook&platform=${code}`;
-  };
-
   const handleSaveAll = async () => {
     // 1. restaurantDataService kaydı
     restaurantDataService.saveFoodPlatformsConfig(config);
 
-    // 2. onlinePlatformService ve cPanel veritabanı kaydı
+    // 2. Sunucu kaydı — her platformun sonucu ayrı ayrı denetlenir
+    const failures: string[] = [];
     for (const p of platforms) {
-      await onlinePlatformService.savePlatformConfig(p.code, {
+      const r = await onlinePlatformService.savePlatformConfig(p.code, {
         isEnabled: p.isEnabled,
         storeStatus: p.storeStatus,
         credentials: p.credentials,
         webhookSecret: p.webhookSecret,
       });
+      if (!r.success) failures.push(`${p.name}: ${r.message}`);
     }
 
+    if (failures.length > 0) {
+      notify.error('Sunucuya Kaydedilemedi', failures.join('\n'));
+      return;
+    }
     notify.success(
-      'Yapılandırma Kaydedildi',
-      'Yemeksepeti, Trendyol Yemek ve GetirYemek API anahtarları, aktiflik ve mağaza durumları başarıyla kaydedildi.'
+      'Ayarlar Sunucuya Kaydedildi',
+      'Kaydetmek bağlantıyı DOĞRULAMAZ. Her platform için "Bağlantıyı Test Et"i çalıştırın ve platformun panelinde webhook adresini kaydettiğinizden emin olun.'
     );
     if (onSaveSuccess) onSaveSuccess();
   };
@@ -88,7 +87,11 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
     if (!p) return;
 
     const newActive = !p.isEnabled;
-    await onlinePlatformService.togglePlatform(code, newActive);
+    const tr = await onlinePlatformService.togglePlatform(code, newActive);
+    if (!tr.success) {
+      notify.error('Platform Durumu Değiştirilemedi', tr.message);
+      return;
+    }
     
     // UI state güncelle
     setPlatforms(onlinePlatformService.getPlatforms());
@@ -599,7 +602,7 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">App Key</label>
+                <label className="text-xs font-bold text-slate-300">App Secret Key (appSecretKey)</label>
                 <input
                   type="text"
                   value={currentPlatform.credentials.appKey || ''}
@@ -609,7 +612,7 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
                       ...p, credentials: { ...p.credentials, appKey: val }
                     } : p));
                   }}
-                  placeholder="Getir App Key"
+                  placeholder="Getir App Secret Key"
                   className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-4 py-2.5 text-xs text-white focus:border-purple-500 outline-none font-mono"
                 />
               </div>
@@ -702,46 +705,108 @@ export const PlatformApiSettingsTab: React.FC<PlatformApiSettingsTabProps> = ({ 
           )}
         </div>
 
-        {/* WEBHOOK CALLBACK URL ALANI */}
-        <div className="bg-[#141416] p-5 rounded-2xl border border-[#2C2C34] space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-black text-white flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-emerald-400" />
-              <span>{currentPlatform.name} Webhook Bildirim Uç Noktası (Callback URL)</span>
-            </h4>
-            <span className="text-[11px] text-[#8E8E98]">
-              Platform Geliştirici Portalı &gt; Webhooks alanına tanımlanacak URL
-            </span>
+        {/* WEBHOOK ADRESLERİ + GİZLİ ANAHTAR */}
+        <div className="bg-[#141416] p-5 rounded-2xl border border-[#2C2C34] space-y-4">
+          <h4 className="text-xs font-black text-white flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-emerald-400" />
+            <span>{currentPlatform.name} — Sipariş Alma (Webhook) Ayarı</span>
+          </h4>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300">Webhook Gizli Anahtarı (zorunlu)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={currentPlatform.webhookSecret || ''}
+                onChange={e => {
+                  const val = e.target.value;
+                  setPlatforms(prev => prev.map(p => p.code === currentPlatform.code ? { ...p, webhookSecret: val } : p));
+                }}
+                placeholder="En az 16 karakter — platforma da AYNI değeri vereceksiniz"
+                className="flex-1 bg-[#1C1C20] border border-[#2C2C34] rounded-xl px-4 py-2.5 text-xs text-white font-mono outline-none focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const bytes = new Uint8Array(24);
+                  crypto.getRandomValues(bytes);
+                  const val = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                  setPlatforms(prev => prev.map(p => p.code === currentPlatform.code ? { ...p, webhookSecret: val } : p));
+                }}
+                className="px-4 py-2.5 bg-[#282830] hover:bg-[#34343E] text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Rastgele Üret
+              </button>
+            </div>
+            <p className="text-[11px] text-[#8E8E98]">
+              {currentPlatform.code === 'GETIR' && 'Getir bu değeri "x-api-key" başlığı olarak her istekte gönderir: aynı değeri Getir hesap yöneticinize/panelinize hem yeni sipariş hem iptal adresi için verin.'}
+              {currentPlatform.code === 'TRENDYOL' && 'Trendyol Go Webhook Meal Integration ekranında statik başlık (x-api-key) veya adres sorgusu (&secret=...) olarak tanımlayın.'}
+              {currentPlatform.code === 'YEMEKSEPETI' && 'Yemeksepeti/Delivery Hero entegrasyon eklentisinde webhook için tanımlanan statik token (Authorization: Bearer ...) ile aynı olmalıdır.'}
+              {' '}Anahtar boşsa veya eşleşmezse sipariş REDDEDİLİR ve "Gelen İstekler / Tanı" ekranında nedeni görünür.
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              readOnly
-              value={getWebhookUrl(currentPlatform.code)}
-              className="flex-1 bg-[#1C1C20] border border-[#2C2C34] rounded-xl px-4 py-3 text-xs text-emerald-300 font-mono select-all outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => copyToClipboard(getWebhookUrl(currentPlatform.code), currentPlatform.code)}
-              className="px-4 py-3 bg-[#282830] hover:bg-[#34343E] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-[#3C3C48]"
-            >
-              {copiedKey === currentPlatform.code ? (
-                <>
-                  <CheckCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="text-emerald-400">Kopyalandı</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span>Kopyala</span>
-                </>
-              )}
-            </button>
+          <div className="space-y-2">
+            <div className="text-xs font-bold text-slate-300">Platforma kaydedilecek adres(ler)</div>
+            {onlinePlatformService.getWebhookUrls(currentPlatform.code).length === 0 && (
+              <div className="text-[11px] text-amber-300 font-bold">Önce Bulut & Yedekleme bölümünden sunucu adresini girin.</div>
+            )}
+            {onlinePlatformService.getWebhookUrls(currentPlatform.code).map(u => (
+              <div key={u.url} className="space-y-1">
+                <div className="text-[10px] text-[#A0A0AA]">{u.label}</div>
+                <div className="flex items-center gap-2">
+                  <input type="text" readOnly value={u.url} className="flex-1 bg-[#1C1C20] border border-[#2C2C34] rounded-xl px-4 py-2.5 text-xs text-emerald-300 font-mono select-all outline-none" />
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(u.url, u.url)}
+                    className="px-4 py-2.5 bg-[#282830] hover:bg-[#34343E] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {copiedKey === u.url ? (<><CheckCheck className="w-4 h-4 text-emerald-400" /><span className="text-emerald-400">Kopyalandı</span></>) : (<><Copy className="w-4 h-4" /><span>Kopyala</span></>)}
+                  </button>
+                </div>
+              </div>
+            ))}
+            <p className="text-[11px] text-[#8E8E98]">
+              Bu adresleri platformun partner/geliştirici panelinde ya da hesap yöneticiniz aracılığıyla kaydettirmeniz gerekir; kaydedilmeden platform size sipariş GÖNDERMEZ.
+              Siparişlerin gelip gelmediğini ve reddedilme nedenini <b>Yemek Platformları › 🔎 Gelen İstekler / Tanı</b> ekranından izleyin.
+            </p>
           </div>
-          <p className="text-[11px] text-[#8E8E98]">
-            {currentPlatform.name} üzerinden sipariş oluşturulduğunda bu adrese JSON formatında anlık bildirim düşer ve cPanel MySQL veritabanına kaydedilir.
-          </p>
+
+          <details className="rounded-xl border border-[#2C2C34] p-3">
+            <summary className="text-xs font-black text-white cursor-pointer">Gelişmiş: platform dokümanındaki API adresleri</summary>
+            <p className="text-[11px] text-[#8E8E98] my-2">
+              Boş bırakılan işlemler platforma OTOMATİK bildirilmez ve ekranda "elle" olarak işaretlenir (başarılı gibi gösterilmez). Adreslerde <code>{'{id}'}</code>, <code>{'{supplierId}'}</code>, <code>{'{vendorId}'}</code>, <code>{'{chainId}'}</code> kullanılabilir.
+              {currentPlatform.code === 'GETIR' && ' Getir için gerekmez: yalnızca test ortamı kullanıyorsanız "API taban adresi"ni girin.'}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {([
+                ['apiBaseUrl', 'API taban adresi (yalnız Getir test ortamı)', ['GETIR']],
+                ['tokenUrl', 'OAuth token adresi (boşsa Yemeksepeti Partner API varsayılanı)', ['YEMEKSEPETI']],
+                ['chainId', 'Zincir (chain) kimliği', ['YEMEKSEPETI']],
+                ['ordersUrl', 'Sipariş okuma adresi (GET)', ['TRENDYOL', 'YEMEKSEPETI']],
+                ['acceptUrl', 'Onay adresi (PUT)', ['TRENDYOL', 'YEMEKSEPETI']],
+                ['rejectUrl', 'İptal/Ret adresi (PUT)', ['TRENDYOL', 'YEMEKSEPETI']],
+                ['dispatchUrl', 'Yola çıktı / hazır adresi (PUT)', ['TRENDYOL', 'YEMEKSEPETI']],
+                ['deliverUrl', 'Teslim adresi (PUT)', ['TRENDYOL', 'YEMEKSEPETI']],
+              ] as Array<[keyof typeof currentPlatform.credentials, string, string[]]>)
+                .filter(([, , codes]) => codes.includes(currentPlatform.code))
+                .map(([key, label]) => (
+                  <div key={String(key)} className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-300">{label}</label>
+                    <input
+                      type="text"
+                      value={(currentPlatform.credentials as any)[key] || ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setPlatforms(prev => prev.map(p => p.code === currentPlatform.code ? { ...p, credentials: { ...p.credentials, [key]: val } } : p));
+                      }}
+                      placeholder="https://…"
+                      className="w-full bg-[#1C1C20] border border-[#2C2C34] rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                ))}
+            </div>
+          </details>
         </div>
       </div>
     </div>

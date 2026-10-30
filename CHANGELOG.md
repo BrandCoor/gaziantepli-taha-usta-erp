@@ -6,6 +6,14 @@ Biçim: [Keep a Changelog](https://keepachangelog.com/tr/). Sürümleme: package
 
 > Not: Bu sürüm, ilk denetimde (docs/audit) bulunan kritik riskleri gidermek için hazırlandı. Fiziksel yazıcı, gerçek telefonlar ve canlı hosting ile doğrulama kurulum gününde yapılmalıdır ([docs/testing.md](docs/testing.md)).
 
+### Yemek platformları (Getir / Trendyol Go / Yemeksepeti)
+- **"Platformda sipariş var, sistemde yok" sorunu giderildi.** Kök nedenler: webhook gizli anahtarı tanımsızken isteklerin sessizce düşmesi, pasif platformun siparişlerinin ekranda gizlenmesi, sunucu/istemci durum sözlüğü uyuşmazlığı, platforma webhook adresinin kaydedilmemesi ve hiçbir tanı bilgisinin olmaması.
+- Gelen **her** webhook isteği `online_webhook_log` tablosuna (kabul/ret/neden, başlık adları, kırpılmış gövde; anahtar değeri asla) yazılır; kasada **Yemek Platformları › Gelen İstekler / Tanı** ekranından izlenir.
+- Gerçek bağlantı testi (Getir giriş + aktif sipariş sorgusu, Yemeksepeti OAuth). Doğrulanamayan platform "doğrulandı" denmez.
+- Gerçek platform eylemleri (onay/ret/hazır/teslim) ve **dürüst durum**: Tamam / Başarısız / Elle yapılmalı. Dokümanı doğrulanamayan Trendyol ve Yemeksepeti uçları ayarlardan "gelişmiş adres" olarak girilir; boşsa işlem platforma bildirilmez ve ekranda belirtilir.
+- Webhook yedeği olarak **periyodik sorgulama** (Getir), ayarlarda webhook adresleri + gizli anahtar üretici.
+- **Demo/test kalıntıları kaldırıldı:** sahte test siparişi, sahte bağlantı testi, demo menü/salon/garson, kullanılmayan tohum veri üreticileri; para çekmecesi hata durumunda artık başarı yalanı söylemez.
+
 ### Güvenlik
 - **Gizli bilgiler koddan çıkarıldı:** veritabanı parolası, yemek platformu anahtarları, bir API anahtarı içeren araç dosyası. DB ayarları `config.local.php` / ortam değişkenine taşındı. *(Eski sırlar Git geçmişinde durur → iptal edilmeli, bkz. docs/security.md.)*
 - **PHP API'ye varsayılan-reddet yetki kapısı** (`security.php`): kasa anahtarı, cihaz anahtarı + PIN oturumu, imzalı patron oturumu, masa QR belirteci, webhook doğrulaması. Kimliksiz erişim kapatıldı.
