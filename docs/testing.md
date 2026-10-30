@@ -66,7 +66,7 @@ Aşağıdakiler **kodda hazırdır ama bu ortamda doğrulanamadı**; kurulum gü
 | 2 | Yazıcı kablosu çekilince/kağıt bitince **kuyruk davranışı** (yalnızca mantık testli) | Donanım yok | Yazıcıyı kapat → sipariş ver → "Fiş BASILAMADI" uyarısı ve Yazdırma Kuyruğu; yazıcıyı aç → tek çıktı |
 | 3 | **Gerçek Android + iPhone**: PWA yükleme, ekran kilidi, arka plan, kamera ile QR | Cihaz yok (başsız Chromium ile otomasyon yapıldı) | [waiter-app.md](waiter-app.md) kurulum adımları; 3 telefon eşzamanlı sipariş |
 | 4 | **Gerçek cPanel hosting**: PHP sürümü, `.htaccess` (HTTPS, başlıklar), AutoSSL, hata günlüğü | Hosting erişimi yok (yerel PHP yerleşik sunucu kullanıldı; MariaDB, MySQL'e çok yakın ama aynı değil) | [deployment.md](deployment.md) adımları + `health` ve 401 kontrolleri |
-| 5 | Yemeksepeti / Trendyol / Getir **canlı entegrasyon** (imza biçimi, durum bildirimi) | Partner kimlik bilgisi yok | Platform panelinden test siparişi; webhook günlüğü |
+| 5 | Yemeksepeti / Trendyol **canlı entegrasyon** (imza biçimi, durum bildirimi) | Partner kimlik bilgisi yok | Platform panelinden test siparişi; webhook günlüğü |
 | 6 | Caller ID cihazı (GCallerID), çekmece, ses | Donanım yok | Donanım ayar ekranı testleri |
 | 7 | Çok garson **yük** (15 masa, 5 cihaz) ve gerçek mobil ağ gecikmesi | Cihaz/ağ yok | Yoğun saat öncesi prova |
 | 8 | Windows güvenlik duvarı/antivirüs davranışı, kod imzası olmadan SmartScreen | Hedef bilgisayar yok | Kurulum günü |

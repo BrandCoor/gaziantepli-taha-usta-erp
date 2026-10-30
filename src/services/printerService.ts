@@ -1693,11 +1693,11 @@ class PrinterService {
   }
 
   /**
-   * Online Yemek Platformları (Yemeksepeti, Trendyol, Getir) Sipariş Çıktısı
+   * Online Yemek Platformları (Yemeksepeti, Trendyol Go Yemek; GetirYemek siparişleri Trendyol'dan gelir) Sipariş Çıktısı
    * Lahmacun/Pide fırın yazıcısına, kebaplar ocak yazıcısına, tam kurye fişi ise teslimat yazıcısına otomatik gönderilir.
    */
   public async printOnlineOrder(order: {
-    platform: 'YEMEKSEPETI' | 'TRENDYOL' | 'GETIR' | string;
+    platform: 'YEMEKSEPETI' | 'TRENDYOL' | 'GETIR' | string; // 'GETIR' = Trendyol üzerinden gelen GetirYemek siparişi
     platformOrderId: string;
     customerName: string;
     customerPhone?: string;

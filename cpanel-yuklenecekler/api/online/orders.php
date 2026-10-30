@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../security.php';
+require_once __DIR__ . '/lib.php';
 // Bu uç yalnızca kasa içindir; merkezi kapıyı atlamasın diye burada da zorunlu kılınır.
 if (!sec_is_kasa()) { sec_json_exit(401, ['success' => false, 'error' => 'Yetkisiz istek.', 'code' => 'UNAUTHORIZED']); }
 
@@ -32,7 +33,6 @@ $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 if ($action === 'get_platform_store_status') {
     $platformStoreStatus = [
         'TRENDYOL' => ['isOpen' => true],
-        'GETIR' => ['isOpen' => true],
         'YEMEKSEPETI' => ['isOpen' => true],
     ];
 
@@ -40,6 +40,7 @@ if ($action === 'get_platform_store_status') {
         try {
             $rows = $pdo->query("SELECT `platform_code`, `store_status` FROM `online_platforms`")->fetchAll(PDO::FETCH_ASSOC);
             foreach ($rows as $row) {
+                if (!in_array($row['platform_code'], OP_PLATFORMS, true)) { continue; }
                 $platformStoreStatus[$row['platform_code']] = [
                     'isOpen' => $row['store_status'] !== 'CLOSED'
                 ];
@@ -60,7 +61,7 @@ if ($action === 'get_platforms' || $action === 'get_online_platforms') {
     $platforms = [];
     if ($pdo) {
         try {
-            $stmt = $pdo->query("SELECT `id`, `platform_code`, `display_name`, `is_enabled`, `store_status`, `delivery_model`, `credentials_json`, `webhook_secret`, `updated_at` FROM `online_platforms` ORDER BY `id` ASC");
+            $stmt = $pdo->query("SELECT `id`, `platform_code`, `display_name`, `is_enabled`, `store_status`, `delivery_model`, `credentials_json`, `webhook_secret`, `updated_at` FROM `online_platforms` WHERE `platform_code` IN ('TRENDYOL','YEMEKSEPETI') ORDER BY `id` ASC");
             $platforms = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {}
     }
@@ -68,9 +69,8 @@ if ($action === 'get_platforms' || $action === 'get_online_platforms') {
     if (empty($platforms)) {
         // Fallback varsayılan kayıtlar
         $platforms = [
-            ['platform_code' => 'YEMEKSEPETI', 'display_name' => 'Yemeksepeti', 'is_enabled' => 0, 'store_status' => 'CLOSED', 'delivery_model' => 'RESTAURANT_COURIER'],
-            ['platform_code' => 'TRENDYOL', 'display_name' => 'Trendyol Yemek', 'is_enabled' => 0, 'store_status' => 'CLOSED', 'delivery_model' => 'RESTAURANT_COURIER'],
-            ['platform_code' => 'GETIR', 'display_name' => 'GetirYemek', 'is_enabled' => 0, 'store_status' => 'CLOSED', 'delivery_model' => 'RESTAURANT_COURIER']
+            ['platform_code' => 'YEMEKSEPETI', 'display_name' => 'Yemeksepeti', 'is_enabled' => 0, 'store_status' => 'CLOSED'],
+            ['platform_code' => 'TRENDYOL', 'display_name' => 'Trendyol Go Yemek', 'is_enabled' => 0, 'store_status' => 'CLOSED']
         ];
     }
 
@@ -85,10 +85,14 @@ if ($action === 'get_platforms' || $action === 'get_online_platforms') {
 // 2. SİPARİŞLERİ LİSTELE (POLLING / LIST)
 if ($action === 'list' || $action === 'get_orders' || $action === 'get_online_orders' || $action === 'list_online_orders') {
     $statusFilter = $_GET['status'] ?? 'ACTIVE'; // ACTIVE, ALL, HISTORY, BEKLIYOR vb.
-    $platformFilter = $_GET['platform'] ?? 'ALL'; // ALL, YEMEKSEPETI, TRENDYOL, GETIR
+    $platformFilter = $_GET['platform'] ?? 'ALL'; // ALL, YEMEKSEPETI, TRENDYOL
     $orders = [];
     $pendingCount = 0;
     $hiddenCount = 0;
+    if ($pdo) {
+        // Siparisler platformdan CEKILIR (webhook beklenmez): platform basina en cok 20 sn'de bir, tek seferde bir sorgu.
+        try { op_poll_all($pdo, false); } catch (Throwable $e) { error_log('online poll: ' . $e->getMessage()); }
+    }
     if ($pdo) {
         try { $hiddenCount = (int)$pdo->query("SELECT COUNT(*) FROM `online_orders` WHERE `local_status` IN ('BEKLIYOR','HAZIRLANIYOR','YOLA_CIKTI') AND `platform_code` IN (SELECT `platform_code` FROM `online_platforms` WHERE `is_enabled` = 0)")->fetchColumn(); } catch (Throwable $e) {}
     }
@@ -117,6 +121,7 @@ if ($action === 'list' || $action === 'get_orders' || $action === 'get_online_or
             // Sadece AKTİF (is_enabled = 1) olan platformların siparişlerini getir kuralı:
             // Kullanıcı kuralı: "Pasif duruma getirilen platform; sol menüdeki Yemek Platformları sekmesinden, filtrelerden, bildirim sayaçlarından ve sipariş listelerinden TAMAMEN gizlenecektir."
             $whereParts[] = "`platform_code` IN (SELECT `platform_code` FROM `online_platforms` WHERE `is_enabled` = 1)";
+            $whereParts[] = "`platform_code` IN ('TRENDYOL','YEMEKSEPETI')";
 
             $sql = "SELECT * FROM `online_orders`";
             if (!empty($whereParts)) {
@@ -153,7 +158,8 @@ if ($action === 'list' || $action === 'get_orders' || $action === 'get_online_or
                     'handoverCode' => $row['handover_code'] ?? null,
                     'platformSync' => $row['platform_sync_status'] ?? null,
                     'platformSyncMessage' => $row['platform_sync_message'] ?? null,
-                    'displayCode' => (json_decode($row['raw_json'] ?? 'null', true)['confirmationId'] ?? null)
+                    'displayCode' => $row['display_code'] ?? null,
+                    'sourceApp' => $row['source_app'] ?? $row['platform_code']
                 ];
 
                 if ($row['local_status'] === 'BEKLIYOR') {

@@ -365,43 +365,23 @@ export interface HardwareSettingsConfig {
   };
 }
 
+/** Platform kimlik bilgileri (anahtarlar) sunucuda saklanır (bkz. onlinePlatformService); burada yalnızca davranış ayarları vardır. */
 export interface TrendyolYemekConfig {
   enabled: boolean;
   isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
-  supplierId: string;
-  apiKey: string;
-  secretKey: string;
-  email: string;
   autoPrintReceipt: boolean;
   preparationTimeMinutes: number;
-  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Restoran Kuryesi veya Trendyol GO Kuryesi
-}
-
-export interface GetirYemekConfig {
-  enabled: boolean;
-  isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
-  restaurantName: string;
-  secretKey: string;
-  restaurantId: string;
-  autoPrintReceipt: boolean;
-  preparationTimeMinutes: number;
-  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Restoran Getirsin veya Getir Getirsin
 }
 
 export interface YemekSepetiConfig {
   enabled: boolean;
-  isOpen?: boolean; // Platform Siparişe Açık / Kapalı durumu
-  username: string;
-  password: string;
-  restaurantId: string;
+  isOpen?: boolean;
   autoPrintReceipt: boolean;
   preparationTimeMinutes: number;
-  deliveryModel: 'RESTAURANT' | 'PLATFORM'; // Kendi Kuryemle veya Yemeksepeti Vale
 }
 
 export interface FoodPlatformsConfig {
-  trendyol: TrendyolYemekConfig;
-  getir: GetirYemekConfig;
+  trendyol: TrendyolYemekConfig; // GetirYemek siparişleri de Trendyol üzerinden gelir
   yemeksepeti: YemekSepetiConfig;
   continuousAlarmUntilAction: boolean; // Onay veya iptal edilene kadar zil öter
   autoAcceptOrders: boolean;
@@ -426,37 +406,8 @@ const STORAGE_KEYS = {
 };
 
 export const DEFAULT_FOOD_PLATFORMS: FoodPlatformsConfig = {
-  trendyol: {
-    enabled: false,
-    isOpen: true,
-    supplierId: '',
-    apiKey: '',
-    secretKey: '',
-    email: '',
-    autoPrintReceipt: true,
-    preparationTimeMinutes: 25,
-    deliveryModel: 'RESTAURANT',
-  },
-  getir: {
-    enabled: false,
-    isOpen: true,
-    restaurantName: 'Gaziantepli Taha Usta',
-    secretKey: '',
-    restaurantId: '',
-    autoPrintReceipt: true,
-    preparationTimeMinutes: 25,
-    deliveryModel: 'RESTAURANT',
-  },
-  yemeksepeti: {
-    enabled: false,
-    isOpen: true,
-    username: '',
-    password: '',
-    restaurantId: '',
-    autoPrintReceipt: true,
-    preparationTimeMinutes: 25,
-    deliveryModel: 'RESTAURANT',
-  },
+  trendyol: { enabled: false, isOpen: true, autoPrintReceipt: true, preparationTimeMinutes: 25 },
+  yemeksepeti: { enabled: false, isOpen: true, autoPrintReceipt: true, preparationTimeMinutes: 25 },
   continuousAlarmUntilAction: true,
   autoAcceptOrders: false,
 };
@@ -2329,20 +2280,16 @@ class RestaurantDataService {
     this.notify();
   }
 
-  public async setPlatformStoreStatus(platform: 'ALL' | 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI', isOpen: boolean): Promise<boolean> {
+  public async setPlatformStoreStatus(platform: 'ALL' | 'TRENDYOL' | 'YEMEKSEPETI', isOpen: boolean): Promise<boolean> {
     const current = this.getFoodPlatformsConfig();
     const updated: FoodPlatformsConfig = {
       ...current,
       trendyol: { ...current.trendyol },
-      getir: { ...current.getir },
       yemeksepeti: { ...current.yemeksepeti },
     };
 
     if (platform === 'ALL' || platform === 'TRENDYOL') {
       updated.trendyol.isOpen = isOpen;
-    }
-    if (platform === 'ALL' || platform === 'GETIR') {
-      updated.getir.isOpen = isOpen;
     }
     if (platform === 'ALL' || platform === 'YEMEKSEPETI') {
       updated.yemeksepeti.isOpen = isOpen;
@@ -2377,14 +2324,10 @@ class RestaurantDataService {
           const updated: FoodPlatformsConfig = {
             ...current,
             trendyol: { ...current.trendyol },
-            getir: { ...current.getir },
             yemeksepeti: { ...current.yemeksepeti },
           };
           if (data.platformStoreStatus.TRENDYOL) {
             updated.trendyol.isOpen = Boolean(data.platformStoreStatus.TRENDYOL.isOpen);
-          }
-          if (data.platformStoreStatus.GETIR) {
-            updated.getir.isOpen = Boolean(data.platformStoreStatus.GETIR.isOpen);
           }
           if (data.platformStoreStatus.YEMEKSEPETI) {
             updated.yemeksepeti.isOpen = Boolean(data.platformStoreStatus.YEMEKSEPETI.isOpen);

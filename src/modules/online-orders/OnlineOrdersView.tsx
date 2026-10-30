@@ -38,21 +38,18 @@ import {
 } from '../../services/onlinePlatformService';
 import { printerService } from '../../services/printerService';
 import { notify } from '../../services/notificationService';
+import { TRENDYOL_CANCEL_REASONS } from '../../services/onlinePlatformService';
 
 
 export type OrderDeliveryModel = 'RESTAURANT' | 'PLATFORM' | 'RESTAURANT_COURIER' | 'PLATFORM_COURIER';
 
 export interface OnlineOrder {
   id: string;
-  platform: 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI';
+  platform: 'TRENDYOL' | 'YEMEKSEPETI';
+  /** Siparişin geldiği uygulama: Trendyol üzerinden gelen GetirYemek siparişleri 'GETIR' olur. */
+  sourceApp?: 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI';
   platformCode: string;
-  deliveryModel: OrderDeliveryModel; // Restoran Kuryesi veya Platform Kuryesi (Trendyol GO / Getir / Vale)
-  assignedCourierId?: string;
-  assignedCourierName?: string;
-  platformCourierName?: string;
-  platformCourierPhone?: string;
-  platformCourierEtaMinutes?: number;
-  handoverCode?: string;
+  deliveryModel: OrderDeliveryModel; // Platformun bildirdiği teslimat modeli (bilgi amaçlı; kasada seçilmez)
   customerName: string;
   customerPhone: string;
   address: string;
@@ -67,6 +64,20 @@ export interface OnlineOrder {
   platformOrderId?: string;
   platformSync?: 'OK' | 'FAILED' | 'MANUAL';
   platformSyncMessage?: string;
+}
+
+/** Reddetme nedenleri: Trendyol için resmi iptal nedenleri (kurye gerektirenler yalnızca restoran kuryesinde); Yemeksepeti için genel nedenler. */
+function rejectReasonsFor(order: OnlineOrder): Array<{ id: number; label: string }> {
+  if (order.platform === 'TRENDYOL') {
+    const own = order.deliveryModel !== 'PLATFORM_COURIER';
+    return TRENDYOL_CANCEL_REASONS.filter(r => own || !r.ownCourierOnly);
+  }
+  return [
+    { id: 1, label: 'Mutfak kapasitesi dolu / aşırı yoğunluk' },
+    { id: 2, label: 'Ürün veya hammadde tükendi' },
+    { id: 3, label: 'Teslimat bölgesi dışı' },
+    { id: 4, label: 'İşletme kapalı' },
+  ];
 }
 
 const STORAGE_KEY_ONLINE_ORDERS = 'gtu_online_orders';
@@ -84,11 +95,7 @@ export function mapServerOrder(o: any): OnlineOrder {
     platformCode: `#${o.displayCode || o.platformOrderId}`,
     platformOrderId: String(o.platformOrderId || ''),
     deliveryModel: (o.deliveryModel === 'PLATFORM_COURIER' || o.deliveryModel === 'PLATFORM') ? 'PLATFORM_COURIER' : 'RESTAURANT_COURIER',
-    assignedCourierId: o.assignedCourierId || undefined,
-    assignedCourierName: o.assignedCourierName || undefined,
-    platformCourierName: o.platformCourierName || undefined,
-    platformCourierPhone: o.platformCourierPhone || undefined,
-    handoverCode: o.handoverCode || undefined,
+    sourceApp: o.sourceApp || undefined,
     customerName: o.customerName || 'Müşteri',
     customerPhone: o.customerPhone || '',
     address: o.address || '',
@@ -106,10 +113,10 @@ export function mapServerOrder(o: any): OnlineOrder {
 
 
 export const OnlineOrdersView: React.FC = () => {
-  const [activePlatformFilter, setActivePlatformFilter] = useState<'ALL' | 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI'>('ALL');
+  const [activePlatformFilter, setActivePlatformFilter] = useState<'ALL' | 'TRENDYOL' | 'YEMEKSEPETI'>('ALL');
   const [activeStatusTab, setActiveStatusTab] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
   const [rejectModalOrder, setRejectModalOrder] = useState<OnlineOrder | null>(null);
-  const [selectedRejectReason, setSelectedRejectReason] = useState('Mutfak Kapasitesi Dolu');
+  const [selectedRejectReasonId, setSelectedRejectReasonId] = useState<number>(623);
   const [isAlarmMuted, setIsAlarmMuted] = useState(false);
   const [apiProcessingId, setApiProcessingId] = useState<string | null>(null);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
@@ -209,7 +216,7 @@ export const OnlineOrdersView: React.FC = () => {
     };
     sync();
     const t = setInterval(sync, 4000);
-    // Yedek yol: webhook gelmezse sunucuya platformları sorgulatır (Getir: aktif siparişler)
+    // Yedek yol: webhook gelmezse sunucuya platformları sorgulatır (Trendyol/Yemeksepeti siparişleri)
     const poll = setInterval(() => { onlinePlatformService.pollOrders().catch(() => undefined); }, 60000);
     onlinePlatformService.pollOrders().catch(() => undefined);
     return () => { alive = false; clearInterval(t); clearInterval(poll); };
@@ -279,7 +286,6 @@ export const OnlineOrdersView: React.FC = () => {
     setApiProcessingId(order.id);
     const prepMinutes =
       order.platform === 'TRENDYOL' ? platformConfig.trendyol.preparationTimeMinutes || 25 :
-      order.platform === 'GETIR' ? platformConfig.getir.preparationTimeMinutes || 25 :
       platformConfig.yemeksepeti.preparationTimeMinutes || 25;
 
     const deliveryModel = 'RESTAURANT_COURIER' as const;
@@ -298,8 +304,7 @@ export const OnlineOrdersView: React.FC = () => {
       paymentMethod: order.paymentMethod,
       status: 'BEKLIYOR',
       createdAt: order.createdAt,
-      deliveryModel,
-    });
+    }, prepMinutes);
 
     if (!result.success) {
       setApiProcessingId(null);
@@ -349,9 +354,10 @@ export const OnlineOrdersView: React.FC = () => {
   const handleConfirmReject = async () => {
     if (!rejectModalOrder) return;
     const order = rejectModalOrder;
+    const rejectReasonLabel = (rejectReasonsFor(order).find(r => r.id === selectedRejectReasonId) || rejectReasonsFor(order)[0]).label;
     setApiProcessingId(order.id);
 
-    const result = await onlinePlatformService.rejectOrder(order.id, selectedRejectReason, order.platform);
+    const result = await onlinePlatformService.rejectOrder(order.id, rejectReasonLabel, order.platform, order.platform === 'TRENDYOL' ? selectedRejectReasonId : undefined);
     setApiProcessingId(null);
     if (!result.success) {
       notify.error('Sipariş İptal Edilemedi', result.message);
@@ -361,7 +367,7 @@ export const OnlineOrdersView: React.FC = () => {
     setOrders(prev => prev.map(o => o.id === order.id ? {
       ...o,
       status: 'CANCELLED',
-      rejectionReason: selectedRejectReason,
+      rejectionReason: rejectReasonLabel,
       platformSync: result.platformSync,
       platformSyncMessage: result.platformSyncMessage,
     } : o));
@@ -530,7 +536,7 @@ export const OnlineOrdersView: React.FC = () => {
           <Store className="w-12 h-12 text-[#8E8E98] mx-auto opacity-50" />
           <h3 className="text-base font-black text-white">Aktif Online Yemek Platformu Bulunmuyor</h3>
           <p className="text-xs text-[#8E8E98] max-w-md mx-auto">
-            Yemeksepeti, Trendyol Yemek veya GetirYemek kanallarını kullanmak için Restoran & Donanım Ayarları bölümünden platformu etkinleştirin.
+            Yemeksepeti veya Trendyol Go Yemek (GetirYemek dahil) kanallarını kullanmak için Restoran & Donanım Ayarları bölümünden platformu etkinleştirin.
           </p>
         </div>
       ) : (
@@ -542,7 +548,7 @@ export const OnlineOrdersView: React.FC = () => {
             const isOpen = p.storeStatus === 'OPEN';
             const isBusy = p.storeStatus === 'BUSY';
             const isClosed = p.storeStatus === 'CLOSED';
-            const brandColor = p.badgeColor?.pill || (p.code === 'TRENDYOL' ? '#f97316' : p.code === 'GETIR' ? '#9333ea' : '#e11d48');
+            const brandColor = p.badgeColor?.pill || (p.code === 'TRENDYOL' ? '#f97316' : '#e11d48');
 
             return (
               <div 
@@ -561,7 +567,7 @@ export const OnlineOrdersView: React.FC = () => {
                       className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white text-xs shadow-lg"
                       style={{ backgroundColor: brandColor }}
                     >
-                      {p.code === 'TRENDYOL' ? 'TY' : p.code === 'GETIR' ? 'GT' : 'YS'}
+                      {p.code === 'TRENDYOL' ? 'TY' : 'YS'}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -650,7 +656,7 @@ export const OnlineOrdersView: React.FC = () => {
             {enabledPlatforms.map((p) => {
               const count = orders.filter(o => o.platform === p.code).length;
               const isSelected = activePlatformFilter === p.code;
-              const tabColor = p.badgeColor?.pill || (p.code === 'TRENDYOL' ? '#f97316' : p.code === 'GETIR' ? '#9333ea' : '#e11d48');
+              const tabColor = p.badgeColor?.pill || (p.code === 'TRENDYOL' ? '#f97316' : '#e11d48');
               return (
                 <button
                   key={p.code}
@@ -701,7 +707,7 @@ export const OnlineOrdersView: React.FC = () => {
             <div>
               <div className="text-base font-bold text-white">Aktif Platform Siparişi Bulunmamaktadır</div>
               <p className="max-w-md mx-auto text-[#7A7A88] mt-1 text-xs leading-relaxed">
-                Trendyol Yemek, Getir Yemek veya Yemeksepeti üzerinden gelen siparişler anlık olarak bu alanda listelenecek ve sesli bildirim devreye girecektir.
+                Trendyol Go Yemek (GetirYemek dahil) veya Yemeksepeti üzerinden gelen siparişler anlık olarak bu alanda listelenecek ve sesli bildirim devreye girecektir.
               </p>
             </div>
           </div>
@@ -730,12 +736,10 @@ export const OnlineOrdersView: React.FC = () => {
                     <span className={`px-3 py-1 rounded-xl text-[11px] font-black tracking-wide uppercase flex items-center gap-1.5 ${
                       ord.platform === 'TRENDYOL'
                         ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
-                        : ord.platform === 'GETIR'
-                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
                         : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                     }`}>
                       <span className="w-2 h-2 rounded-full bg-current"></span>
-                      <span>{ord.platform} {ord.platformCode}</span>
+                      <span>{ord.sourceApp === 'GETIR' ? 'GETİR' : ord.platform} {ord.platformCode}</span>
                     </span>
 
                     <div className="flex items-center gap-1.5 text-xs text-[#8E8E98] font-mono">
@@ -774,7 +778,7 @@ export const OnlineOrdersView: React.FC = () => {
                       </div>
                     ) : isOnWay ? (
                       <div className="px-3 py-1.5 bg-sky-950/40 border border-sky-500/40 text-sky-300 rounded-xl text-xs font-bold flex items-center justify-between">
-                        <span>🛵 Kuryede / Dağıtımda {ord.assignedCourierName ? `(${ord.assignedCourierName})` : ''}</span>
+                        <span>🛵 Kuryede / Dağıtımda</span>
                         <span className="text-[10px] font-mono text-sky-400">Yolda</span>
                       </div>
                     ) : ord.status === 'DELIVERED' ? (
@@ -941,15 +945,11 @@ export const OnlineOrdersView: React.FC = () => {
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Resmi İptal Gerekçesi</label>
                 <select
-                  value={selectedRejectReason}
-                  onChange={e => setSelectedRejectReason(e.target.value)}
+                  value={selectedRejectReasonId}
+                  onChange={e => setSelectedRejectReasonId(Number(e.target.value))}
                   className="w-full bg-[#141416] border border-[#2C2C34] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
                 >
-                  <option value="Mutfak Kapasitesi Dolu / Aşırı Yoğunluk">Mutfak Kapasitesi Dolu / Aşırı Yoğunluk</option>
-                  <option value="Menüdeki Ürün veya Hammadde Tükendi">Menüdeki Ürün veya Hammadde Tükendi</option>
-                  <option value="Kurye Dağıtım Bölgesi Dışı">Kurye Dağıtım Bölgesi Dışı</option>
-                  <option value="İşletme Kapanış Saati">İşletme Kapanış Saati</option>
-                  <option value="Teknik İletişim Hatası">Teknik İletişim Hatası</option>
+                  {rejectReasonsFor(rejectModalOrder).map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
                 </select>
               </div>
             </div>

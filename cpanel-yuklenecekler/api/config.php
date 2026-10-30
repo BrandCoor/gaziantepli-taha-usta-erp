@@ -620,8 +620,7 @@ function ensureDatabaseTables($pdo) {
         try {
             $pdo->exec("INSERT INTO `online_platforms` (`platform_code`, `display_name`, `is_enabled`, `store_status`) VALUES
                 ('YEMEKSEPETI', 'Yemeksepeti', 0, 'CLOSED'),
-                ('TRENDYOL', 'Trendyol Yemek', 0, 'CLOSED'),
-                ('GETIR', 'GetirYemek', 0, 'CLOSED')
+                ('TRENDYOL', 'Trendyol Go Yemek', 0, 'CLOSED')
                 ON DUPLICATE KEY UPDATE `display_name` = VALUES(`display_name`)");
         } catch (Exception $ignore) {}
 
@@ -819,6 +818,11 @@ function gtuSchemaMigrations() {
         // 3: Ürün seçenekleri (boyut/porsiyon; her birinin kendi sabit fiyatı) — JSON, yalnızca ekleme
         3 => [
             "ALTER TABLE `urunler` ADD COLUMN `varyantlar` TEXT NULL",
+        ],
+        // 4: Online sipariş kaynağı (Trendyol'dan gelen GetirYemek siparişleri ayırt edilir) + görünen sipariş kodu
+        4 => [
+            "ALTER TABLE `online_orders` ADD COLUMN `source_app` VARCHAR(20) NULL",
+            "ALTER TABLE `online_orders` ADD COLUMN `display_code` VARCHAR(40) NULL",
         ],
     ];
 }

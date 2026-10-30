@@ -7,7 +7,8 @@ Dürüst liste: aşağıdakiler **yapılmadı veya eksik**.
 
 ## Yemek platformu entegrasyonları
 - **Canlı hesapla doğrulanmadı.** Platform anahtarları ve ortamı olmadan gerçek sipariş akışı denenemedi; testler yalnızca yerel taklit sunucuyla (testlerde) yapıldı.
-- Getir uçları (giriş, aktif/onaysız sipariş, onay/hazırla/teslim/iptal) kamuya açık bilgilere göre yazıldı; payload alanları tolerant çözülür, farklıysa tanı ekranındaki ham gövdeden düzeltilmelidir.
+- GetirYemek ayrı entegrasyon değildir; Getir siparişleri Trendyol Go Yemek API'sinden (appName=Galaxy) gelir ve kasada "GETİR" rozetiyle görünür.
+- Trendyol ve Yemeksepeti uçları resmi geliştirici dokümanlarına göre yazıldı (bkz. docs/platform-api-notes.md); gerçek hesapla denenmedi. Yemeksepeti sipariş listesi alan adları ve iptal nedeni değerleri doğrulanamadı; tanı ekranındaki ham gövdeden düzeltilmelidir. Yemeksepeti müşteri bilgilerini maskeli gönderir.
 - **Trendyol Go Yemek ve Yemeksepeti** için sipariş okuma/onay/ret/teslim uç adresleri doğrulanamadı; ayarlardaki "gelişmiş adres" alanları doldurulana kadar bu eylemler platforma OTOMATİK iletilmez (ekranda "elle" görünür). Sipariş almak için platformun webhook'u adresimize kaydetmesi gerekir (hesap yöneticisi/partner paneli).
 
 ## Güncelleme sistemi
@@ -20,7 +21,7 @@ Dürüst liste: aşağıdakiler **yapılmadı veya eksik**.
 ## Ürün seçenekleri
 - Hammadde/reçete **maliyeti ürün başınadır** (seçenek başına değil); seçenekli üründe kâr marjı sütunu "—" gösterilir.
 - Seçenekli üründe eski 0,5x / 1,5x çarpanı kullanılmaz (seçenekler onun yerine geçer). Seçeneksiz ürünlerde çarpan aynen çalışır.
-- Yemek platformlarından (Getir/Trendyol/Yemeksepeti) gelen siparişler platformun gönderdiği ürün adıyla gelir; platform menüsündeki boyutlar bu seçeneklerle otomatik eşlenmez.
+- Yemek platformlarından (Trendyol/Yemeksepeti) gelen siparişler platformun gönderdiği ürün adıyla gelir; platform menüsündeki boyutlar bu seçeneklerle otomatik eşlenmez.
 - Seçenek eklenen/kaldırılan ürünler, kasa sunucuya eşitleyince (birkaç saniye) garson ve QR menüde güncellenir; açık sepetteki eski seçenek reddedilirse "Menüyü yenileyin" uyarısı çıkar.
 
 ## Mimari

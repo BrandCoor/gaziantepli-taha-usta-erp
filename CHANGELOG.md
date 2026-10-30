@@ -6,12 +6,12 @@ Biçim: [Keep a Changelog](https://keepachangelog.com/tr/). Sürümleme: package
 
 > Not: Bu sürüm, ilk denetimde (docs/audit) bulunan kritik riskleri gidermek için hazırlandı. Fiziksel yazıcı, gerçek telefonlar ve canlı hosting ile doğrulama kurulum gününde yapılmalıdır ([docs/testing.md](docs/testing.md)).
 
-### Yemek platformları (Getir / Trendyol Go / Yemeksepeti)
+### Yemek platformları (Trendyol Go / Yemeksepeti) — GetirYemek kaldırıldı
 - **"Platformda sipariş var, sistemde yok" sorunu giderildi.** Kök nedenler: webhook gizli anahtarı tanımsızken isteklerin sessizce düşmesi, pasif platformun siparişlerinin ekranda gizlenmesi, sunucu/istemci durum sözlüğü uyuşmazlığı, platforma webhook adresinin kaydedilmemesi ve hiçbir tanı bilgisinin olmaması.
 - Gelen **her** webhook isteği `online_webhook_log` tablosuna (kabul/ret/neden, başlık adları, kırpılmış gövde; anahtar değeri asla) yazılır; kasada **Yemek Platformları › Gelen İstekler / Tanı** ekranından izlenir.
-- Gerçek bağlantı testi (Getir giriş + aktif sipariş sorgusu, Yemeksepeti OAuth). Doğrulanamayan platform "doğrulandı" denmez.
+- Gerçek bağlantı testi (Trendyol mağaza sorgusu, Yemeksepeti OAuth). Doğrulanamayan platform "doğrulandı" denmez.
 - Gerçek platform eylemleri (onay/ret/hazır/teslim) ve **dürüst durum**: Tamam / Başarısız / Elle yapılmalı. Dokümanı doğrulanamayan Trendyol ve Yemeksepeti uçları ayarlardan "gelişmiş adres" olarak girilir; boşsa işlem platforma bildirilmez ve ekranda belirtilir.
-- Webhook yedeği olarak **periyodik sorgulama** (Getir), ayarlarda webhook adresleri + gizli anahtar üretici.
+- Webhook yedeği olarak **periyodik sorgulama** (Trendyol paketleri / Yemeksepeti siparişleri, 20 sn), ayarlarda webhook adresleri + gizli anahtar üretici.
 - **Demo/test kalıntıları kaldırıldı:** sahte test siparişi, sahte bağlantı testi, demo menü/salon/garson, kullanılmayan tohum veri üreticileri; para çekmecesi hata durumunda artık başarı yalanı söylemez.
 
 ### Ürün seçenekleri (boyut / porsiyon)

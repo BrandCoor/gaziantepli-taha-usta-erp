@@ -1,12 +1,12 @@
 <?php
 /**
- * Online platform webhook alıcısı (Getir Yemek / Trendyol Go Yemek / Yemeksepeti).
+ * Online platform webhook alıcısı (Yemeksepeti Partner API / Trendyol Go Yemek).
  *
- * Kayıt edilecek adresler (platforma/hesap yöneticinize verilir):
- *   Getir       yeni sipariş : https://<api>/online/webhook.php?platform=GETIR&event=new     (x-api-key = webhook gizli anahtarı)
- *               iptal        : https://<api>/online/webhook.php?platform=GETIR&event=cancel
- *   Trendyol    https://<api>/online/webhook.php?platform=TRENDYOL                           (statik başlık/sorgu anahtarı)
- *   Yemeksepeti POS Plugin tabanı: https://<api>   → POST /order/{remoteId}                   (Authorization: Bearer <gizli anahtar>)
+ * Yemeksepeti: Partner Portal'da "sipariş bildirimi (webhook)" adresi olarak şunu kaydedin:
+ *     https://<api>/online/webhook.php?platform=YEMEKSEPETI
+ *   Portal'daki "statik token" alanına Ayarlar'daki Webhook Gizli Anahtarını yazın (Authorization başlığı veya x-api-key olarak gelir).
+ * Trendyol Go: sipariş çekme (polling) varsayılandır; webhook kayıtlıysa:
+ *     https://<api>/online/webhook.php?platform=TRENDYOL
  *
  * Her çağrı (kabul/ret) `online_webhook_log` tablosuna yazılır.
  */
@@ -44,8 +44,7 @@ if (!is_array($data)) {
 /* ---------- platform tespiti ---------- */
 $platform = strtoupper(trim((string)($_GET['platform'] ?? '')));
 if ($platform === '' && !empty($headers['x-platform'])) { $platform = strtoupper(trim($headers['x-platform'])); }
-if (strpos($platform, 'TREND') !== false) { $platform = 'TRENDYOL'; }
-elseif (strpos($platform, 'GETIR') !== false) { $platform = 'GETIR'; }
+if (strpos($platform, 'TREND') !== false || strpos($platform, 'GETIR') !== false) { $platform = 'TRENDYOL'; } // GetirYemek siparişleri Trendyol üzerinden gelir
 elseif (strpos($platform, 'YEMEK') !== false || strpos($platform, 'YS') === 0) { $platform = 'YEMEKSEPETI'; }
 if (!in_array($platform, OP_PLATFORMS, true)) {
     op_log($pdo, 'BILINMIYOR', 'WEBHOOK', 'REJECTED', 400, 'Platform belirlenemedi (adreste ?platform= yok)', $headerNames, $raw);
@@ -89,17 +88,12 @@ if (!$authOk) {
     exit;
 }
 
-/* ---------- olay türü ---------- */
-$event = strtolower((string)($_GET['event'] ?? ''));
-if ($platform === 'YEMEKSEPETI' && ($_GET['kind'] ?? '') === 'status') { $event = 'status'; }
-$statusWord = strtolower(op_str(op_pick($data, ['status', 'eventType', 'event', 'type', 'orderStatus', 'newStatus'], '')));
-if ($event === '') {
-    $event = (preg_match('/cancel|iptal|reject|rejected/', $statusWord)) ? 'cancel' : 'new';
-}
-if ($event === 'status') { $event = preg_match('/cancel|iptal|reject/', $statusWord) ? 'cancel' : 'status'; }
-
+/* ---------- olay türü: platformun gönderdiği DURUMdan çıkarılır ---------- */
+if (isset($data['order']) && is_array($data['order'])) { $data = $data['order']; } // bazı sarmalayıcılar
 $n = op_normalize($platform, $data);
-if ($platform === 'YEMEKSEPETI' && $n['id'] === '' && !empty($_GET['orderId'])) { $n['id'] = (string)$_GET['orderId']; }
+$statusWord = (string)$n['status'];
+$mapped = op_map_remote_status($platform, $statusWord);
+$event = $mapped === 'IPTAL' ? 'cancel' : (($mapped === 'BEKLIYOR' || $mapped === null) ? 'new' : 'status');
 
 if ($n['id'] === '') {
     op_log($pdo, $platform, 'WEBHOOK', 'ERROR', 200, 'Sipariş kimliği ayrıştırılamadı — ham veri kaydedildi, alan eşlemesi gözden geçirilmeli', $headerNames, $raw);
@@ -113,20 +107,18 @@ try {
 } catch (Throwable $e) {}
 
 /* ---------- iptal / durum ---------- */
-if ($event === 'cancel') {
+if ($event === 'cancel' || $event === 'status') {
     $order = op_find_order($pdo, $n['id']);
     if ($order) {
-        $reason = op_str(op_pick($data, ['cancellation.reason', 'cancelReason', 'reason', 'cancelNote', 'message'], 'Platform tarafından iptal edildi'));
-        $pdo->prepare("UPDATE `online_orders` SET `local_status` = 'IPTAL', `platform_status` = 'CANCELLED_BY_PLATFORM', `cancel_reason` = ? WHERE `id` = ?")->execute([mb_substr($reason, 0, 250), $order['id']]);
-        op_log($pdo, $platform, 'WEBHOOK', 'ACCEPTED', 200, 'Platform iptali işlendi', $headerNames, $raw, $n['id']);
+        $changed = op_sync_remote_status($pdo, $platform, $n['id'], $statusWord);
+        if ($event === 'cancel') {
+            $reason = op_str(op_pick($data, ['cancellation.reason', 'cancelInfo.reason', 'cancelReason', 'reason'], 'Platform tarafından iptal edildi'));
+            $pdo->prepare("UPDATE `online_orders` SET `cancel_reason` = ? WHERE `id` = ? AND `local_status` = 'IPTAL'")->execute([mb_substr($reason, 0, 250), $order['id']]);
+        }
+        op_log($pdo, $platform, 'WEBHOOK', 'ACCEPTED', 200, ($event === 'cancel' ? 'Platform iptali işlendi' : 'Durum bildirimi işlendi: ' . $statusWord) . ($changed ? '' : ' (yerel durum zaten güncel)'), $headerNames, $raw, $n['id']);
     } else {
-        op_log($pdo, $platform, 'WEBHOOK', 'ACCEPTED', 200, 'İptal bildirimi geldi ama sipariş kayıtlı değil', $headerNames, $raw, $n['id']);
+        op_log($pdo, $platform, 'WEBHOOK', 'ACCEPTED', 200, ($event === 'cancel' ? 'İptal' : 'Durum') . ' bildirimi geldi ama sipariş kayıtlı değil: ' . $statusWord, $headerNames, $raw, $n['id']);
     }
-    echo json_encode(['success' => true]);
-    exit;
-}
-if ($event === 'status') {
-    op_log($pdo, $platform, 'WEBHOOK', 'ACCEPTED', 200, 'Durum bildirimi alındı: ' . $statusWord, $headerNames, $raw, $n['id']);
     echo json_encode(['success' => true]);
     exit;
 }

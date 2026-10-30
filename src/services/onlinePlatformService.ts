@@ -1,44 +1,34 @@
 /**
  * GAZİANTEPLİ TAHA USTA ERP - Online Yemek Platformları Servisi
  * -------------------------------------------------------------
- * Yemeksepeti, Trendyol Yemek ve GetirYemek platformlarının canlı
- * API entegrasyonu, webhook dinleme, durum yönetimi ve donanım tetikleyicisi.
+ * Trendyol Go Yemek (GetirYemek siparişleri de buradan gelir) ve Yemeksepeti platformlarının canlı
+ * API entegrasyonu, sipariş çekme/webhook, durum yönetimi.
  */
 
 import { notify } from './notificationService';
 import { printerService } from './printerService';
 
-export type OnlinePlatformCode = 'YEMEKSEPETI' | 'TRENDYOL' | 'GETIR';
+export type OnlinePlatformCode = 'YEMEKSEPETI' | 'TRENDYOL';
 export type StoreAvailabilityStatus = 'OPEN' | 'BUSY' | 'CLOSED';
 export type OnlineOrderStatus = 'BEKLIYOR' | 'HAZIRLANIYOR' | 'YOLA_CIKTI' | 'TESLIM_EDILDI' | 'IPTAL';
 export type DeliveryModel = 'RESTAURANT_COURIER' | 'PLATFORM_COURIER';
 
 export interface PlatformCredentials {
-  // Yemeksepeti
-  vendorId?: string;
-  clientId?: string;
-  clientSecret?: string;
-  storeUuid?: string;
-
-  // Trendyol Yemek
+  // Trendyol Go Yemek (Entegrasyon Bilgileri: Satıcı ID + API Key + Secret Key; e-posta = x-executor-user)
   supplierId?: string;
   apiKey?: string;
   secretKey?: string;
+  email?: string;
+  storeId?: string;      // yalnızca hesapta birden çok restoran varsa
 
-  // GetirYemek (appKey = "App Secret Key")
-  restaurantSecretKey?: string;
-  appKey?: string;
-  restaurantId?: string;
+  // Yemeksepeti Partner API (Partner Portal › Shop Integrations Plugin)
+  clientId?: string;
+  clientSecret?: string;
+  chainId?: string;
+  vendorId?: string;
 
-  // Gelişmiş: platform dokümanındaki adresler (boşsa o işlem otomatik yapılmaz; "elle" olarak işaretlenir)
-  apiBaseUrl?: string;   // Getir test ortamı için; boşsa canlı adres
-  tokenUrl?: string;     // Yemeksepeti OAuth adresi; boşsa Partner API varsayılanı
-  chainId?: string;      // Yemeksepeti zincir kimliği
-  ordersUrl?: string;    // sipariş okuma (polling) adresi
-  acceptUrl?: string;
-  rejectUrl?: string;
-  dispatchUrl?: string;
-  deliverUrl?: string;
+  // Gelişmiş: yalnızca test (sandbox) ortamı için API taban adresi
+  apiBaseUrl?: string;
 }
 
 /** Sunucunun bir işlemi platforma iletme sonucu. MANUAL = otomatik değil, platform uygulamasında da yapılmalı. */
@@ -63,7 +53,7 @@ export interface DiagnosticsLogEntry {
   body_sample: string;
 }
 export interface Diagnostics {
-  platforms: Array<{ platform: OnlinePlatformCode; enabled: boolean; hasSecret: boolean; configured: boolean; lastWebhookAt: string | null; orderCount: number }>;
+  platforms: Array<{ platform: OnlinePlatformCode; enabled: boolean; hasSecret: boolean; configured: boolean; lastWebhookAt: string | null; lastPollAt: string | null; lastPollError: string | null; orderCount: number }>;
   hiddenOrders: number;
   log: DiagnosticsLogEntry[];
 }
@@ -112,12 +102,9 @@ export interface OnlineOrder {
   cancelReason?: string;
   createdAt: string;
   deliveryModel?: DeliveryModel | 'RESTAURANT' | 'PLATFORM';
-  assignedCourierId?: string;
-  assignedCourierName?: string;
-  platformCourierName?: string;
-  platformCourierPhone?: string;
-  platformCourierEtaMinutes?: number;
-  handoverCode?: string;
+  /** Siparişin geldiği uygulama (Trendyol üzerinden gelen GetirYemek siparişleri 'GETIR' olur). */
+  sourceApp?: 'TRENDYOL' | 'GETIR' | 'YEMEKSEPETI';
+  displayCode?: string;
 }
 
 const STORAGE_KEY_PLATFORMS = 'gtu_online_platforms_v2';
@@ -130,62 +117,33 @@ const DEFAULT_PLATFORMS: Record<OnlinePlatformCode, OnlinePlatformInfo> = {
     isEnabled: false,
     storeStatus: 'OPEN',
     deliveryModel: 'RESTAURANT_COURIER',
-    credentials: {
-      vendorId: '',
-      clientId: '',
-      clientSecret: '',
-      storeUuid: '',
-    },
+    credentials: { clientId: '', clientSecret: '', chainId: '', vendorId: '' },
     webhookSecret: '',
     webhookUrl: '',
-    badgeColor: {
-      bg: 'bg-rose-500/15',
-      border: 'border-rose-500/40',
-      text: 'text-rose-400',
-      pill: 'bg-rose-600 text-white',
-    },
+    badgeColor: { bg: 'bg-rose-500/15', border: 'border-rose-500/40', text: 'text-rose-400', pill: 'bg-rose-600 text-white' },
   },
   TRENDYOL: {
     code: 'TRENDYOL',
-    name: 'Trendyol Yemek',
+    name: 'Trendyol Go Yemek',
     isEnabled: false,
     storeStatus: 'OPEN',
-    deliveryModel: 'PLATFORM_COURIER',
-    credentials: {
-      supplierId: '',
-      apiKey: '',
-      secretKey: '',
-    },
+    deliveryModel: 'RESTAURANT_COURIER',
+    credentials: { supplierId: '', apiKey: '', secretKey: '', email: '' },
     webhookSecret: '',
     webhookUrl: '',
-    badgeColor: {
-      bg: 'bg-orange-500/15',
-      border: 'border-orange-500/40',
-      text: 'text-orange-400',
-      pill: 'bg-orange-500 text-white',
-    },
-  },
-  GETIR: {
-    code: 'GETIR',
-    name: 'GetirYemek',
-    isEnabled: false,
-    storeStatus: 'OPEN',
-    deliveryModel: 'PLATFORM_COURIER',
-    credentials: {
-      restaurantSecretKey: '',
-      appKey: '',
-      restaurantId: '',
-    },
-    webhookSecret: '',
-    webhookUrl: '',
-    badgeColor: {
-      bg: 'bg-purple-500/15',
-      border: 'border-purple-500/40',
-      text: 'text-purple-400',
-      pill: 'bg-purple-600 text-white',
-    },
+    badgeColor: { bg: 'bg-orange-500/15', border: 'border-orange-500/40', text: 'text-orange-400', pill: 'bg-orange-500 text-white' },
   },
 };
+
+/** Trendyol resmi iptal nedenleri (Package Models). 624/626 yalnızca kendi kuryesiyle teslim edilen siparişlerde. */
+export const TRENDYOL_CANCEL_REASONS: Array<{ id: number; label: string; ownCourierOnly?: boolean }> = [
+  { id: 621, label: 'Tedarik problemi' },
+  { id: 622, label: 'Mağaza kapalı' },
+  { id: 623, label: 'Mağaza siparişi hazırlayamıyor' },
+  { id: 624, label: 'Yüksek yoğunluk / kurye yok', ownCourierOnly: true },
+  { id: 626, label: 'Alan dışı', ownCourierOnly: true },
+  { id: 627, label: 'Sipariş karışıklığı' },
+];
 
 class OnlinePlatformService {
   private platforms: Record<OnlinePlatformCode, OnlinePlatformInfo>;
@@ -205,7 +163,6 @@ class OnlinePlatformService {
         return {
           YEMEKSEPETI: { ...DEFAULT_PLATFORMS.YEMEKSEPETI, ...(parsed.YEMEKSEPETI || {}) },
           TRENDYOL: { ...DEFAULT_PLATFORMS.TRENDYOL, ...(parsed.TRENDYOL || {}) },
-          GETIR: { ...DEFAULT_PLATFORMS.GETIR, ...(parsed.GETIR || {}) },
         };
       }
     } catch (e) {}
@@ -297,22 +254,13 @@ class OnlinePlatformService {
     const r = await this.callServer('update_online_store_status', { platform: code, status });
     if (r.ok) {
       if (code === 'ALL') {
-        (['YEMEKSEPETI', 'TRENDYOL', 'GETIR'] as OnlinePlatformCode[]).forEach(k => { if (this.platforms[k]) this.platforms[k].storeStatus = status; });
+        (['YEMEKSEPETI', 'TRENDYOL'] as OnlinePlatformCode[]).forEach(k => { if (this.platforms[k]) this.platforms[k].storeStatus = status; });
       } else if (this.platforms[code]) {
         this.platforms[code].storeStatus = status;
       }
       this.saveLocalPlatforms();
     }
     return { success: r.ok, message: r.ok ? (r.data?.message || 'Mağaza durumu kaydedildi.') : r.error };
-  }
-
-  public async setDeliveryModel(code: OnlinePlatformCode, deliveryModel: DeliveryModel): Promise<ActionResult> {
-    const r = await this.callServer('update_delivery_model', { platform: code, deliveryModel });
-    if (r.ok && this.platforms[code]) {
-      this.platforms[code].deliveryModel = deliveryModel;
-      this.saveLocalPlatforms();
-    }
-    return { success: r.ok, message: r.ok ? 'Teslimat modeli güncellendi.' : r.error };
   }
 
   /**
@@ -323,7 +271,6 @@ class OnlinePlatformService {
       this.platforms[code] = {
         ...this.platforms[code],
         ...config,
-        deliveryModel: config.deliveryModel || this.platforms[code].deliveryModel || 'RESTAURANT_COURIER',
         credentials: { ...this.platforms[code].credentials, ...(config.credentials || {}) },
       };
       this.saveLocalPlatforms();
@@ -332,7 +279,6 @@ class OnlinePlatformService {
       platform: code,
       isEnabled: config.isEnabled,
       storeStatus: config.storeStatus,
-      deliveryModel: this.platforms[code]?.deliveryModel || config.deliveryModel,
       credentials: this.platforms[code]?.credentials || {},
       webhookSecret: this.platforms[code]?.webhookSecret ?? config.webhookSecret,
     });
@@ -368,16 +314,10 @@ class OnlinePlatformService {
   public getWebhookUrls(code: OnlinePlatformCode): Array<{ label: string; url: string }> {
     const base = this.getApiUrl().replace(/\/index\.php$/, '');
     if (!base) return [];
-    if (code === 'GETIR') {
-      return [
-        { label: 'Yeni sipariş URL', url: `${base}/online/webhook.php?platform=GETIR&event=new` },
-        { label: 'Sipariş iptal URL', url: `${base}/online/webhook.php?platform=GETIR&event=cancel` },
-      ];
-    }
     if (code === 'TRENDYOL') {
-      return [{ label: 'Webhook URL', url: `${base}/online/webhook.php?platform=TRENDYOL` }];
+      return [{ label: 'Trendyol webhook adresi (isteğe bağlı: siparişler zaten otomatik çekilir)', url: `${base}/online/webhook.php?platform=TRENDYOL` }];
     }
-    return [{ label: 'POS Plugin taban adresi (Yemeksepeti bu adrese /order/{remoteId} gönderir)', url: base }];
+    return [{ label: 'Yemeksepeti sipariş bildirimi (webhook) adresi — Partner Portal\'da kaydedilir', url: `${base}/online/webhook.php?platform=YEMEKSEPETI` }];
   }
 
   /**
@@ -407,13 +347,11 @@ class OnlinePlatformService {
    * Siparişi onaylar. Sunucu onaylamazsa HİÇBİR yerel durum değişmez ve fiş basılmaz.
    * Platforma iletim sonucu (OK/FAILED/MANUAL) ayrıca döner.
    */
-  public async acceptOrder(order: OnlineOrder): Promise<ActionResult> {
+  public async acceptOrder(order: OnlineOrder, preparationMinutes = 25): Promise<ActionResult> {
     const r = await this.callServer('accept_online_order', {
       orderId: order.id,
       platform: order.platform,
-      deliveryModel: order.deliveryModel,
-      assignedCourierId: order.assignedCourierId,
-      handoverCode: order.handoverCode,
+      preparationTime: preparationMinutes,
     });
     if (!r.ok) return { success: false, message: `Sipariş onaylanamadı: ${r.error}` };
     this.updateLocalOrderStatus(order.id, 'HAZIRLANIYOR');
@@ -422,13 +360,8 @@ class OnlinePlatformService {
     return res;
   }
 
-  public async assignCourier(orderId: string, courierId: string, courierName: string, platform?: OnlinePlatformCode): Promise<ActionResult> {
-    const r = await this.callServer('assign_courier', { orderId, courierId, courierName, platform });
-    return { success: r.ok, message: r.ok ? 'Kurye atandı.' : `Kurye atanamadı: ${r.error}` };
-  }
-
-  public async rejectOrder(orderId: string, reason: string, platform?: OnlinePlatformCode): Promise<ActionResult> {
-    const r = await this.callServer('reject_online_order', { orderId, platform, cancelReason: reason });
+  public async rejectOrder(orderId: string, reason: string, platform?: OnlinePlatformCode, reasonId?: number): Promise<ActionResult> {
+    const r = await this.callServer('reject_online_order', { orderId, platform, cancelReason: reason, reasonId });
     if (!r.ok) return { success: false, message: `Sipariş iptal edilemedi: ${r.error}` };
     this.updateLocalOrderStatus(orderId, 'IPTAL', reason);
     const res: ActionResult = { success: true, message: 'Sipariş iptal edildi.', platformSync: r.data.platformSync, platformSyncMessage: r.data.platformSyncMessage };

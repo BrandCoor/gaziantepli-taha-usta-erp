@@ -7,7 +7,7 @@ Bu projenin **Git geçmişinde** gerçek sırlar bulundu. Dosyadan silmek yetmez
 | Sır | Nerede göründü | Yapılacak |
 |---|---|---|
 | cPanel MySQL parolası | eski `api/config.php` | cPanel › MySQL'de parolayı **değiştirin**; yenisini yalnızca sunucudaki `config.local.php` içine yazın |
-| Yemeksepeti / Trendyol / Getir API anahtarları, webhook secret'ları | eski `onlinePlatformService.ts`, `restaurantDataService.ts` | İlgili platform panellerinden **yenileyin / iptal edin** |
+| Yemeksepeti / Trendyol API anahtarları, webhook secret'ları | eski `onlinePlatformService.ts`, `restaurantDataService.ts` | İlgili platform panellerinden **yenileyin / iptal edin** |
 | NVIDIA API anahtarı | eski `opencode.json` | NVIDIA hesabınızdan anahtarı **iptal edin** |
 | Eski ortak parolalar (`admin/1`, `1453` vb.) | eski kod/SQL | Kullanılmıyor; kasada ilk kurulumda kendi parolanızı belirlersiniz |
 

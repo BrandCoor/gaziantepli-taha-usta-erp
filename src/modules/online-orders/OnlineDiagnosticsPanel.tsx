@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { onlinePlatformService, Diagnostics, OnlinePlatformCode } from '../../services/onlinePlatformService';
 
-const NAMES: Record<string, string> = { GETIR: 'Getir Yemek', TRENDYOL: 'Trendyol Go Yemek', YEMEKSEPETI: 'Yemeksepeti' };
+const NAMES: Record<string, string> = { TRENDYOL: 'Trendyol Go Yemek', YEMEKSEPETI: 'Yemeksepeti' };
 const BADGE: Record<string, string> = {
   ACCEPTED: 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40',
   DUPLICATE: 'bg-sky-600/20 text-sky-300 border-sky-500/40',
@@ -77,8 +77,10 @@ export const OnlineDiagnosticsPanel: React.FC<{ onClose: () => void }> = ({ onCl
                   <span className={`px-2 py-0.5 rounded-lg border font-black ${p.enabled ? BADGE.ACCEPTED : 'bg-slate-700/40 text-slate-300 border-slate-500/40'}`}>{p.enabled ? 'AKTİF' : 'PASİF'}</span>
                 </div>
                 <div className="text-[#C4C4CC] space-y-0.5">
-                  <div>Webhook gizli anahtarı: <b className={p.hasSecret ? 'text-emerald-300' : 'text-rose-300'}>{p.hasSecret ? 'kayıtlı' : 'YOK — webhook reddedilir'}</b></div>
+                  <div>Webhook gizli anahtarı (isteğe bağlı): <b className={p.hasSecret ? 'text-emerald-300' : 'text-[#A0A0AA]'}>{p.hasSecret ? 'kayıtlı' : 'yok'}</b></div>
                   <div>Son webhook: <b className={p.lastWebhookAt ? 'text-emerald-300' : 'text-amber-300'}>{p.lastWebhookAt || 'Hiç gelmedi'}</b></div>
+                  <div>Son sorgulama: <b className={p.lastPollAt ? 'text-emerald-300' : 'text-amber-300'}>{p.lastPollAt || 'Henüz yapılmadı'}</b></div>
+                  {p.lastPollError && <div>Sorgu hatası: <b className="text-rose-300">{p.lastPollError}</b></div>}
                   <div>Toplam sipariş: <b className="text-white">{p.orderCount}</b></div>
                 </div>
                 {urls.length > 0 && (
@@ -112,7 +114,7 @@ export const OnlineDiagnosticsPanel: React.FC<{ onClose: () => void }> = ({ onCl
           <div className="max-h-80 overflow-y-auto divide-y divide-[#2C2C34]">
             {(data?.log || []).length === 0 && (
               <div className="p-4 text-xs text-[#A0A0AA]">
-                Henüz platformdan hiçbir istek gelmedi. Platform panelinde webhook adresini kaydettiğinizden ve gizli anahtarı eşleştirdiğinizden emin olun; platformunuzun hesap yöneticisi adresi sizin yerinize tanımlıyor olabilir.
+                Henüz platformdan kayıt yok. Trendyol ve Yemeksepeti siparişleri sunucu tarafından otomatik sorgulanır; kimlik bilgilerini kaydettiğinizden ve platformu aktif ettiğinizden emin olun, ardından "Bağlantıyı Test Et" ile deneyin.
               </div>
             )}
             {(data?.log || []).map((l) => (

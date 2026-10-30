@@ -126,7 +126,7 @@ export const RestaurantSettingsView: React.FC = () => {
   };
 
   const tabsConfig: { id: SettingsSubTab; label: string; icon: React.ReactNode; badge?: string | number }[] = [
-    { id: 'PLATFORMS', label: 'Yemek Platformları (API)', icon: <Bike className="w-4 h-4 text-orange-400" />, badge: 'Trendyol/Getir/YS' },
+    { id: 'PLATFORMS', label: 'Yemek Platformları (API)', icon: <Bike className="w-4 h-4 text-orange-400" />, badge: 'Trendyol/YS' },
     { id: 'PRINTERS', label: 'Termal Yazıcılar', icon: <Printer className="w-4 h-4" />, badge: printers.length },
     { id: 'HARDWARE', label: 'Donanım & Çevre Birimleri', icon: <Cpu className="w-4 h-4" />, badge: 'Yeni' },
     { id: 'WAITERS', label: 'Garson Terminalleri & QR', icon: <Smartphone className="w-4 h-4" />, badge: waiters.length },

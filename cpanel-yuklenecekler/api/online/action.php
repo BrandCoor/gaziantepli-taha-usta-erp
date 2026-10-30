@@ -48,7 +48,7 @@ if (isset($orderActions[$action])) {
     if ($op === 'reject' && $reason === '') { $reason = 'Restoran tarafından iptal edildi'; }
 
     // 1) Platforma ilet (gerçek HTTP) — sonuç dürüstçe raporlanır
-    $sync = op_platform_action($pdo, $order, $op, ['reason' => $reason]);
+    $sync = op_platform_action($pdo, $order, $op, ['reason' => $reason, 'reasonId' => (int)($body['reasonId'] ?? 0), 'preparationTime' => (int)($body['preparationTime'] ?? 0)]);
     op_set_sync($pdo, (int)$order['id'], $sync['status'], $sync['message']);
 
     // 2) Yerel durum
@@ -60,11 +60,6 @@ if (isset($orderActions[$action])) {
     $sql = "UPDATE `online_orders` SET `local_status` = ?, `platform_status` = ?";
     $params = [$local, $platformStatus];
     if ($op === 'reject') { $sql .= ", `cancel_reason` = ?"; $params[] = mb_substr($reason, 0, 250); }
-    if ($op === 'accept') {
-        foreach (['assignedCourierId' => 'assigned_courier_id', 'deliveryModel' => 'delivery_model', 'handoverCode' => 'handover_code'] as $k => $col) {
-            if (!empty($body[$k])) { $sql .= ", `{$col}` = ?"; $params[] = (string)$body[$k]; }
-        }
-    }
     $sql .= " WHERE `id` = ?";
     $params[] = $order['id'];
     $pdo->prepare($sql)->execute($params);
@@ -98,18 +93,7 @@ if ($action === 'update_store_status' || $action === 'update_online_store_status
     foreach ($targets as $t) {
         if (!in_array($t, OP_PLATFORMS, true)) continue;
         $pdo->prepare("UPDATE `online_platforms` SET `store_status` = ? WHERE `platform_code` = ?")->execute([$status, $t]);
-        $row = op_platform($pdo, $t);
-        $res = ['platform' => $t, 'sync' => 'MANUAL', 'message' => 'Kasa kaydı güncellendi; platformun mağaza durumu otomatik değiştirilmedi — platform panelinden de açıp kapatın.'];
-        if ($t === 'YEMEKSEPETI' && !empty($row['is_enabled']) && op_str($row['creds']['chainId'] ?? '') !== '' && op_str($row['creds']['vendorId'] ?? '') !== '') {
-            $tk = op_ys_token($row);
-            if ($tk['ok']) {
-                $url = 'https://yemeksepeti.partner.deliveryhero.io/v2/chains/' . rawurlencode($row['creds']['chainId']) . '/vendors/' . rawurlencode($row['creds']['vendorId']) . '/status';
-                $payload = $status === 'CLOSED' ? ['status' => 'CLOSED_TODAY', 'closed_reason' => 'TOO_BUSY_KITCHEN'] : ['status' => 'OPEN'];
-                $r = op_http('PUT', $url, ['Authorization' => 'Bearer ' . $tk['token'], 'Content-Type' => 'application/json'], $payload);
-                $res = ['platform' => $t, 'sync' => $r['ok'] ? 'OK' : 'FAILED', 'message' => $r['ok'] ? 'Yemeksepeti mağaza durumu güncellendi.' : ('Yemeksepeti: ' . op_brief($r))];
-            } else { $res = ['platform' => $t, 'sync' => 'FAILED', 'message' => $tk['message']]; }
-        }
-        $results[] = $res;
+        $results[] = op_store_status_sync($pdo, $t, $status);
     }
     out(['success' => true, 'platform' => $code, 'storeStatus' => $status, 'isOpen' => $status !== 'CLOSED', 'results' => $results,
         'message' => 'Mağaza durumu kaydedildi: ' . implode(' | ', array_map(fn($r) => $r['platform'] . ': ' . $r['message'], $results))]);
@@ -133,30 +117,11 @@ if ($action === 'save_platform_config' || $action === 'save_online_platform_conf
     if (isset($body['webhookSecret'])) { $sets[] = "`webhook_secret` = :sec"; $params[':sec'] = mb_substr((string)$body['webhookSecret'], 0, 100); }
     if (isset($body['isEnabled'])) { $sets[] = "`is_enabled` = :en"; $params[':en'] = $body['isEnabled'] ? 1 : 0; }
     if (isset($body['storeStatus']) && in_array($body['storeStatus'], ['OPEN', 'BUSY', 'CLOSED'], true)) { $sets[] = "`store_status` = :ss"; $params[':ss'] = $body['storeStatus']; }
-    if (isset($body['deliveryModel']) && in_array($body['deliveryModel'], ['RESTAURANT_COURIER', 'PLATFORM_COURIER'], true)) { $sets[] = "`delivery_model` = :dm"; $params[':dm'] = $body['deliveryModel']; }
     // Anahtarlar değiştiyse önbellekteki oturum anahtarı geçersiz sayılır
     $sets[] = "`token_cache` = NULL"; $sets[] = "`token_expires_at` = NULL";
     $st = $pdo->prepare("UPDATE `online_platforms` SET " . implode(', ', $sets) . " WHERE `platform_code` = :p");
     $st->execute($params);
     out(['success' => true, 'platform' => $code, 'message' => "Platform ({$code}) ayarları sunucuya kaydedildi. (Kaydetmek bağlantıyı DOĞRULAMAZ — 'Bağlantıyı Test Et' kullanın.)"]);
-}
-
-if ($action === 'update_delivery_model') {
-    $code = plat($body);
-    $model = strtoupper(trim((string)($body['deliveryModel'] ?? $body['model'] ?? 'RESTAURANT_COURIER')));
-    if (!in_array($code, OP_PLATFORMS, true) || !in_array($model, ['RESTAURANT_COURIER', 'PLATFORM_COURIER'], true)) { out(['success' => false, 'error' => 'Geçersiz istek.'], 400); }
-    $pdo->prepare("UPDATE `online_platforms` SET `delivery_model` = ? WHERE `platform_code` = ?")->execute([$model, $code]);
-    out(['success' => true, 'platform' => $code, 'deliveryModel' => $model, 'message' => "{$code} teslimat modeli güncellendi."]);
-}
-
-if ($action === 'assign_courier') {
-    $orderId = (string)($body['orderId'] ?? $body['id'] ?? '');
-    $courierId = (string)($body['courierId'] ?? $body['assignedCourierId'] ?? '');
-    if ($orderId === '' || $courierId === '') { out(['success' => false, 'error' => 'Sipariş veya kurye eksik.'], 400); }
-    $order = op_find_order($pdo, $orderId);
-    if (!$order) { out(['success' => false, 'error' => 'Sipariş bulunamadı.'], 404); }
-    $pdo->prepare("UPDATE `online_orders` SET `assigned_courier_id` = ?, `assigned_courier_name` = ? WHERE `id` = ?")->execute([$courierId, (string)($body['courierName'] ?? ''), $order['id']]);
-    out(['success' => true, 'orderId' => $orderId, 'courierId' => $courierId, 'message' => 'Kurye atandı.']);
 }
 
 /* ---------------- 8. GERÇEK BAĞLANTI TESTİ ---------------- */
@@ -166,42 +131,49 @@ if ($action === 'test_connection' || $action === 'test_online_connection') {
     $row = op_platform($pdo, $code);
     // Henüz kaydedilmemiş alanlar test isteğiyle gelebilir
     if (is_array($body['credentials'] ?? null) && $body['credentials']) { $row['creds'] = array_merge($row['creds'], $body['credentials']); }
+    $row['token_cache'] = null; $row['token_expires_at'] = null; // test her zaman taze giriş yapar
 
     $lines = [];
     $verified = false;
-    if ($code === 'GETIR') {
-        $t = op_getir_token($pdo, $row, true);
-        if (!$t['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $t['message']]); }
-        $r = op_getir_call($pdo, $row, 'GET', '/food-orders/active');
-        if ($r['ok']) { $verified = true; $lines[] = 'Getir girişi başarılı ve aktif sipariş sorgusu çalışıyor (HTTP ' . $r['status'] . ').'; }
-        else { $lines[] = 'Getir girişi başarılı ancak aktif sipariş sorgusu başarısız: ' . op_brief($r); }
-    } elseif ($code === 'YEMEKSEPETI') {
-        $t = op_ys_token($row);
-        if (!$t['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $t['message']]); }
-        $verified = true; $lines[] = 'Yemeksepeti OAuth kimlik doğrulaması başarılı (client_id/client_secret geçerli).';
-    } else { // TRENDYOL
-        $c = $row['creds'];
-        $url = op_str($c['ordersUrl'] ?? '');
-        if ($url === '') {
-            out(['success' => false, 'verified' => false, 'platform' => $code,
-                'message' => 'Trendyol anahtarları kaydedildi ancak DOĞRULANAMADI: "Sipariş okuma adresi" tanımlı değil. Trendyol dokümanındaki paket/sipariş listeleme adresini "Gelişmiş adresler"e girip tekrar test edin.']);
+    if ($code === 'TRENDYOL') {
+        if ($miss = op_ty_missing($row['creds'])) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $miss]); }
+        $s = op_ty_stores($row);
+        if (!$s['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $s['message']]); }
+        $verified = true;
+        $names = array_map(fn($x) => op_str($x['name'] ?? '?') . ' (' . op_str($x['workingStatus'] ?? '?') . ')', $s['stores']);
+        $lines[] = 'Trendyol girişi başarılı. ' . count($s['stores']) . ' restoran bulundu: ' . implode(', ', array_slice($names, 0, 5)) . '.';
+        // Tek restoran varsa mağaza kimliği otomatik kaydedilir
+        if (count($s['stores']) === 1 && op_str($row['creds']['storeId'] ?? '') === '' && op_str($s['stores'][0]['id'] ?? '') !== '') {
+            $saved = op_platform($pdo, $code)['creds'];
+            $saved['storeId'] = op_str($s['stores'][0]['id']);
+            try { $pdo->prepare("UPDATE `online_platforms` SET `credentials_json` = ? WHERE `platform_code` = ?")->execute([json_encode($saved, JSON_UNESCAPED_UNICODE), $code]); } catch (Throwable $e) {}
         }
-        $url = op_tpl($url, ['supplierId' => op_str($c['supplierId'] ?? '')]);
-        $r = op_http('GET', $url, op_ty_headers($c));
-        if (!$r['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => 'Trendyol yanıtı: ' . op_brief($r)]); }
-        $verified = true; $lines[] = 'Trendyol sipariş sorgusu başarılı (HTTP ' . $r['status'] . ').';
+    } else {
+        if ($miss = op_ys_missing($row['creds'], false)) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $miss]); }
+        $t = op_ys_token($row, $pdo);
+        if (!$t['ok']) { out(['success' => false, 'verified' => false, 'platform' => $code, 'message' => $t['message']]); }
+        $verified = true;
+        $lines[] = 'Yemeksepeti kimlik doğrulaması başarılı (Client ID/Secret geçerli).';
+        $c = $row['creds'];
+        if (op_str($c['chainId'] ?? '') !== '' && op_str($c['vendorId'] ?? '') !== '') {
+            $r = op_ys_call($pdo, $row, 'GET', '/v2/chains/' . rawurlencode(op_str($c['chainId'])) . '/vendors/' . rawurlencode(op_str($c['vendorId'])) . '/status');
+            if ($r['ok']) { $lines[] = 'Restoran durumu okundu: ' . op_str(op_pick($r['json'], ['status'], '?')) . '.'; }
+            else { $verified = false; $lines[] = 'Ancak Chain ID / Vendor ID ile restoran okunamadı: ' . ($r['status'] === 0 ? $r['error'] : op_brief($r)); }
+        } else {
+            $lines[] = 'Chain ID ve Vendor ID girilmedi: sipariş çekme için gereklidir (ilk webhook geldiğinde otomatik öğrenilir; ya da Yemeksepeti temsilcinizden alın).';
+        }
     }
 
     $hook = '';
     if (!empty($row['last_webhook_at'])) { $hook = ' Son webhook: ' . $row['last_webhook_at'] . '.'; }
-    elseif (empty($row['secret'])) { $hook = ' UYARI: Webhook gizli anahtarı yok.'; }
-    else { $hook = ' Henüz bu platformdan webhook GELMEDİ (adresi platforma kaydettiniz mi?).'; }
+    $lastPoll = (int)op_setting_get($pdo, 'op_last_poll_' . $code, '0');
+    $hook .= $lastPoll > 0 ? (' Son sipariş sorgusu: ' . date('H:i:s', $lastPoll) . '.') : ' Henüz sipariş sorgusu yapılmadı.';
     out(['success' => $verified, 'verified' => $verified, 'platform' => $code, 'message' => implode(' ', $lines) . $hook, 'timestamp' => date('c')]);
 }
 
 /* ---------------- 9. SİPARİŞ ÇEKME (kasa belirli aralıkla çağırır) ---------------- */
 if ($action === 'poll_online_orders') {
-    out(['success' => true, 'results' => op_poll_all($pdo), 'timestamp' => date('c')]);
+    out(['success' => true, 'results' => op_poll_all($pdo, true), 'timestamp' => date('c')]);
 }
 
 /* ---------------- 10. TANI ---------------- */
@@ -213,6 +185,8 @@ if ($action === 'get_online_diagnostics') {
         $platforms[] = [
             'platform' => $code, 'enabled' => (bool)$row['is_enabled'], 'hasSecret' => strlen($row['secret']) >= 8,
             'configured' => !empty($row['creds']), 'lastWebhookAt' => $row['last_webhook_at'] ?? null, 'orderCount' => (int)$cnt->fetchColumn(),
+            'lastPollAt' => ($lp = (int)op_setting_get($pdo, 'op_last_poll_' . $code, '0')) > 0 ? date('Y-m-d H:i:s', $lp) : null,
+            'lastPollError' => op_setting_get($pdo, 'op_poll_err_' . $code, '') ?: null,
         ];
     }
     $hidden = (int)$pdo->query("SELECT COUNT(*) FROM `online_orders` WHERE `platform_code` IN (SELECT `platform_code` FROM `online_platforms` WHERE `is_enabled` = 0)")->fetchColumn();

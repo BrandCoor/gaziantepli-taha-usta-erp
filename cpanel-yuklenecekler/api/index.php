@@ -108,7 +108,7 @@ if (in_array($action, ['create_pairing_token', 'generate_pairing_token', 'pair_d
     exit;
 }
 
-// Online Yemek Platformları (Yemeksepeti, Trendyol Yemek, GetirYemek)
+// Online Yemek Platformları (Yemeksepeti, Trendyol Go Yemek; GetirYemek siparişleri Trendyol üzerinden gelir)
 if (in_array($action, ['get_online_orders', 'list_online_orders', 'get_online_platforms'])) {
     require __DIR__ . '/online/orders.php';
     exit;
@@ -118,7 +118,7 @@ if (in_array($action, [
     'dispatch_online_order', 'deliver_online_order', 'update_online_store_status',
     'update_platform_store_status', 'get_platform_store_status',
     'toggle_online_platform', 'save_online_platform_config', 'test_online_connection',
-    'update_delivery_model', 'assign_courier', 'poll_online_orders', 'get_online_diagnostics'
+    'poll_online_orders', 'get_online_diagnostics'
 ])) {
     // get_platform_store_status desteği
     if ($action === 'get_platform_store_status') {
@@ -1417,7 +1417,7 @@ if ($action === 'platform_webhook' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     if ($input) {
         $platform = strtoupper($input['platform'] ?? 'TRENDYOL');
-        $code = $input['platformCode'] ?? ($platform === 'TRENDYOL' ? '#TY-' : ($platform === 'GETIR' ? '#GT-' : '#YS-')) . rand(1000, 9999);
+        $code = $input['platformCode'] ?? ($platform === 'TRENDYOL' ? '#TY-' : '#YS-') . rand(1000, 9999);
         $deliveryModel = strtoupper($input['deliveryModel'] ?? 'RESTAURANT');
         if (!in_array($deliveryModel, ['RESTAURANT', 'PLATFORM'])) $deliveryModel = 'RESTAURANT';
 
